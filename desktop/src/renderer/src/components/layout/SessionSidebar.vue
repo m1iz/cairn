@@ -24,6 +24,7 @@ import { core } from '../../api/http'
 import { selectDirectory } from '../../api/backend'
 import { useAppContext } from '../../composables/useAppContext'
 import { useSession } from '../../composables/useSession'
+import BrandMark from '../brand/BrandMark.vue'
 import {
   buildSidebarGroups,
   completeManualOrder,
@@ -364,6 +365,12 @@ onMounted(async () => {
     @mouseleave="closeMenus"
   >
     <div class="sidebar-window-controls">
+      <div class="sidebar-brand-lockup" aria-label="Cairn">
+        <span class="sidebar-brand-icon" aria-hidden="true">
+          <BrandMark :size="22" />
+        </span>
+        <strong>Cairn</strong>
+      </div>
       <button
         class="sidebar-icon-button"
         type="button"
