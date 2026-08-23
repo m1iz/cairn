@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { mkdir, open, rename, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { syncFileBestEffort } from '../util/fs-durability'
 import {
   NodePublicHttpTransport,
   PublicHttpClient,
@@ -98,7 +99,7 @@ export class NodeHttpsAssetDownloader implements AssetDownloader {
         if (bytes > maxBytes) throw new EnvironmentError('download_failed')
         await handle.writeFile(buffer)
       }
-      await handle.sync()
+      await syncFileBestEffort(handle)
       await handle.close()
       handle = null
       await rename(temp, destination)

@@ -4,7 +4,10 @@ import { mkdir, open, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { writeJsonAtomic } from '../store/atomic-json'
 import { canonicalJson } from './events'
-import { syncDirectoryBestEffort } from '../util/fs-durability'
+import {
+  syncDirectoryBestEffort,
+  syncFileBestEffort,
+} from '../util/fs-durability'
 import { GoalGateMutationLedger } from './mutation-ledger'
 import type { GoalPostCommitFailureCode } from './completion-gate'
 
@@ -78,7 +81,7 @@ export class GoalPostCommitDiagnosticsStore {
       try {
         await handle.chmod(0o600)
         await handle.writeFile(`${JSON.stringify(diagnostic)}\n`, 'utf8')
-        await handle.sync()
+        await syncFileBestEffort(handle)
       } finally {
         await handle.close()
       }

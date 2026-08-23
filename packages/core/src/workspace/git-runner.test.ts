@@ -1,5 +1,5 @@
 import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { devNull, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { HardenedGitRunner } from './git-runner'
@@ -24,7 +24,8 @@ describe('HardenedGitRunner', () => {
     await runner.execute('/repo', ['status', '--porcelain=v2'])
 
     expect(calls[0]?.args[0]).toBe('--no-pager')
-    expect(calls[0]?.args).toContain('core.hooksPath=/dev/null')
+    const gitNullPath = process.platform === 'win32' ? 'NUL' : devNull
+    expect(calls[0]?.args).toContain(`core.hooksPath=${gitNullPath}`)
     expect(calls[0]?.env).toMatchObject({
       GIT_TERMINAL_PROMPT: '0',
       GCM_INTERACTIVE: 'Never',

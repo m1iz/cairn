@@ -45,7 +45,6 @@ const unexpected = trackedDocs.filter((path) => !isPublicDocPath(path))
 const publicMarkdown = [
   'README.md',
   'AGENTS.md',
-  '.github/SECURITY.md',
   'docs/release/CHANGELOG.md',
   ...trackedDocs.filter(
     (path) => isPublicDocPath(path) && path.endsWith('.md'),

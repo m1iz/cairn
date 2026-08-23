@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 import { CairnError } from '../errors'
 import { isolateCorrupt, writeJsonAtomic } from '../store/atomic-json'
 import { readJsonl, type ReadJsonlResult } from '../store/jsonl'
+import { syncFileBestEffort } from '../util/fs-durability'
 import {
   isGoalTerminal,
   type GoalPhase,
@@ -467,7 +468,7 @@ export class GoalStore {
       try {
         await handle.chmod(0o600)
         await handle.writeFile(body, 'utf8')
-        await handle.sync()
+        await syncFileBestEffort(handle)
       } finally {
         await handle.close()
       }
@@ -525,7 +526,7 @@ export class GoalStore {
       try {
         await handle.chmod(0o600)
         await handle.writeFile(body, 'utf8')
-        await handle.sync()
+        await syncFileBestEffort(handle)
       } finally {
         await handle.close()
       }
@@ -834,7 +835,7 @@ export class GoalStore {
     try {
       await handle.chmod(0o600)
       await handle.writeFile(`${JSON.stringify(event)}\n`, 'utf8')
-      await handle.sync()
+      await syncFileBestEffort(handle)
     } finally {
       await handle.close()
     }

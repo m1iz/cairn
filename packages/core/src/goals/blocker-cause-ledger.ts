@@ -2,7 +2,6 @@ import { createHash, randomUUID } from 'node:crypto'
 import {
   closeSync,
   existsSync,
-  fsyncSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -14,7 +13,10 @@ import { canonicalJson } from './events'
 import { GoalGateMutationLedger } from './mutation-ledger'
 import type { GoalRecord } from './models'
 import type { GoalBlockerCause, GoalBlockerCauseReceipt } from './blocker-facts'
-import { syncDirectoryBestEffortSync } from '../util/fs-durability'
+import {
+  syncDirectoryBestEffortSync,
+  syncFileBestEffortSync,
+} from '../util/fs-durability'
 
 interface GoalBlockerCauseDocument {
   readonly schemaVersion: 'cairn.goal.blocker-causes.v1'
@@ -201,7 +203,7 @@ function requiredSha256(value: unknown): string {
 function syncFile(path: string): void {
   const handle = openSync(path, 'r')
   try {
-    fsyncSync(handle)
+    syncFileBestEffortSync(handle)
   } finally {
     closeSync(handle)
   }

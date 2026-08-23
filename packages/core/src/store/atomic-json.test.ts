@@ -84,7 +84,9 @@ describe('atomic-json store', () => {
     const p = join(dir, 'secret.json')
     await writeJsonAtomic(p, { apiKey: 'secret' }, { mode: 0o600 })
 
-    expect((await stat(p)).mode & 0o777).toBe(0o600)
+    if (process.platform !== 'win32') {
+      expect((await stat(p)).mode & 0o777).toBe(0o600)
+    }
   })
 
   it('preserves the old destination and leaves no temp file when serialization fails', async () => {

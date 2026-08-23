@@ -3,7 +3,7 @@
 > 文档状态：Active<br>
 > 面向读者：发布维护者<br>
 > 最后核验：2026-07-16<br>
-> 事实源：`.github/workflows/release-preview.yml`、`scripts/preview-*-contract.mjs`、`scripts/publish-preview-release.sh`
+> 事实源：`scripts/preview-*-contract.mjs`、`scripts/publish-preview-release.sh` 与 Preview electron-builder 配置
 
 当前公开安装包使用未签名 Preview 渠道。它通过独立 workflow 构建、验证和发布为 GitHub Pre-release，不应被描述为 Stable，也不能混入受信签名渠道的产物。
 
@@ -23,7 +23,7 @@
 v<version>-preview.<n>
 ```
 
-推送 tag 后由 `.github/workflows/release-preview.yml` 自动触发。不要手工从平台 build job 创建 Release，也不要把 `UNSIGNED-PREVIEW` candidate 改名后放入 Stable 渠道。
+在受管构建环境中执行发布脚本，按 contract 生成并发布 Preview。不要手工从平台 build job 创建 Release，也不要把 `UNSIGNED-PREVIEW` candidate 改名后放入 Stable 渠道。
 
 ## Workflow 阶段
 

@@ -15,6 +15,10 @@ import {
 } from 'node:fs/promises'
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { canonicalizeExistingPath, isPathWithin } from '../util/paths'
+import {
+  syncDirectoryBestEffort,
+  syncFileBestEffort,
+} from '../util/fs-durability'
 import { createTypeScriptCodeGraphExtractor } from './extractor'
 import {
   CODE_GRAPH_PARSER_REVISION,
@@ -511,16 +515,11 @@ export class CodeGraphIndexManager {
         0o600,
       )
       await handle.writeFile(compressed)
-      await handle.sync()
+      await syncFileBestEffort(handle)
       await handle.close()
       handle = null
       await rename(tmp, this.cachePath)
-      const directory = await open(this.cacheRoot, constants.O_RDONLY)
-      try {
-        await directory.sync()
-      } finally {
-        await directory.close()
-      }
+      await syncDirectoryBestEffort(this.cacheRoot)
       this.cacheBytes = compressed.length
       this.cacheDirty = false
     } finally {

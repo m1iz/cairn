@@ -3,7 +3,6 @@ import {
   chmodSync,
   closeSync,
   existsSync,
-  fsyncSync,
   linkSync,
   mkdirSync,
   openSync,
@@ -13,7 +12,10 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 import { canonicalJson } from '../goals/events'
-import { syncDirectoryBestEffortSync } from '../util/fs-durability'
+import {
+  syncDirectoryBestEffortSync,
+  syncFileBestEffortSync,
+} from '../util/fs-durability'
 
 /** Local Core-only authenticity for persisted Control action metadata. */
 export class CoreControlActionSigner {
@@ -33,7 +35,7 @@ export class CoreControlActionSigner {
       try {
         descriptor = openSync(temporaryPath, 'wx', 0o600)
         writeFileSync(descriptor, randomBytes(32))
-        fsyncSync(descriptor)
+        syncFileBestEffortSync(descriptor)
         closeSync(descriptor)
         descriptor = undefined
 

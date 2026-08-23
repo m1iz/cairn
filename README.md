@@ -33,7 +33,3 @@ npm --prefix desktop run package:verify
 ```
 
 本地配置和会话数据默认保存在 `~/.cairn`，不会提交到仓库。
-
-## License
-
-[MIT](LICENSE)

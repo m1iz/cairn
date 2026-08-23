@@ -3,7 +3,6 @@ import {
   chmodSync,
   closeSync,
   existsSync,
-  fsyncSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -19,10 +18,12 @@ import {
 } from './mutation-ledger'
 import type { GoalMutationLease } from './mutation-guard'
 import type { GoalRecord } from './models'
-import { syncDirectoryBestEffortSync } from '../util/fs-durability'
+import {
+  syncDirectoryBestEffortSync,
+  syncFileBestEffortSync,
+} from '../util/fs-durability'
 
-export const GOAL_GATE_FACT_SCHEMA_VERSION =
-  'cairn.goal.gate-fact.v1' as const
+export const GOAL_GATE_FACT_SCHEMA_VERSION = 'cairn.goal.gate-fact.v1' as const
 const DOCUMENT_SCHEMA_VERSION = 'cairn.goal.gate-facts.v1' as const
 
 export type GoalGateFactDomain =
@@ -253,7 +254,7 @@ export class GoalGateFactStore {
     })
     const file = openSync(temporary, 'r')
     try {
-      fsyncSync(file)
+      syncFileBestEffortSync(file)
     } finally {
       closeSync(file)
     }

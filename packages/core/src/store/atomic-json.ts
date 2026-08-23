@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { syncFileBestEffort } from '../util/fs-durability'
 
 /**
  * 原子 JSON 存储 + 腐坏隔离 (MIG-FND-002)。
@@ -83,7 +84,7 @@ export async function writeJsonAtomic(
     handle = await open(tmp, 'wx', opts.mode ?? 0o666)
     await handle.writeFile(body, 'utf8')
     if (opts.mode !== undefined) await handle.chmod(opts.mode)
-    await handle.sync()
+    await syncFileBestEffort(handle)
     await handle.close()
     handle = null
     await rename(tmp, path)

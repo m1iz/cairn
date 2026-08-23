@@ -4,7 +4,7 @@
 > 面向读者：未来的发布维护者<br>
 > 冻结说明：workflow 和验证链已保留，但当前公开渠道不是 Stable；Stable tag 不会自动触发，仓库变量 `CAIRN_STABLE_RELEASE_ENABLED` 在解冻前必须保持未设置<br>
 > 最后核验：2026-07-19<br>
-> 事实源：`.github/workflows/release.yml`、`scripts/build_desktop_release.sh`、`scripts/verify-*-release.*`、`scripts/publish-release.sh`
+> 事实源：`scripts/build_desktop_release.sh`、`scripts/verify-*-release.*`、`scripts/publish-release.sh`
 
 本手册描述仓库中已存在但尚未作为当前公开渠道启用的受信发布链。不能因为 workflow 文件存在，就对外宣称已经提供 Stable 包。
 
@@ -21,7 +21,7 @@
 
 ## 手动触发与机器门禁
 
-`.github/workflows/release.yml` 只接受 `workflow_dispatch`，推送任何 Stable tag 都不会自动运行。维护者必须显式输入现有 `stable_tag`；`release-policy` 会在任何候选 job 前验证：
+Stable 发布只接受显式的 `stable_tag` 输入，推送任何 Stable tag 都不会自动运行。维护者必须显式输入现有 `stable_tag`；`release-policy` 会在任何候选 job 前验证：
 
 - tag 只能是无 prerelease 后缀的 `v<major>.<minor>.<patch>`；
 - tag 必须已经存在且是 annotated tag；

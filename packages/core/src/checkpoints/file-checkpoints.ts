@@ -13,7 +13,10 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { WorkspacePolicy } from '../permissions/workspace-policy'
 import { CairnError } from '../errors'
 import { readJson } from '../store/atomic-json'
-import { syncDirectoryBestEffort } from '../util/fs-durability'
+import {
+  syncDirectoryBestEffort,
+  syncFileBestEffort,
+} from '../util/fs-durability'
 import { isPathWithin, relativePortable } from '../util/paths'
 import {
   validateSoftGitCheckpointCapture,
@@ -1161,7 +1164,7 @@ async function durableWrite(
     handle = await open(temporary, 'wx', mode)
     await handle.writeFile(content)
     await handle.chmod(mode)
-    await handle.sync()
+    await syncFileBestEffort(handle)
     await handle.close()
     handle = null
     await rename(temporary, path)

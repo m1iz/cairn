@@ -83,7 +83,7 @@ npm --prefix desktop run screenshots
 - 每个 session 独立持久化 `stateRoot/sessions/<id>/history.jsonl`、`_checkpoint.json` 和 `runtime/events.jsonl`（`stateRoot` 默认 `~/.cairn`，与 `runtimeRoot` 是两个独立的根，见 `docs/architecture/global-state-store.md`）。
 - 新增 CoreApi operation 时必须同步 IPC contract、preload bridge、renderer API 映射和相关类型/测试。
 - 新增 runtime event 时必须同步 `packages/core/src/runtime/events.ts`、renderer `types.ts`、`runtime/*` reducer/handlers 和 `useRuntime.ts`。
-- 当前公开 Preview 必须通过 `.github/workflows/release-preview.yml` 的三平台 candidate、receipt、SBOM、attestation 和最终聚合门禁。`.github/workflows/release.yml` 的受信 Stable 链仍为 Frozen；不得从平台 build job 直接发布，也不得混用 `UNSIGNED-INTERNAL`、`UNSIGNED-PREVIEW` 和 Stable 产物。
+- 当前公开 Preview 必须通过 `scripts/preview-*-contract.mjs`、`scripts/assemble-release-bundle.mjs` 和对应发布脚本的三平台 candidate、receipt、SBOM、attestation 和最终聚合门禁。受信 Stable 链仍为 Frozen；不得从平台 build job 直接发布，也不得混用 `UNSIGNED-INTERNAL`、`UNSIGNED-PREVIEW` 和 Stable 产物。
 - `packages/core/src/environment/tool-catalog.json` 属于签名静态执行策略。修改版本、来源、摘要、publisher、参数或许可时必须执行 `docs/release/tool-catalog-review.md`，renderer/model 不得提供命令、URL 或 argv。
 
 ## 6. 扩展路径

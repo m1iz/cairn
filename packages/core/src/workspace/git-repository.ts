@@ -169,7 +169,7 @@ function resolveGitPath(cwd: string, value?: string): string {
 
 function canonical(path: string): string {
   const absolute = resolve(path)
-  return existsSync(absolute) ? realpathSync(absolute) : absolute
+  return existsSync(absolute) ? realpathSync.native(absolute) : absolute
 }
 
 function canonicalRequired(path?: string): string {

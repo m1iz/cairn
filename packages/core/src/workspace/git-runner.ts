@@ -3,6 +3,8 @@ import { mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { WorkspaceOperationError } from './common'
 
+const GIT_NULL_PATH = process.platform === 'win32' ? 'NUL' : devNull
+
 export interface GitRuntime {
   executable: string
   env: Record<string, string>
@@ -81,7 +83,7 @@ export class HardenedGitRunner {
       args: [
         '--no-pager',
         '-c',
-        `core.hooksPath=${devNull}`,
+        `core.hooksPath=${GIT_NULL_PATH}`,
         '-c',
         'core.fsmonitor=false',
         '-c',
@@ -102,7 +104,7 @@ export class HardenedGitRunner {
             }
           : {}),
         GIT_CONFIG_NOSYSTEM: '1',
-        GIT_CONFIG_GLOBAL: devNull,
+        GIT_CONFIG_GLOBAL: GIT_NULL_PATH,
         GIT_TERMINAL_PROMPT: '0',
         GCM_INTERACTIVE: 'Never',
         GIT_PAGER: 'cat',

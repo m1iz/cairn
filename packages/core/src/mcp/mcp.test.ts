@@ -291,7 +291,9 @@ describe('MCP config', () => {
       JSON.parse(readFileSync(join(root, 'mcp_config.json'), 'utf8')).defaults
         .read_only,
     ).toBe(true)
-    expect(statSync(join(root, 'mcp_config.json')).mode & 0o777).toBe(0o600)
+    if (process.platform !== 'win32') {
+      expect(statSync(join(root, 'mcp_config.json')).mode & 0o777).toBe(0o600)
+    }
   })
 
   it('restores masked editor leaves from the same stored server paths', async () => {

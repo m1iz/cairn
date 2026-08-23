@@ -4,7 +4,6 @@ import {
   chmodSync,
   closeSync,
   existsSync,
-  fsyncSync,
   ftruncateSync,
   linkSync,
   lstatSync,
@@ -23,7 +22,10 @@ import { hostname } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { CairnError } from '../errors'
 import { canonicalJson } from './events'
-import { syncDirectoryBestEffortSync } from '../util/fs-durability'
+import {
+  syncDirectoryBestEffortSync,
+  syncFileBestEffortSync,
+} from '../util/fs-durability'
 import {
   compareStableProcessStartIdentity,
   currentStableProcessIdentity,
@@ -641,8 +643,7 @@ export class GoalMutationGuard {
     repairRecoveryAuditTail(this.recoveryAuditPath)
     if (recoveryAuditContains(this.recoveryAuditPath, recoveryId)) return
     const base = {
-      schemaVersion:
-        'cairn.goal.mutation-guard-operator-recovery.v1' as const,
+      schemaVersion: 'cairn.goal.mutation-guard-operator-recovery.v1' as const,
       recoveryId,
       targetRecoveryId: intent.targetRecoveryId,
       phase: 'completed' as const,
@@ -911,7 +912,7 @@ export class GoalMutationGuard {
     const descriptor = openSync(this.recoveryAuditPath, 'a', 0o600)
     try {
       writeAllSync(descriptor, `${JSON.stringify(record)}\n`)
-      fsyncSync(descriptor)
+      syncFileBestEffortSync(descriptor)
     } finally {
       closeSync(descriptor)
     }
@@ -967,8 +968,7 @@ export class GoalMutationGuard {
     }
     const recoveryId = normalizeSha256(marker.recoveryId)
     if (
-      marker.schemaVersion !==
-        'cairn.goal.mutation-guard-recovery-marker.v1' ||
+      marker.schemaVersion !== 'cairn.goal.mutation-guard-recovery-marker.v1' ||
       !recoveryId ||
       !hasCanonicalIntegrity(marker)
     )
@@ -1300,7 +1300,7 @@ function appendIntegrityJsonLine(
   const descriptor = openSync(path, 'a', 0o600)
   try {
     writeAllSync(descriptor, `${JSON.stringify(record)}\n`)
-    fsyncSync(descriptor)
+    syncFileBestEffortSync(descriptor)
   } finally {
     closeSync(descriptor)
   }
@@ -1544,7 +1544,7 @@ function pathIdentitySha256(path: string): string | null {
 function syncFileStrictSync(path: string): void {
   const descriptor = openSync(path, 'r')
   try {
-    fsyncSync(descriptor)
+    syncFileBestEffortSync(descriptor)
   } finally {
     closeSync(descriptor)
   }
@@ -1648,7 +1648,7 @@ function repairRecoveryAuditTail(path: string): void {
           'Goal mutation recovery audit terminator could not be written.',
         )
     } else ftruncateSync(descriptor, lastNewline + 1)
-    fsyncSync(descriptor)
+    syncFileBestEffortSync(descriptor)
   } finally {
     closeSync(descriptor)
   }

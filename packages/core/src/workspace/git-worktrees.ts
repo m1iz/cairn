@@ -704,7 +704,7 @@ function assertSubagentOwnedPath(root: string, path: string): void {
 
 function canonical(path: string): string {
   const absolute = resolve(path)
-  return existsSync(absolute) ? realpathSync(absolute) : absolute
+  return existsSync(absolute) ? realpathSync.native(absolute) : absolute
 }
 
 function isWithin(parent: string, child: string): boolean {

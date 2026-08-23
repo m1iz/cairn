@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { constants, existsSync, lstatSync } from 'node:fs'
 import { mkdir, open, readFile, stat, unlink } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { syncFileBestEffort } from '../util/fs-durability'
 import { z } from 'zod'
 import type { LoadedToolCatalog, ToolCatalogEntry } from './catalog'
 import {
@@ -747,7 +748,7 @@ async function acquireJobLock(
           const next = payload()
           await handle.write(next, 0, 'utf8')
           await handle.truncate(Buffer.byteLength(next))
-          await handle.sync()
+          await syncFileBestEffort(handle)
         } catch {
           // The held descriptor remains authoritative until cleanup.
         }

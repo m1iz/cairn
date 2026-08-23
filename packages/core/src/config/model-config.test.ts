@@ -517,7 +517,9 @@ describe('model-config IO recovery', () => {
     await saveModelConfig(path, data, { validateComplete: true })
 
     expect((await loadModelConfig(path)).raw).toEqual(data)
-    expect((await stat(path)).mode & 0o777).toBe(0o600)
+    if (process.platform !== 'win32') {
+      expect((await stat(path)).mode & 0o777).toBe(0o600)
+    }
   })
 
   it('isolates malformed JSON and invalid v2 schema into corrupt backups', async () => {

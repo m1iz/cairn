@@ -2,7 +2,6 @@ import { createHash, randomUUID } from 'node:crypto'
 import {
   closeSync,
   existsSync,
-  fsyncSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -11,7 +10,10 @@ import {
 } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { canonicalJson } from './events'
-import { syncDirectoryBestEffortSync } from '../util/fs-durability'
+import {
+  syncDirectoryBestEffortSync,
+  syncFileBestEffortSync,
+} from '../util/fs-durability'
 import { GoalGateMutationLedger } from './mutation-ledger'
 import type { GoalRecord } from './models'
 import { CairnError } from '../errors'
@@ -174,7 +176,7 @@ export class GoalBlockerFactStore {
     })
     const handle = openSync(tmp, 'r')
     try {
-      fsyncSync(handle)
+      syncFileBestEffortSync(handle)
     } finally {
       closeSync(handle)
     }

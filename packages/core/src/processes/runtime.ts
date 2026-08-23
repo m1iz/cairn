@@ -9,7 +9,6 @@ import {
   closeSync,
   constants,
   existsSync,
-  fsyncSync,
   lstatSync,
   mkdirSync,
   openSync,
@@ -19,6 +18,7 @@ import {
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import type { Readable, Writable } from 'node:stream'
+import { syncFileBestEffortSync } from '../util/fs-durability'
 import {
   type OwnedProcessRequest,
   type OwnedProcessResult,
@@ -922,7 +922,7 @@ export class OwnedProcessRuntime implements OwnedProcessRunner {
     )
     try {
       writeFileSync(descriptor, `${JSON.stringify(values, null, 2)}\n`)
-      fsyncSync(descriptor)
+      syncFileBestEffortSync(descriptor)
     } finally {
       closeSync(descriptor)
     }

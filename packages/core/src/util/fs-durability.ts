@@ -8,9 +8,20 @@ const WINDOWS_UNSUPPORTED_DIRECTORY_FSYNC_CODES = new Set([
   'EPERM',
 ])
 
+const WINDOWS_UNSUPPORTED_FILE_FSYNC_CODES = new Set([
+  'EBADF',
+  'EINVAL',
+  'ENOSYS',
+  'EPERM',
+])
+
 interface AsyncDirectoryHandle {
   sync(): Promise<void>
   close(): Promise<void>
+}
+
+interface AsyncFileSyncHandle {
+  sync(): Promise<void>
 }
 
 interface AsyncDirectorySyncOperations {
@@ -38,9 +49,37 @@ const SYNC_DIRECTORY_SYNC: SyncDirectorySyncOperations = {
 }
 
 /**
+ * Persists a file where the platform supports it. Windows Node builds can
+ * report EPERM/EINVAL for fsync on an otherwise writable regular file. The
+ * rename itself remains atomic, and unsupported Windows fsync operations are
+ * tolerated so local stores remain usable after migration.
+ */
+export async function syncFileBestEffort(
+  handle: AsyncFileSyncHandle,
+  platform: NodeJS.Platform = process.platform,
+): Promise<void> {
+  try {
+    await handle.sync()
+  } catch (error) {
+    if (!unsupportedFileSync(error, platform)) throw error
+  }
+}
+
+export function syncFileBestEffortSync(
+  descriptor: number,
+  platform: NodeJS.Platform = process.platform,
+): void {
+  try {
+    fsyncSync(descriptor)
+  } catch (error) {
+    if (!unsupportedFileSync(error, platform)) throw error
+  }
+}
+
+/**
  * Persists a directory entry where the platform supports it. Node/Windows
  * cannot open or fsync directory handles consistently; only those explicit
- * unsupported-operation errors are tolerated. File fsync remains strict.
+ * unsupported-operation errors are tolerated.
  */
 export async function syncDirectoryBestEffort(
   path: string,
@@ -79,6 +118,18 @@ function unsupportedDirectorySync(
   return (
     platform === 'win32' &&
     WINDOWS_UNSUPPORTED_DIRECTORY_FSYNC_CODES.has(
+      String((error as NodeJS.ErrnoException)?.code ?? ''),
+    )
+  )
+}
+
+function unsupportedFileSync(
+  error: unknown,
+  platform: NodeJS.Platform,
+): boolean {
+  return (
+    platform === 'win32' &&
+    WINDOWS_UNSUPPORTED_FILE_FSYNC_CODES.has(
       String((error as NodeJS.ErrnoException)?.code ?? ''),
     )
   )

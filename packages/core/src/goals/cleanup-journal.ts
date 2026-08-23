@@ -2,7 +2,6 @@ import { createHash, randomUUID } from 'node:crypto'
 import {
   closeSync,
   existsSync,
-  fsyncSync,
   ftruncateSync,
   linkSync,
   lstatSync,
@@ -24,6 +23,7 @@ import { GoalGateMutationLedger } from './mutation-ledger'
 import {
   syncDirectoryBestEffort,
   syncDirectoryBestEffortSync,
+  syncFileBestEffortSync,
 } from '../util/fs-durability'
 import {
   compareStableProcessStartIdentity as compareProcessStartIdentity,
@@ -210,7 +210,7 @@ export class GoalCleanupJournal {
         const descriptor = openSync(this.path, 'a', 0o600)
         try {
           writeAllSync(descriptor, record)
-          fsyncSync(descriptor)
+          syncFileBestEffortSync(descriptor)
         } finally {
           closeSync(descriptor)
         }
@@ -498,7 +498,7 @@ export class GoalCleanupJournal {
 function syncFile(path: string): void {
   const handle = openSync(path, 'r')
   try {
-    fsyncSync(handle)
+    syncFileBestEffortSync(handle)
   } finally {
     closeSync(handle)
   }
@@ -597,7 +597,7 @@ function repairCleanupAckIntent(path: string, intentsDir: string): boolean {
       try {
         ftruncateSync(descriptor, expectedSize)
         writeAllSync(descriptor, intent.record, expectedSize)
-        fsyncSync(descriptor)
+        syncFileBestEffortSync(descriptor)
       } finally {
         closeSync(descriptor)
       }

@@ -126,10 +126,12 @@ describe('WorkspaceGitService', () => {
 
     const result = await service.status({ sessionId: 's1' })
 
-    expect(result.root).toBe('/repo/apps/web')
+    expect(result.root).toBe(
+      process.platform === 'win32' ? 'D:\\repo\\apps\\web' : '/repo/apps/web',
+    )
     expect(
       calls.find((call) => gitSubcommand(call.args) === 'status')?.cwd,
-    ).toBe('/repo')
+    ).toBe(process.platform === 'win32' ? 'D:\\repo' : '/repo')
     expect(
       calls.find((call) => gitSubcommand(call.args) === 'status')?.args,
     ).toContain('apps/web')
@@ -415,7 +417,7 @@ describe('WorkspaceGitService', () => {
 
     const status = await service.status({ sessionId: 's1' })
 
-    expect(status.root).toBe(realpathSync(project))
+    expect(status.root).toBe(realpathSync.native(project))
     expect(status.files.map((file) => file.path)).toEqual(['web.txt'])
     await service.stage({
       sessionId: 's1',

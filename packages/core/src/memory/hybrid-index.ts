@@ -2,7 +2,6 @@ import { createHash, randomUUID } from 'node:crypto'
 import {
   closeSync,
   existsSync,
-  fsyncSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -11,6 +10,10 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import {
+  syncDirectoryBestEffortSync,
+  syncFileBestEffortSync,
+} from '../util/fs-durability'
 import type {
   HybridMemoryChunkInput,
   HybridMemorySource,
@@ -336,16 +339,11 @@ function atomicWriteJson(path: string, value: StoredIndex): void {
   try {
     writeFileSync(tmp, payload, { encoding: 'utf8', flag: 'wx', mode: 0o600 })
     fileDescriptor = openSync(tmp, 'r')
-    fsyncSync(fileDescriptor)
+    syncFileBestEffortSync(fileDescriptor)
     closeSync(fileDescriptor)
     fileDescriptor = null
     renameSync(tmp, path)
-    const directoryDescriptor = openSync(dirname(path), 'r')
-    try {
-      fsyncSync(directoryDescriptor)
-    } finally {
-      closeSync(directoryDescriptor)
-    }
+    syncDirectoryBestEffortSync(dirname(path))
   } finally {
     if (fileDescriptor !== null) closeSync(fileDescriptor)
   }

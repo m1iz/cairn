@@ -56,7 +56,9 @@ describe('PermissionRequestStore', () => {
     )
     store.resolve('permission_request_1', 'allow_once')
 
-    expect(statSync(store.file).mode & 0o777).toBe(0o600)
+    if (process.platform !== 'win32') {
+      expect(statSync(store.file).mode & 0o777).toBe(0o600)
+    }
     expect(
       store.consumeExact('permission_request_1', 'session_a', [
         'fingerprint_a',

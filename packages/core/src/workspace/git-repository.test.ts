@@ -22,8 +22,10 @@ describe('GitRepositoryResolver', () => {
     })
     const identity = await resolver.resolve(worktree)
 
-    expect(identity.worktreeRoot).toBe(realpathSync(worktree))
-    expect(identity.commonDir).toBe(realpathSync(resolve(repository, '.git')))
+    expect(identity.worktreeRoot).toBe(realpathSync.native(worktree))
+    expect(identity.commonDir).toBe(
+      realpathSync.native(resolve(repository, '.git')),
+    )
     expect(identity.branch).toBe('feature')
     expect(identity.detached).toBe(false)
     expect(identity.objectFormat).toBe('sha1')
