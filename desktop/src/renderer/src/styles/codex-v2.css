@@ -4158,3 +4158,119 @@ select:focus-visible {
     transform: rotate(360deg);
   }
 }
+
+/* ── Windows Codex-style chrome ────────────────────────────────────────── */
+.desktop-window-shell {
+  min-height: 100dvh;
+}
+
+.desktop-window-shell.with-chrome-bar {
+  display: grid;
+  height: 100dvh;
+  grid-template-rows: 30px minmax(0, 1fr);
+}
+
+.desktop-window-shell.with-chrome-bar > .app-shell {
+  height: 100%;
+  min-height: 0;
+}
+
+.desktop-chrome-bar {
+  z-index: 100;
+  display: flex;
+  height: 30px;
+  align-items: center;
+  gap: 3px;
+  padding: 0 150px 0 12px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.05);
+  background: #1d2126;
+  color: #aab1bc;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.desktop-chrome-leading,
+.desktop-chrome-menu {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  -webkit-app-region: no-drag;
+}
+
+.desktop-chrome-icon-button,
+.desktop-chrome-menu-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  background: transparent;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.desktop-chrome-icon-button {
+  width: 24px;
+  height: 24px;
+}
+
+.desktop-chrome-icon-button:hover,
+.desktop-chrome-menu-button:hover,
+.desktop-chrome-menu-button[aria-expanded='true'] {
+  color: #edf0f4;
+  background: rgb(255 255 255 / 0.08);
+}
+
+.desktop-chrome-menu {
+  margin-left: 1px;
+}
+
+.desktop-chrome-menu-item {
+  position: relative;
+}
+
+.desktop-chrome-menu-button {
+  min-height: 24px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.desktop-chrome-menu-popover {
+  position: absolute;
+  z-index: 110;
+  top: 28px;
+  left: 0;
+  display: grid;
+  min-width: 148px;
+  gap: 2px;
+  padding: 5px;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 8px;
+  background: #252a31;
+  box-shadow: 0 14px 34px rgb(0 0 0 / 0.32);
+}
+
+.desktop-chrome-menu-popover button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 5px;
+  color: #c9ced7;
+  background: transparent;
+  font-size: 13px;
+  text-align: left;
+}
+
+.desktop-chrome-menu-popover button:hover {
+  color: #f4f6f8;
+  background: rgb(255 255 255 / 0.08);
+}
+
+.desktop-chrome-spacer {
+  min-width: 0;
+  flex: 1;
+  -webkit-app-region: drag;
+}

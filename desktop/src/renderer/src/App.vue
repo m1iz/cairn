@@ -7,6 +7,7 @@ import type {
   CommandSurface,
 } from '@cairn/core'
 import SessionSidebar from './components/layout/SessionSidebar.vue'
+import DesktopChromeBar from './components/layout/DesktopChromeBar.vue'
 import CommandCenterDialog, {
   type CommandCenterItem,
 } from './components/commands/CommandCenterDialog.vue'
@@ -37,6 +38,8 @@ let toastTimer: number | undefined
 const hideAppSidebar = computed(
   () => router.currentRoute.value.meta?.hideAppSidebar === true,
 )
+const showDesktopChrome =
+  typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent)
 const modelSetupPromptOpen = ref(false)
 const modelSetupDismissed = ref(false)
 const commandDescriptors = ref<CommandDescriptor[]>([])
@@ -769,13 +772,16 @@ provideAppContext({
   </div>
 
   <template v-else>
-    <div class="app-shell" :class="{ 'settings-app-shell': hideAppSidebar }">
-      <SessionSidebar v-if="!hideAppSidebar" @activate="onSessionActivate" />
-      <router-view v-slot="{ Component }">
-        <keep-alive>
-          <component :is="Component" />
-        </keep-alive>
-      </router-view>
+    <div class="desktop-window-shell" :class="{ 'with-chrome-bar': showDesktopChrome }">
+      <DesktopChromeBar />
+      <div class="app-shell" :class="{ 'settings-app-shell': hideAppSidebar }">
+        <SessionSidebar v-if="!hideAppSidebar" @activate="onSessionActivate" />
+        <router-view v-slot="{ Component }">
+          <keep-alive>
+            <component :is="Component" />
+          </keep-alive>
+        </router-view>
+      </div>
     </div>
     <ModelSetupRequiredDialog
       :open="modelSetupPromptOpen"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   Archive,
@@ -317,6 +317,14 @@ function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
 }
 
+function handleChromeToggleSidebar() {
+  toggleSidebar()
+}
+
+function handleChromeNewChat() {
+  void doCreateChat()
+}
+
 function toggleProjectsSection() {
   projectMenuOpen.value = false
   projectAddOpen.value = false
@@ -349,11 +357,18 @@ function relativeDate(value?: string) {
 }
 
 onMounted(async () => {
+  window.addEventListener('cairn:toggle-sidebar', handleChromeToggleSidebar)
+  window.addEventListener('cairn:new-chat', handleChromeNewChat)
   await Promise.all([
     loadSidebarState(),
     sessions.value.length ? Promise.resolve() : load(),
   ])
   if (activeId.value) emit('activate', activeId.value)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('cairn:toggle-sidebar', handleChromeToggleSidebar)
+  window.removeEventListener('cairn:new-chat', handleChromeNewChat)
 })
 </script>
 

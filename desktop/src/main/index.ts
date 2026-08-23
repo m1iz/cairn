@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  Menu,
   protocol,
   net,
   shell,
@@ -75,6 +76,28 @@ ipcMain.on(TERMINAL_SUBSCRIPTION_CHANNEL, (event, payload: unknown) => {
     event.sender,
     terminalSubscription(payload),
   )
+})
+
+ipcMain.handle('cairn:window-action', (event, payload: unknown) => {
+  trustedRendererPolicy.authorizeIpc(event)
+  if (
+    payload !== 'minimize' &&
+    payload !== 'toggle-maximize' &&
+    payload !== 'close'
+  ) {
+    return { ok: false, error: 'Unsupported window action' }
+  }
+
+  const window = BrowserWindow.fromWebContents(event.sender)
+  if (!window) return { ok: false, error: 'Window is unavailable' }
+
+  if (payload === 'minimize') window.minimize()
+  else if (payload === 'toggle-maximize') {
+    if (window.isMaximized()) window.unmaximize()
+    else window.maximize()
+  } else window.close()
+
+  return { ok: true }
 })
 
 function terminalSubscription(
@@ -234,10 +257,20 @@ function createWindow(): void {
   const boundsPath = mainBoundsPath()
   mainWindow = new BrowserWindow({
     ...readBounds(boundsPath),
-    title: 'Cairn',
+    title: '',
     icon: appIconPath,
     backgroundColor: '#1a1410',
     show: false,
+    ...(process.platform === 'win32'
+      ? {
+          titleBarStyle: 'hidden' as const,
+          titleBarOverlay: {
+            color: '#1d2126',
+            symbolColor: '#aab1bc',
+            height: 30,
+          },
+        }
+      : {}),
     webPreferences: mainWindowWebPreferences(mainDir),
   })
   coreEventBridge.attach(mainWindow.webContents)
@@ -284,6 +317,7 @@ function createWindow(): void {
 
 async function startup(): Promise<void> {
   app.setName('Cairn')
+  if (process.platform === 'win32') Menu.setApplicationMenu(null)
   if (process.platform === 'darwin') app.dock?.setIcon(appIconPath)
   if (process.platform === 'win32')
     app.setAppUserModelId('com.cairn.agent.desktop')

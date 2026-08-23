@@ -18,6 +18,9 @@ interface CairnBridge {
   openPath?: (
     target: string,
   ) => Promise<{ ok?: boolean; error?: string } | void>
+  windowAction?: (
+    action: 'minimize' | 'toggle-maximize' | 'close',
+  ) => Promise<{ ok?: boolean; error?: string } | void>
   invokeCore?: <Key extends CoreOperationKey>(
     operationKey: Key,
     ...args: CoreOperationArgs<Key>
@@ -59,6 +62,18 @@ export async function openPath(target: string): Promise<void> {
         ? result.error
         : 'Failed to open path',
     )
+  }
+}
+
+export async function windowAction(
+  action: 'minimize' | 'toggle-maximize' | 'close',
+): Promise<void> {
+  const invoke = bridge()?.windowAction
+  if (typeof invoke !== 'function')
+    throw new Error(CORE_BRIDGE_UNAVAILABLE_MESSAGE)
+  const result = await invoke(action)
+  if (result && typeof result === 'object' && result.ok === false) {
+    throw new Error(result.error || '窗口操作失败')
   }
 }
 
