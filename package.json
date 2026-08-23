@@ -1,0 +1,24 @@
+{
+  "name": "cairn-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "check": "scripts/check.sh",
+    "format": "node scripts/run-prettier.mjs --write",
+    "format:check": "node scripts/run-prettier.mjs --check",
+    "headless:acp": "npm run headless:acp --workspace @cairn/core --",
+    "test": "npm test --workspace @cairn/core && npm --prefix desktop run test",
+    "typecheck:test": "npm --prefix desktop run typecheck:test",
+    "typecheck": "npm run typecheck --workspace @cairn/core && npm --prefix desktop run typecheck",
+    "build": "npm --prefix desktop run build"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "prettier": "^3.6.2"
+  }
+}

@@ -1,0 +1,236 @@
+import {
+  executionEnvironmentSnapshotSchema,
+  stableEnvironmentHash,
+  type ExecutionEnvironmentSnapshot as ExecutionEnvironmentSnapshotData,
+  type EnvironmentPlatform,
+  type EnvironmentToolId,
+} from './models'
+import type { EnvironmentProbeRequest, EnvironmentProbeStatus } from './probe'
+
+const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
+const RESERVED_ENV_NAMES = new Set(['__proto__', 'constructor', 'prototype'])
+const MAX_ENV_ENTRIES = 512
+const MAX_ENV_VALUE_BYTES = 64 * 1024
+
+const POSIX_ENV_KEYS = [
+  'HOME',
+  'LANG',
+  'LC_ALL',
+  'USER',
+  'TMPDIR',
+  'TEMP',
+  'TMP',
+  'TERM',
+] as const
+const WINDOWS_ENV_KEYS = [
+  'HOME',
+  'USERPROFILE',
+  'USERNAME',
+  'SystemRoot',
+  'ComSpec',
+  'PATHEXT',
+  'TEMP',
+  'TMP',
+  'LANG',
+  'LC_ALL',
+  'TERM',
+] as const
+
+export const executionEnvironmentSnapshotDataSchema =
+  executionEnvironmentSnapshotSchema
+
+const capturedEnvironment = new WeakMap<
+  ExecutionEnvironment,
+  Readonly<Record<string, string>>
+>()
+
+export class ExecutionEnvironment {
+  readonly revision: string
+  readonly catalogRevision: string
+  readonly projectFingerprint: string
+  readonly createdAt: string
+  readonly platform: EnvironmentPlatform
+  readonly pathEntries: readonly string[]
+  readonly env: Readonly<Record<string, string>>
+  readonly toolPaths: Readonly<Partial<Record<EnvironmentToolId, string>>>
+
+  constructor(
+    data: ExecutionEnvironmentSnapshotData,
+    privateEnv: Readonly<Record<string, string>>,
+  ) {
+    const parsed = executionEnvironmentSnapshotSchema.parse(data)
+    this.revision = parsed.revision
+    this.catalogRevision = parsed.catalogRevision
+    this.projectFingerprint = parsed.projectFingerprint
+    this.createdAt = parsed.createdAt
+    this.platform = parsed.platform
+    this.pathEntries = Object.freeze([...parsed.pathEntries])
+    this.env = Object.freeze({ ...parsed.env })
+    this.toolPaths = Object.freeze({ ...parsed.toolPaths })
+    capturedEnvironment.set(
+      this,
+      normalizeCapturedEnvironment(privateEnv, parsed.platform),
+    )
+    Object.freeze(this)
+  }
+
+  selectEnv(names: readonly string[]): Readonly<Record<string, string>> {
+    const source = capturedEnvironment.get(this) ?? {}
+    const selected: Array<[string, string]> = []
+    const seen = new Set<string>()
+    for (const rawName of names) {
+      const name = String(rawName ?? '').trim()
+      if (!isSafeEnvName(name)) continue
+      const key = this.platform === 'win32' ? name.toLowerCase() : name
+      if (seen.has(key)) continue
+      seen.add(key)
+      const value =
+        environmentValue(this.env, name, this.platform) ??
+        environmentValue(source, name, this.platform)
+      if (value !== undefined) selected.push([name, value])
+    }
+    return Object.freeze(Object.fromEntries(selected))
+  }
+
+  toJSON(): ExecutionEnvironmentSnapshotData {
+    return {
+      revision: this.revision,
+      catalogRevision: this.catalogRevision,
+      projectFingerprint: this.projectFingerprint,
+      createdAt: this.createdAt,
+      platform: this.platform,
+      pathEntries: [...this.pathEntries],
+      env: { ...this.env },
+      toolPaths: { ...this.toolPaths },
+    }
+  }
+}
+
+export interface ExecutionEnvironmentProbe {
+  getStatus(request: EnvironmentProbeRequest): Promise<EnvironmentProbeStatus>
+}
+
+export interface ExecutionEnvironmentServiceOptions {
+  probe: ExecutionEnvironmentProbe
+  env?:
+    | Record<string, string | undefined>
+    | (() => Record<string, string | undefined>)
+  now?: () => Date
+}
+
+export class ExecutionEnvironmentService {
+  private readonly probe: ExecutionEnvironmentProbe
+  private readonly envProvider: () => Record<string, string | undefined>
+  private readonly now: () => Date
+
+  constructor(opts: ExecutionEnvironmentServiceOptions) {
+    this.probe = opts.probe
+    const configuredEnv = opts.env
+    this.envProvider =
+      typeof configuredEnv === 'function'
+        ? () => ({ ...configuredEnv() })
+        : () => ({ ...(configuredEnv ?? process.env) })
+    this.now = opts.now ?? (() => new Date())
+  }
+
+  async create(
+    request: EnvironmentProbeRequest,
+  ): Promise<ExecutionEnvironment> {
+    const rawEnv = this.envProvider()
+    const status = await this.probe.getStatus({
+      ...request,
+      envOverride: rawEnv,
+    })
+    const privateEnv = normalizeCapturedEnvironment(rawEnv, status.platform)
+    const path = status.pathEntries.join(
+      status.platform === 'win32' ? ';' : ':',
+    )
+    const env = minimalEnvironment(privateEnv, status.platform, path)
+    const toolPaths = Object.fromEntries(
+      status.tools
+        .filter(
+          (tool) => tool.status === 'ready' && Boolean(tool.executablePath),
+        )
+        .map((tool) => [tool.id, tool.executablePath!]),
+    ) as Partial<Record<EnvironmentToolId, string>>
+    const revision = stableEnvironmentHash({
+      catalogRevision: status.catalogRevision,
+      projectFingerprint: status.projectFingerprint,
+      platform: status.platform,
+      pathEntries: status.pathEntries,
+      env,
+      toolPaths,
+      privateEnvHash: stableEnvironmentHash(privateEnv),
+    })
+    return new ExecutionEnvironment(
+      {
+        revision,
+        catalogRevision: status.catalogRevision,
+        projectFingerprint: status.projectFingerprint,
+        createdAt: this.now().toISOString(),
+        platform: status.platform,
+        pathEntries: [...status.pathEntries],
+        env,
+        toolPaths,
+      },
+      privateEnv,
+    )
+  }
+
+  async refresh(
+    request: Omit<EnvironmentProbeRequest, 'forceRefresh'>,
+  ): Promise<ExecutionEnvironment> {
+    return await this.create({ ...request, forceRefresh: true })
+  }
+}
+
+function normalizeCapturedEnvironment(
+  env: Readonly<Record<string, string | undefined>>,
+  platform: EnvironmentPlatform,
+): Readonly<Record<string, string>> {
+  const selected: Array<[string, string]> = []
+  const seen = new Set<string>()
+  for (const [name, rawValue] of Object.entries(env).sort(([left], [right]) =>
+    left.localeCompare(right),
+  )) {
+    if (selected.length >= MAX_ENV_ENTRIES || !isSafeEnvName(name)) continue
+    if (rawValue === undefined) continue
+    const value = String(rawValue)
+    if (Buffer.byteLength(value, 'utf8') > MAX_ENV_VALUE_BYTES) continue
+    const key = platform === 'win32' ? name.toLowerCase() : name
+    if (seen.has(key)) continue
+    seen.add(key)
+    selected.push([name, value])
+  }
+  return Object.freeze(Object.fromEntries(selected))
+}
+
+function minimalEnvironment(
+  source: Readonly<Record<string, string>>,
+  platform: EnvironmentPlatform,
+  path: string,
+): Record<string, string> {
+  const output: Record<string, string> = { PATH: path }
+  const names = platform === 'win32' ? WINDOWS_ENV_KEYS : POSIX_ENV_KEYS
+  for (const name of names) {
+    const value = environmentValue(source, name, platform)
+    if (value !== undefined) output[name] = value
+  }
+  return output
+}
+
+function environmentValue(
+  env: Readonly<Record<string, string>>,
+  name: string,
+  platform: EnvironmentPlatform,
+): string | undefined {
+  if (platform !== 'win32') return env[name]
+  const target = name.toLowerCase()
+  return Object.entries(env).find(([key]) => key.toLowerCase() === target)?.[1]
+}
+
+function isSafeEnvName(name: string): boolean {
+  return (
+    ENV_NAME_PATTERN.test(name) && !RESERVED_ENV_NAMES.has(name.toLowerCase())
+  )
+}

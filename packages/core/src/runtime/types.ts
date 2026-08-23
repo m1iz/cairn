@@ -1,0 +1,691 @@
+import type { GoalGateReasonCode, GoalSummary } from '../goals/models'
+
+export type RuntimeEventPayload = Record<string, unknown>
+
+export interface RuntimeGoalSummary extends GoalSummary {
+  readonly lastEventSeq: number
+}
+
+export interface GoalRuntimePlanCounts {
+  readonly completed: number
+  readonly failed: number
+  readonly blocked: number
+  readonly total: number
+}
+
+export interface GoalRuntimeEventBase {
+  goal_id: string
+  session_id: string
+  last_event_seq: number
+  updated_at: string
+}
+
+export interface RuntimeEventEnvelope {
+  seq?: number
+  ts?: number
+  session_id?: string
+  turn_id?: string
+  request_id?: string
+  attempt_id?: string
+  client_message_id?: string
+  source?: string
+  owner?: RuntimeEventPayload
+  workspace_root?: string
+  state_root?: string
+  session_root?: string
+  project_id?: string | null
+  project_state_root?: string | null
+}
+
+export interface HookRuntimeEventFields {
+  hook_id?: string
+  hook_run_id?: string
+  event_name?: string
+  group_id?: string
+  handler_id?: string
+  handler_type?: string
+  snapshot_revision?: string
+  hook_source?: RuntimeEventPayload | null
+  status?: string
+  decision?: string
+  reason?: string
+  duration_ms?: number
+}
+
+export interface EnvironmentRuntimeEventFields {
+  job_id?: string
+  tool_id?: string | null
+  step_id?: string | null
+  status?: string
+  completed_steps?: number
+  total_steps?: number
+  error_code?: string | null
+  catalog_revision?: string
+  project_fingerprint?: string
+}
+
+export type RuntimeEvent = RuntimeEventEnvelope &
+  (
+    | {
+        event: 'ready'
+        model?: string
+        provider?: string
+        latest_seq?: number
+        replay_count?: number
+        resume_from?: number
+        busy?: boolean
+        control?: RuntimeEventPayload
+      }
+    | {
+        event: 'user_message'
+        content?: string
+        attachments?: RuntimeEventPayload[]
+        source?: string
+        scheduler?: RuntimeEventPayload
+        ui_hidden?: boolean
+      }
+    | {
+        event:
+          | 'prompt_queued'
+          | 'prompt_dequeued'
+          | 'prompt_interjected'
+          | 'prompt_cancelled'
+        prompt_id: string
+        client_message_id?: string
+        delivery?: 'queue' | 'interject'
+        target_turn_id?: string | null
+        reason?: string
+        content?: string
+      }
+    | {
+        event: 'message_tombstoned'
+        reason?: string
+        content_chars?: number
+      }
+    | { event: 'message_delta'; delta?: string }
+    | {
+        event: 'agent_thought'
+        stage?: string
+        label?: string
+        summary?: string
+        source?: string
+        status?: 'done' | 'running' | string
+        tool_call_ids?: string[]
+        tool_names?: string[]
+      }
+    | {
+        event: 'context_usage'
+        used?: number
+        max?: number
+        threshold?: number
+        usage_type?: string
+        model_entry_id?: string
+        /** Historical replay compatibility only. */
+        model_role?: string
+        model?: string
+        provider?: string
+        route_reason?: string
+        estimated_input_tokens?: number
+        /** Historical replay compatibility only. */
+        used_fallback?: boolean
+        /** Historical replay compatibility only. */
+        fallback_reason?: string
+        cost_usd_nanos?: number
+        turn_cost_usd_nanos?: number
+        cost_cap_usd_nanos?: number
+        cost_complete?: boolean
+        provider_retry_count?: number
+        provider_error_kind?: string
+        replaced_tool_results?: number
+        aggregate_replaced_tool_results?: number
+        aggregate_tool_result_budget?: number
+      }
+    | {
+        event: 'context_projection'
+        report?: RuntimeEventPayload
+        message_count?: number
+      }
+    | {
+        event: 'mcp_connection_state'
+        server_name: string
+        transport?: string
+        generation: number
+        client_id?: string | null
+        state: string
+        health?: string
+        auth?: string
+        tool_count?: number
+        tools?: string[]
+        restart_attempts?: number
+        next_retry_at?: number | null
+        active_request_count?: number
+        active_request_ids?: string[]
+        last_error?: RuntimeEventPayload | null
+      }
+    | {
+        event: 'model_provider_retry'
+        model?: string
+        provider?: string | null
+        usage_type?: string
+        attempt?: number
+        max_retries?: number
+        error_kind?: string
+        retry_delay_ms?: number
+        reason?: string
+      }
+    | {
+        event: 'model_attempt_started'
+        request_id: string
+        attempt_id: string
+        attempt: number
+        max_attempts: number
+        idempotency_key?: string
+      }
+    | {
+        event: 'model_attempt_succeeded'
+        request_id: string
+        attempt_id: string
+        attempt: number
+        max_attempts: number
+        idempotency_key?: string
+        duration_ms: number
+      }
+    | {
+        event: 'model_attempt_failed'
+        request_id: string
+        attempt_id: string
+        attempt: number
+        max_attempts: number
+        idempotency_key?: string
+        duration_ms: number
+        error_kind?: string
+        will_retry?: boolean
+        retry_delay_ms?: number
+      }
+    | {
+        event: 'model_attempt_cancelled'
+        request_id: string
+        attempt_id: string
+        attempt: number
+        max_attempts: number
+        idempotency_key?: string
+        duration_ms: number
+        reason?: string
+      }
+    | {
+        event: 'model_route_fallback'
+        from_model?: string
+        from_model_entry_id?: string
+        to_model?: string
+        to_model_entry_id?: string
+        reason?: string
+        error_kind?: string
+        usage_type?: string
+      }
+    | {
+        event: 'session_created'
+        session?: RuntimeEventPayload
+        client_draft_id?: string
+      }
+    | { event: 'session_title_updated'; session?: RuntimeEventPayload }
+    | {
+        event: 'tool_call'
+        id?: string
+        name: string
+        arguments?: RuntimeEventPayload
+        tool_batch_id?: string
+      }
+    | {
+        event: 'tool_result'
+        id?: string
+        name?: string
+        summary?: string
+        output?: string
+        output_truncated?: boolean
+        artifacts?: RuntimeEventPayload[]
+        metadata?: RuntimeEventPayload
+        todos?: RuntimeEventPayload[]
+        is_error?: boolean
+        tool_batch_id?: string
+      }
+    | { event: 'tool_error'; id?: string; name?: string; message?: string }
+    | {
+        event: 'tool_run_queued'
+        id?: string
+        name: string
+        arguments?: RuntimeEventPayload
+        tool_batch_id?: string
+      }
+    | {
+        event: 'tool_run_started'
+        id?: string
+        name: string
+        tool_batch_id?: string
+      }
+    | {
+        event: 'tool_run_completed'
+        id?: string
+        name: string
+        summary?: string
+        output?: string
+        output_truncated?: boolean
+        artifacts?: RuntimeEventPayload[]
+        metadata?: RuntimeEventPayload
+        tool_batch_id?: string
+      }
+    | {
+        event: 'tool_run_failed'
+        id?: string
+        name: string
+        message?: string
+        reason_kind?: 'safety_refusal' | 'error' | string
+        metadata?: RuntimeEventPayload
+        tool_batch_id?: string
+      }
+    | {
+        event: 'tool_run_cancelled'
+        id?: string
+        name: string
+        reason?: string
+        tool_batch_id?: string
+      }
+    | {
+        event: 'process_containment'
+        id?: string
+        backend?: string
+        decision?: 'sandboxed' | 'unsandboxed' | 'denied' | string
+        capability_status?: string
+        filesystem?: string
+        network?: string
+        process_tree?: boolean
+        policy_hash?: string
+        reason?: string
+      }
+    | (HookRuntimeEventFields & { event: 'hook_run_started' })
+    | (HookRuntimeEventFields & {
+        event: 'hook_run_progress'
+        message?: string | null
+      })
+    | (HookRuntimeEventFields & { event: 'hook_run_completed' })
+    | (HookRuntimeEventFields & { event: 'hook_run_failed' })
+    | (HookRuntimeEventFields & {
+        event: 'hook_decision_applied'
+        hook_ids?: string[]
+        hook_run_ids?: string[]
+      })
+    | (EnvironmentRuntimeEventFields & {
+        event: 'environment_install_started'
+      })
+    | (EnvironmentRuntimeEventFields & {
+        event: 'environment_install_progress'
+      })
+    | (EnvironmentRuntimeEventFields & {
+        event: 'environment_install_completed'
+      })
+    | (EnvironmentRuntimeEventFields & {
+        event: 'environment_install_failed'
+      })
+    | (EnvironmentRuntimeEventFields & { event: 'environment_changed' })
+    | {
+        event: 'turn_phase'
+        phase?: string
+        sequence?: number
+        iteration?: number
+        detail?: RuntimeEventPayload
+      }
+    | {
+        event: 'turn_scope'
+        mode?: string
+        workspace_root?: string
+        state_root?: string
+        session_root?: string
+        project_id?: string | null
+        project_state_root?: string | null
+        active_memory_binding?: RuntimeEventPayload
+      }
+    | {
+        event: 'turn_change_snapshot'
+        version: 1 | 2
+        turnId: string
+        executionId?: string
+        rootTurnId?: string
+        activeTurnId?: string
+        status: 'tracking' | 'complete' | 'partial'
+        filesChanged: number
+        additions: number
+        deletions: number
+        binaryFiles: number
+        truncated: boolean
+        files: Array<{
+          path: string
+          kind: 'created' | 'modified' | 'deleted' | 'renamed'
+          additions: number | null
+          deletions: number | null
+          binary: boolean
+        }>
+      }
+    | {
+        event: 'plan_execution_settled'
+        settlement_id?: string
+        action:
+          | 'continue_verification'
+          | 'manual_verification_passed'
+          | 'waive_verification_and_complete'
+          | 'cancel_plan'
+          | 'pause'
+        disposition: 'resume' | 'pause' | 'complete' | 'cancel'
+        interaction?: RuntimeEventPayload
+        plan?: RuntimeEventPayload
+        message?: string
+      }
+    | {
+        event: 'git_operation_completed'
+        action:
+          | 'commit'
+          | 'push'
+          | 'pull'
+          | 'switch_branch'
+          | 'create_worktree'
+          | 'remove_worktree'
+          | 'publish_pr'
+          | 'merge_pr'
+          | 'close_pr'
+        branch?: string
+        commitOid?: string
+        remoteHost?: string
+        pullRequest?: {
+          number: number
+          url: string
+          state: string
+        }
+        completedAt: number
+      }
+    | { event: 'assistant_done'; content?: string }
+    | {
+        event: 'error'
+        message?: string
+        code?: string
+        action?: string
+        partial?: boolean
+      }
+    | { event: 'control_mode_update'; control?: RuntimeEventPayload }
+    | {
+        event: 'profile_onboarding_status_changed'
+        profile_onboarding?: RuntimeEventPayload
+        reason?: string
+      }
+    | { event: 'ask_request'; interaction?: RuntimeEventPayload }
+    | {
+        event: 'ask_answered'
+        interaction?: RuntimeEventPayload
+        resume_model?: boolean
+      }
+    | { event: 'plan_draft'; interaction?: RuntimeEventPayload }
+    | {
+        event: 'plan_draft_delta'
+        tool_call_id?: string
+        interaction?: RuntimeEventPayload
+      }
+    | {
+        event: 'plan_comment_added'
+        interaction?: RuntimeEventPayload
+        comment?: string
+      }
+    | {
+        event: 'plan_approved'
+        interaction?: RuntimeEventPayload
+        control?: RuntimeEventPayload
+        plan?: RuntimeEventPayload
+        todos?: RuntimeEventPayload[]
+      }
+    | {
+        event: 'plan_entry_decision'
+        decision?: string
+        reason?: string
+        triggers?: string[]
+        suggested_questions?: string[]
+        recommended_readonly_scopes?: string[]
+      }
+    | { event: 'plan_runtime_update'; plan?: RuntimeEventPayload }
+    | {
+        event: 'plan_step_update'
+        plan_id?: string
+        step?: RuntimeEventPayload
+      }
+    | {
+        event: 'plan_verification_start'
+        plan_id?: string
+        step_id?: string
+        command?: string
+      }
+    | {
+        event: 'plan_verification_done'
+        plan_id?: string
+        step_id?: string
+        result?: RuntimeEventPayload
+      }
+    | (GoalRuntimeEventBase & {
+        event: 'goal_created'
+        goal: RuntimeGoalSummary
+      })
+    | (GoalRuntimeEventBase & {
+        event: 'goal_runtime_update'
+        goal: RuntimeGoalSummary
+        plan?: GoalRuntimePlanCounts
+      })
+    | (GoalRuntimeEventBase & {
+        event: 'goal_evidence_recorded'
+        goal?: RuntimeGoalSummary
+        criterion_id: string
+        verdict: 'pass' | 'fail'
+        source_count: number
+        summary: string
+      })
+    | (GoalRuntimeEventBase & {
+        event: 'goal_gate_evaluated'
+        passed: boolean
+        reason_codes: GoalGateReasonCode[]
+        reason_count: number
+      })
+    | (GoalRuntimeEventBase & {
+        event: 'goal_completed'
+        goal: RuntimeGoalSummary
+        summary?: string
+      })
+    | (GoalRuntimeEventBase & {
+        event: 'goal_blocked'
+        goal: RuntimeGoalSummary
+        reason?: string
+      })
+    | (GoalRuntimeEventBase & {
+        event: 'goal_paused'
+        goal: RuntimeGoalSummary
+        reason?: string
+      })
+    | (GoalRuntimeEventBase & {
+        event: 'goal_resumed'
+        goal: RuntimeGoalSummary
+      })
+    | (GoalRuntimeEventBase & {
+        event: 'goal_cancelled'
+        goal: RuntimeGoalSummary
+        reason?: string
+      })
+    | (GoalRuntimeEventBase & {
+        event: 'goal_policy_stopped'
+        goal: RuntimeGoalSummary
+        reason?: string
+      })
+    | { event: 'task_started'; task?: RuntimeEventPayload }
+    | {
+        event: 'task_progress'
+        task?: RuntimeEventPayload
+        progress?: RuntimeEventPayload
+      }
+    | {
+        event: 'task_output'
+        task?: RuntimeEventPayload
+        offset?: number
+        chunk?: string
+      }
+    | { event: 'task_done'; task?: RuntimeEventPayload }
+    | { event: 'task_error'; task?: RuntimeEventPayload; error?: string }
+    | { event: 'task_cancelled'; task?: RuntimeEventPayload; reason?: string }
+    | {
+        event: 'interaction_cancelled'
+        interaction?: RuntimeEventPayload
+        control?: RuntimeEventPayload
+      }
+    | { event: 'turn_paused'; interaction?: RuntimeEventPayload }
+    | {
+        event: 'subagent_start'
+        parent_id?: string
+        subagent_id?: string
+        agent_type?: string
+        purpose?: string
+      }
+    | {
+        event: 'subagent_delta'
+        parent_id?: string
+        subagent_id?: string
+        agent_type?: string
+        delta?: string
+      }
+    | {
+        event: 'subagent_tool_call'
+        parent_id?: string
+        subagent_id?: string
+        id?: string
+        name: string
+        arguments?: RuntimeEventPayload
+      }
+    | {
+        event: 'subagent_tool_result'
+        parent_id?: string
+        subagent_id?: string
+        id?: string
+        name?: string
+        summary?: string
+      }
+    | {
+        event: 'subagent_tool_error'
+        parent_id?: string
+        subagent_id?: string
+        id?: string
+        name?: string
+        message?: string
+      }
+    | {
+        event: 'subagent_done'
+        parent_id?: string
+        subagent_id?: string
+        agent_type?: string
+        summary?: string
+      }
+    | {
+        event: 'subagent_error'
+        parent_id?: string
+        subagent_id?: string
+        agent_type?: string
+        message?: string
+      }
+    | { event: 'team_member_update'; member?: RuntimeEventPayload }
+    | { event: 'team_message'; message?: RuntimeEventPayload }
+    | {
+        event: 'team_run_start'
+        parent_id?: string
+        teammate?: string
+        role?: string
+        agent_type?: string
+        purpose?: string
+      }
+    | {
+        event: 'team_run_delta'
+        parent_id?: string
+        teammate?: string
+        delta?: string
+      }
+    | {
+        event: 'team_run_tool_call'
+        parent_id?: string
+        teammate?: string
+        id?: string
+        name: string
+        arguments?: RuntimeEventPayload
+      }
+    | {
+        event: 'team_run_tool_result'
+        parent_id?: string
+        teammate?: string
+        id?: string
+        name?: string
+        summary?: string
+      }
+    | {
+        event: 'team_run_tool_error'
+        parent_id?: string
+        teammate?: string
+        id?: string
+        name?: string
+        message?: string
+      }
+    | {
+        event: 'team_run_done'
+        parent_id?: string
+        teammate?: string
+        summary?: string
+      }
+    | {
+        event: 'team_run_error'
+        parent_id?: string
+        teammate?: string
+        message?: string
+      }
+    | {
+        event: 'scheduler_job_update'
+        job?: RuntimeEventPayload
+        action?: string
+      }
+    | {
+        event: 'scheduler_run_start' | 'scheduler_run_done'
+        job?: RuntimeEventPayload
+        run?: RuntimeEventPayload
+        run_id?: string
+        task_id?: string
+      }
+    | {
+        event: 'scheduler_run_error'
+        job?: RuntimeEventPayload
+        error?: string
+        run?: RuntimeEventPayload
+        run_id?: string
+        task_id?: string
+      }
+    | {
+        event: 'scheduler_run_cancelled'
+        job?: RuntimeEventPayload
+        reason?: string
+        run?: RuntimeEventPayload
+        run_id?: string
+        task_id?: string
+      }
+    | {
+        event: 'scheduler_run_skipped' | 'scheduler_run_interrupted'
+        job?: RuntimeEventPayload
+        reason?: string
+        run?: RuntimeEventPayload
+        run_id?: string
+        task_id?: string
+      }
+    | {
+        event: 'runtime_task_cancelled'
+        task?: RuntimeEventPayload
+        reason?: string
+      }
+    | {
+        event: 'record_degraded'
+        kind?: string
+        reason?: string
+        taskId?: string
+      }
+  )

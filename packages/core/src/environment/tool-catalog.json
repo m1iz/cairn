@@ -1,0 +1,688 @@
+{
+  "schemaVersion": 1,
+  "catalogId": "cairn-environment-tools",
+  "release": "2026.07-foundation",
+  "licenses": [
+    {
+      "id": "bsd-2-clause",
+      "name": "BSD 2-Clause License",
+      "spdx": "BSD-2-Clause",
+      "url": "https://opensource.org/license/bsd-2-clause"
+    },
+    {
+      "id": "bsd-3-clause",
+      "name": "BSD 3-Clause License",
+      "spdx": "BSD-3-Clause",
+      "url": "https://opensource.org/license/bsd-3-clause"
+    },
+    {
+      "id": "git-gpl-2",
+      "name": "GNU General Public License v2.0",
+      "spdx": "GPL-2.0-only",
+      "url": "https://git-scm.com/about/free-and-open-source"
+    },
+    {
+      "id": "mit",
+      "name": "MIT License",
+      "spdx": "MIT",
+      "url": "https://opensource.org/license/mit"
+    },
+    {
+      "id": "msvc-license",
+      "name": "Microsoft Visual Studio Build Tools License",
+      "spdx": "LicenseRef-Microsoft-Visual-Studio",
+      "url": "https://visualstudio.microsoft.com/license-terms"
+    },
+    {
+      "id": "npm-artistic-2",
+      "name": "Artistic License 2.0",
+      "spdx": "Artistic-2.0",
+      "url": "https://www.npmjs.com/policies/npm-license"
+    },
+    {
+      "id": "psf-2",
+      "name": "Python Software Foundation License 2.0",
+      "spdx": "PSF-2.0",
+      "url": "https://docs.python.org/3/license.html"
+    },
+    {
+      "id": "rust-dual",
+      "name": "Apache-2.0 or MIT",
+      "spdx": "Apache-2.0 OR MIT",
+      "url": "https://www.rust-lang.org/policies/licenses"
+    },
+    {
+      "id": "unlicense-or-mit",
+      "name": "The Unlicense or MIT",
+      "spdx": "Unlicense OR MIT",
+      "url": "https://github.com/BurntSushi/ripgrep"
+    }
+  ],
+  "tools": [
+    {
+      "id": "cargo",
+      "displayName": "Cargo",
+      "category": "project",
+      "version": { "pinned": "1.97.0", "requirement": ">=1.97.0" },
+      "licenseId": "rust-dual",
+      "dependencies": ["rustup", "rust"],
+      "targets": [
+        { "platform": "darwin", "arch": "arm64" },
+        { "platform": "darwin", "arch": "x64" },
+        { "platform": "win32", "arch": "x64" },
+        { "platform": "linux", "arch": "x64" }
+      ],
+      "probe": {
+        "executables": ["cargo"],
+        "args": ["--version"],
+        "versionPattern": "^cargo\\s+([0-9]+(?:\\.[0-9]+)+)"
+      },
+      "strategies": [
+        {
+          "id": "rustup-component",
+          "kind": "bundled",
+          "targets": [
+            { "platform": "darwin", "arch": "arm64" },
+            { "platform": "darwin", "arch": "x64" },
+            { "platform": "win32", "arch": "x64" },
+            { "platform": "linux", "arch": "x64" }
+          ],
+          "executable": "rustup",
+          "args": ["component", "add", "cargo", "--toolchain", "1.97.0"],
+          "source": {
+            "url": "https://rustup.rs",
+            "publisher": "The Rust Project Developers"
+          },
+          "estimatedBytes": 0,
+          "requiresElevation": false,
+          "requiresSeparateConfirmation": false
+        }
+      ]
+    },
+    {
+      "id": "git",
+      "displayName": "Git",
+      "category": "base",
+      "version": { "pinned": "2.55.0", "requirement": ">=2.40.0" },
+      "licenseId": "git-gpl-2",
+      "dependencies": [],
+      "targets": [
+        { "platform": "darwin", "arch": "arm64" },
+        { "platform": "darwin", "arch": "x64" },
+        { "platform": "win32", "arch": "x64" },
+        { "platform": "linux", "arch": "x64" }
+      ],
+      "probe": {
+        "executables": ["git", "/usr/bin/git"],
+        "args": ["--version"],
+        "versionPattern": "^git version\\s+([0-9]+(?:\\.[0-9]+)+)"
+      },
+      "strategies": [
+        {
+          "id": "homebrew",
+          "kind": "package_manager",
+          "targets": [
+            { "platform": "darwin", "arch": "arm64" },
+            { "platform": "darwin", "arch": "x64" }
+          ],
+          "executable": "brew",
+          "args": ["install", "git"],
+          "source": {
+            "url": "https://formulae.brew.sh/formula/git",
+            "publisher": "Homebrew"
+          },
+          "estimatedBytes": 50000000,
+          "requiresElevation": false,
+          "requiresSeparateConfirmation": false
+        },
+        {
+          "id": "winget",
+          "kind": "package_manager",
+          "targets": [{ "platform": "win32", "arch": "x64" }],
+          "executable": "winget.exe",
+          "args": [
+            "install",
+            "--exact",
+            "--id",
+            "Git.Git",
+            "--source",
+            "winget",
+            "--accept-package-agreements",
+            "--accept-source-agreements",
+            "--disable-interactivity"
+          ],
+          "source": {
+            "url": "https://github.com/git-for-windows/git",
+            "publisher": "The Git Development Community"
+          },
+          "estimatedBytes": 70000000,
+          "requiresElevation": false,
+          "requiresSeparateConfirmation": false
+        },
+        {
+          "id": "apt",
+          "kind": "package_manager",
+          "targets": [{ "platform": "linux", "arch": "x64" }],
+          "executable": "pkexec",
+          "args": ["apt-get", "install", "-y", "git"],
+          "source": {
+            "url": "https://packages.ubuntu.com/git",
+            "publisher": "Canonical Ltd."
+          },
+          "estimatedBytes": 50000000,
+          "requiresElevation": true,
+          "requiresSeparateConfirmation": false
+        }
+      ]
+    },
+    {
+      "id": "go",
+      "displayName": "Go",
+      "category": "project",
+      "version": { "pinned": "1.26.5", "requirement": ">=1.26.0" },
+      "licenseId": "bsd-3-clause",
+      "dependencies": [],
+      "targets": [
+        { "platform": "darwin", "arch": "arm64" },
+        { "platform": "darwin", "arch": "x64" },
+        { "platform": "win32", "arch": "x64" },
+        { "platform": "linux", "arch": "x64" }
+      ],
+      "probe": {
+        "executables": ["go"],
+        "args": ["version"],
+        "versionPattern": "^go version go([0-9]+(?:\\.[0-9]+)+)"
+      },
+      "strategies": [
+        {
+          "id": "official-archive",
+          "kind": "direct_archive",
+          "targets": [{ "platform": "linux", "arch": "x64" }],
+          "executable": "go",
+          "args": ["version"],
+          "source": {
+            "url": "https://go.dev/dl/go1.26.5.linux-amd64.tar.gz",
+            "publisher": "The Go Authors",
+            "sha256": "5c2c3b16caefa1d968a94c1daca04a7ca301a496d9b086e17ad77bb81393f053"
+          },
+          "estimatedBytes": 66879095,
+          "requiresElevation": false,
+          "requiresSeparateConfirmation": false
+        },
+        {
+          "id": "official-guided",
+          "kind": "system_prompt",
+          "targets": [
+            { "platform": "darwin", "arch": "arm64" },
+            { "platform": "darwin", "arch": "x64" },
+            { "platform": "win32", "arch": "x64" },
+            { "platform": "linux", "arch": "x64" }
+          ],
+          "executable": "go",
+          "args": ["version"],
+          "source": {
+            "url": "https://go.dev/dl",
+            "publisher": "The Go Authors"
+          },
+          "estimatedBytes": 180000000,
+          "requiresElevation": false,
+          "requiresSeparateConfirmation": false
+        }
+      ]
+    },
+    {
+      "id": "msvc-build-tools",
+      "displayName": "Microsoft C++ Build Tools",
+      "category": "large-prerequisite",
+      "version": { "pinned": "17.14.37411.7", "requirement": ">=17.14.0" },
+      "licenseId": "msvc-license",
+      "dependencies": [],
+      "targets": [{ "platform": "win32", "arch": "x64" }],
+      "probe": {
+        "executables": ["vswhere.exe"],
+        "args": [
+          "-latest",
+          "-products",
+          "*",
+          "-property",
+          "installationVersion"
+        ],
+        "versionPattern": "^([0-9]+(?:\\.[0-9]+)+)"
+      },
+      "strategies": [
+        {
+          "id": "winget",
+          "kind": "package_manager",
+          "targets": [{ "platform": "win32", "arch": "x64" }],
+          "executable": "winget.exe",
+          "args": [
+            "install",
+            "--exact",
+            "--id",
+            "Microsoft.VisualStudio.2022.BuildTools",
+            "--source",
+            "winget",
+            "--accept-package-agreements",
+            "--accept-source-agreements",
+            "--disable-interactivity"
+          ],
+          "source": {
+            "url": "https://visualstudio.microsoft.com/downloads",
+            "publisher": "Microsoft Corporation"
+          },
+          "estimatedBytes": 7000000000,
+          "requiresElevation": true,
+          "requiresSeparateConfirmation": true
+        }
+      ]
+    },
+    {
+      "id": "node",
+      "displayName": "Node.js",
+      "category": "base",
+      "version": { "pinned": "24.18.0", "requirement": ">=24.15.0 <25.0.0" },
+      "licenseId": "mit",
+      "dependencies": ["volta"],
+      "targets": [
+        { "platform": "darwin", "arch": "arm64" },
+        { "platform": "darwin", "arch": "x64" },
+        { "platform": "win32", "arch": "x64" },
+        { "platform": "linux", "arch": "x64" }
+      ],
+      "probe": {
+        "executables": ["node"],
+        "args": ["--version"],
+        "versionPattern": "^v([0-9]+(?:\\.[0-9]+)+)"
+      },
+      "strategies": [
+        {
+          "id": "volta",
+          "kind": "version_manager",
+          "targets": [
+            { "platform": "darwin", "arch": "arm64" },
+            { "platform": "darwin", "arch": "x64" },
+            { "platform": "win32", "arch": "x64" },
+            { "platform": "linux", "arch": "x64" }
+          ],
+          "executable": "volta",
+          "args": ["install", "node@24.18.0"],
+          "source": {
+            "url": "https://volta.sh",
+            "publisher": "Volta Contributors"
+          },
+          "estimatedBytes": 80000000,
+          "requiresElevation": false,
+          "requiresSeparateConfirmation": false
+        }
+      ]
+    },
+    {
+      "id": "npm",
+      "displayName": "npm",
+      "category": "base",
+      "version": { "pinned": "12.0.1", "requirement": ">=12.0.0" },
+      "licenseId": "npm-artistic-2",
+      "dependencies": ["node"],
+      "targets": [
+        { "platform": "darwin", "arch": "arm64" },
+        { "platform": "darwin", "arch": "x64" },
+        { "platform": "win32", "arch": "x64" },
+        { "platform": "linux", "arch": "x64" }
+      ],
+      "probe": {
+        "executables": ["npm", "npm.cmd"],
+        "args": ["--version"],
+        "versionPattern": "^([0-9]+(?:\\.[0-9]+)+)"
+      },
+      "strategies": [
+        {
+          "id": "node-bundled",
+          "kind": "bundled",
+          "targets": [
+            { "platform": "darwin", "arch": "arm64" },
+            { "platform": "darwin", "arch": "x64" },
+            { "platform": "win32", "arch": "x64" },
+            { "platform": "linux", "arch": "x64" }
+          ],
+          "executable": "npm",
+          "args": ["--version"],
+          "source": {
+            "url": "https://www.npmjs.com",
+            "publisher": "npm, Inc."
+          },
+          "estimatedBytes": 0,
+          "requiresElevation": false,
+          "requiresSeparateConfirmation": false
+        }
+      ]
+    },
+    {
+      "id": "python",
+      "displayName": "Python",
+      "category": "project",
+      "version": { "pinned": "3.12.13", "requirement": ">=3.12.0 <3.13.0" },
+      "licenseId": "psf-2",
+      "dependencies": ["uv"],
+      "targets": [
+        { "platform": "darwin", "arch": "arm64" },
+        { "platform": "darwin", "arch": "x64" },
+        { "platform": "win32", "arch": "x64" },
+        { "platform": "linux", "arch": "x64" }
+      ],
+      "probe": {
+        "executables": ["python3", "python.exe"],
+        "args": ["--version"],
+        "versionPattern": "^Python\\s+([0-9]+(?:\\.[0-9]+)+)"
+      },
+      "strategies": [
+        {
+          "id": "uv",
+          "kind": "version_manager",
+          "targets": [
+            { "platform": "darwin", "arch": "arm64" },
+            { "platform": "darwin", "arch": "x64" },
+            { "platform": "win32", "arch": "x64" },
+            { "platform": "linux", "arch": "x64" }
+          ],
+          "executable": "uv",
+          "args": ["python", "install", "3.12.13"],
+          "source": {
+            "url": "https://docs.astral.sh/uv",
+            "publisher": "Astral Software Inc."
+          },
+          "estimatedBytes": 80000000,
+          "requiresElevation": false,
+          "requiresSeparateConfirmation": false
+        }
+      ]
+    },
+    {
+      "id": "ripgrep",
+      "displayName": "ripgrep",
+      "category": "base",
+      "version": { "pinned": "15.1.0", "requirement": ">=15.0.0" },
+      "licenseId": "unlicense-or-mit",
+      "dependencies": [],
+      "targets": [
+        { "platform": "darwin", "arch": "arm64" },
+        { "platform": "darwin", "arch": "x64" },
+        { "platform": "win32", "arch": "x64" },
+        { "platform": "linux", "arch": "x64" }
+      ],
+      "probe": {
+        "executables": ["rg", "rg.exe"],
+        "args": ["--version"],
+        "versionPattern": "^ripgrep\\s+([0-9]+(?:\\.[0-9]+)+)"
+      },
+      "strategies": [
+        {
+          "id": "homebrew",
+          "kind": "package_manager",
+          "targets": [
+            { "platform": "darwin", "arch": "arm64" },
+            { "platform": "darwin", "arch": "x64" }
+          ],
+          "executable": "brew",
+          "args": ["install", "ripgrep"],
+          "source": {
+            "url": "https://formulae.brew.sh/formula/ripgrep",
+            "publisher": "Homebrew"
+          },
+          "estimatedBytes": 10000000,
+          "requiresElevation": false,
+          "requiresSeparateConfirmation": false
+        },
+        {
+          "id": "winget",
+          "kind": "package_manager",
+          "targets": [{ "platform": "win32", "arch": "x64" }],
+          "executable": "winget.exe",
+          "args": [
+            "install",
+            "--exact",
+            "--id",
+            "BurntSushi.ripgrep.MSVC",
+            "--source",
+            "winget",
+            "--accept-package-agreements",
+            "--accept-source-agreements",
+            "--disable-interactivity"
+          ],
+          "source": {
+            "url": "https://github.com/BurntSushi/ripgrep",
+            "publisher": "Andrew Gallant"
+          },
+          "estimatedBytes": 10000000,
+          "requiresElevation": false,
+          "requiresSeparateConfirmation": false
+        },
+        {
+          "id": "apt",
+          "kind": "package_manager",
+          "targets": [{ "platform": "linux", "arch": "x64" }],
+          "executable": "pkexec",
+          "args": ["apt-get", "install", "-y", "ripgrep"],
+          "source": {
+            "url": "https://packages.ubuntu.com/ripgrep",
+            "publisher": "Canonical Ltd."
+          },
+          "estimatedBytes": 10000000,
+          "requiresElevation": true,
+          "requiresSeparateConfirmation": false
+        }
+      ]
+    },
+    {
+      "id": "rust",
+      "displayName": "Rust",
+      "category": "project",
+      "version": { "pinned": "1.97.0", "requirement": ">=1.97.0" },
+      "licenseId": "rust-dual",
+      "dependencies": ["rustup"],
+      "targets": [
+        { "platform": "darwin", "arch": "arm64" },
+        { "platform": "darwin", "arch": "x64" },
+        { "platform": "win32", "arch": "x64" },
+        { "platform": "linux", "arch": "x64" }
+      ],
+      "probe": {
+        "executables": ["rustc", "rustc.exe"],
+        "args": ["--version"],
+        "versionPattern": "^rustc\\s+([0-9]+(?:\\.[0-9]+)+)"
+      },
+      "strategies": [
+        {
+          "id": "rustup",
+          "kind": "version_manager",
+          "targets": [
+            { "platform": "darwin", "arch": "arm64" },
+            { "platform": "darwin", "arch": "x64" },
+            { "platform": "win32", "arch": "x64" },
+            { "platform": "linux", "arch": "x64" }
+          ],
+          "executable": "rustup",
+          "args": ["toolchain", "install", "1.97.0", "--profile", "minimal"],
+          "source": {
+            "url": "https://rustup.rs",
+            "publisher": "The Rust Project Developers"
+          },
+          "estimatedBytes": 600000000,
+          "requiresElevation": false,
+          "requiresSeparateConfirmation": false
+        }
+      ]
+    },
+    {
+      "id": "rustup",
+      "displayName": "rustup",
+      "category": "project",
+      "version": { "pinned": "1.29.0", "requirement": ">=1.29.0" },
+      "licenseId": "rust-dual",
+      "dependencies": [],
+      "targets": [
+        { "platform": "darwin", "arch": "arm64" },
+        { "platform": "darwin", "arch": "x64" },
+        { "platform": "win32", "arch": "x64" },
+        { "platform": "linux", "arch": "x64" }
+      ],
+      "probe": {
+        "executables": ["rustup", "rustup.exe"],
+        "args": ["--version"],
+        "versionPattern": "^rustup\\s+([0-9]+(?:\\.[0-9]+)+)"
+      },
+      "strategies": [
+        {
+          "id": "official-binary",
+          "kind": "direct_binary",
+          "targets": [{ "platform": "linux", "arch": "x64" }],
+          "executable": "rustup-init",
+          "args": [
+            "-y",
+            "--no-modify-path",
+            "--profile",
+            "minimal",
+            "--default-toolchain",
+            "1.97.0"
+          ],
+          "source": {
+            "url": "https://static.rust-lang.org/rustup/archive/1.29.0/x86_64-unknown-linux-gnu/rustup-init",
+            "publisher": "The Rust Project Developers",
+            "sha256": "4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10"
+          },
+          "estimatedBytes": 20838840,
+          "requiresElevation": false,
+          "requiresSeparateConfirmation": false
+        },
+        {
+          "id": "official-guided",
+          "kind": "system_prompt",
+          "targets": [
+            { "platform": "darwin", "arch": "arm64" },
+            { "platform": "darwin", "arch": "x64" },
+            { "platform": "win32", "arch": "x64" },
+            { "platform": "linux", "arch": "x64" }
+          ],
+          "executable": "rustup",
+          "args": ["--version"],
+          "source": {
+            "url": "https://rustup.rs",
+            "publisher": "The Rust Project Developers"
+          },
+          "estimatedBytes": 15000000,
+          "requiresElevation": false,
+          "requiresSeparateConfirmation": false
+        }
+      ]
+    },
+    {
+      "id": "uv",
+      "displayName": "uv",
+      "category": "project",
+      "version": { "pinned": "0.11.28", "requirement": ">=0.11.0" },
+      "licenseId": "rust-dual",
+      "dependencies": [],
+      "targets": [
+        { "platform": "darwin", "arch": "arm64" },
+        { "platform": "darwin", "arch": "x64" },
+        { "platform": "win32", "arch": "x64" },
+        { "platform": "linux", "arch": "x64" }
+      ],
+      "probe": {
+        "executables": ["uv", "uv.exe"],
+        "args": ["--version"],
+        "versionPattern": "^uv\\s+([0-9]+(?:\\.[0-9]+)+)"
+      },
+      "strategies": [
+        {
+          "id": "official-archive",
+          "kind": "direct_archive",
+          "targets": [{ "platform": "linux", "arch": "x64" }],
+          "executable": "uv",
+          "args": ["--version"],
+          "source": {
+            "url": "https://github.com/astral-sh/uv/releases/download/0.11.28/uv-x86_64-unknown-linux-gnu.tar.gz",
+            "publisher": "Astral Software Inc.",
+            "sha256": "e490a6464492183c5d4534a5527fb4440f7f2bb2f228162ad7e4afe076dc0224"
+          },
+          "estimatedBytes": 26411870,
+          "requiresElevation": false,
+          "requiresSeparateConfirmation": false
+        },
+        {
+          "id": "official-guided",
+          "kind": "system_prompt",
+          "targets": [
+            { "platform": "darwin", "arch": "arm64" },
+            { "platform": "darwin", "arch": "x64" },
+            { "platform": "win32", "arch": "x64" },
+            { "platform": "linux", "arch": "x64" }
+          ],
+          "executable": "uv",
+          "args": ["--version"],
+          "source": {
+            "url": "https://docs.astral.sh/uv",
+            "publisher": "Astral Software Inc."
+          },
+          "estimatedBytes": 20000000,
+          "requiresElevation": false,
+          "requiresSeparateConfirmation": false
+        }
+      ]
+    },
+    {
+      "id": "volta",
+      "displayName": "Volta",
+      "category": "base",
+      "version": { "pinned": "2.0.2", "requirement": ">=2.0.0" },
+      "licenseId": "bsd-2-clause",
+      "dependencies": [],
+      "targets": [
+        { "platform": "darwin", "arch": "arm64" },
+        { "platform": "darwin", "arch": "x64" },
+        { "platform": "win32", "arch": "x64" },
+        { "platform": "linux", "arch": "x64" }
+      ],
+      "probe": {
+        "executables": ["volta", "volta.exe"],
+        "args": ["--version"],
+        "versionPattern": "^([0-9]+(?:\\.[0-9]+)+)"
+      },
+      "strategies": [
+        {
+          "id": "official-archive",
+          "kind": "direct_archive",
+          "targets": [{ "platform": "linux", "arch": "x64" }],
+          "executable": "volta",
+          "args": ["--version"],
+          "source": {
+            "url": "https://github.com/volta-cli/volta/releases/download/v2.0.2/volta-2.0.2-linux.tar.gz",
+            "publisher": "Volta Contributors",
+            "sha256": "6cec054c911fb925b629a09455775af6e95dc0f5694a4c28b63979ab9ef18037"
+          },
+          "estimatedBytes": 9783242,
+          "requiresElevation": false,
+          "requiresSeparateConfirmation": false
+        },
+        {
+          "id": "official-guided",
+          "kind": "system_prompt",
+          "targets": [
+            { "platform": "darwin", "arch": "arm64" },
+            { "platform": "darwin", "arch": "x64" },
+            { "platform": "win32", "arch": "x64" },
+            { "platform": "linux", "arch": "x64" }
+          ],
+          "executable": "volta",
+          "args": ["--version"],
+          "source": {
+            "url": "https://volta.sh",
+            "publisher": "Volta Contributors"
+          },
+          "estimatedBytes": 20000000,
+          "requiresElevation": false,
+          "requiresSeparateConfirmation": false
+        }
+      ]
+    }
+  ]
+}

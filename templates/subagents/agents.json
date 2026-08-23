@@ -1,0 +1,199 @@
+{
+  "schemaVersion": 1,
+  "agents": [
+    {
+      "schemaVersion": 1,
+      "name": "quick_check",
+      "aliases": [],
+      "description": "快速核验 Agent。轻量只读，适合短命令、快速确认和边界清楚的事实检查；任务变复杂时应停止并建议改派专职角色。",
+      "prompt": "quick_check.md",
+      "model": { "inherit": true, "allowedProfiles": [] },
+      "tools": {
+        "allow": ["run_command", "read_file", "glob", "grep"]
+      },
+      "skills": { "allow": [] },
+      "hooks": { "allow": ["SubagentStart", "SubagentStop"] },
+      "mcp": { "servers": [] },
+      "memory": { "mode": "none", "scopes": [] },
+      "completion": {
+        "maxTurns": 8,
+        "requiredSections": ["结论", "证据", "风险", "建议下一步"]
+      },
+      "sandbox": {
+        "filesystem": "workspace-write",
+        "network": "deny",
+        "process": "policy"
+      },
+      "delegation": { "planReadonlyExplorer": false }
+    },
+    {
+      "schemaVersion": 1,
+      "name": "code_explorer",
+      "aliases": [],
+      "description": "代码探索 Agent。只读分析，适合阅读代码、查阅文档、追踪调用链和归纳结论。",
+      "prompt": "code_explorer.md",
+      "model": { "inherit": true, "allowedProfiles": [] },
+      "tools": {
+        "allow": ["load_skill", "read_file", "glob", "grep"]
+      },
+      "skills": { "allow": ["*"] },
+      "hooks": { "allow": ["SubagentStart", "SubagentStop"] },
+      "mcp": { "servers": [] },
+      "memory": { "mode": "none", "scopes": [] },
+      "completion": {
+        "maxTurns": 12,
+        "requiredSections": ["结论", "证据", "风险", "建议下一步"]
+      },
+      "sandbox": {
+        "filesystem": "read-only",
+        "network": "deny",
+        "process": "deny"
+      },
+      "delegation": { "planReadonlyExplorer": true }
+    },
+    {
+      "schemaVersion": 1,
+      "name": "web_researcher",
+      "aliases": ["researcher"],
+      "description": "外部研究 Agent。只读查证，适合抓取网页、检索资料、比较来源和核对时效。",
+      "prompt": "web_researcher.md",
+      "model": { "inherit": true, "allowedProfiles": [] },
+      "tools": {
+        "allow": [
+          "run_command",
+          "web_fetch",
+          "load_skill",
+          "read_file",
+          "glob",
+          "grep"
+        ]
+      },
+      "skills": { "allow": ["*"] },
+      "hooks": { "allow": ["SubagentStart", "SubagentStop"] },
+      "mcp": { "servers": [] },
+      "memory": { "mode": "none", "scopes": [] },
+      "completion": {
+        "maxTurns": 15,
+        "requiredSections": ["结论", "证据", "风险", "建议下一步"]
+      },
+      "sandbox": {
+        "filesystem": "workspace-write",
+        "network": "policy",
+        "process": "policy"
+      },
+      "delegation": { "planReadonlyExplorer": false }
+    },
+    {
+      "schemaVersion": 1,
+      "name": "inventory_reviewer",
+      "aliases": [],
+      "description": "清点复核 Agent。只读核验，适合盘点文件、校对清单、检查遗漏和整理表册。",
+      "prompt": "inventory_reviewer.md",
+      "model": { "inherit": true, "allowedProfiles": [] },
+      "tools": {
+        "allow": ["run_command", "read_file", "glob", "grep"]
+      },
+      "skills": { "allow": [] },
+      "hooks": { "allow": ["SubagentStart", "SubagentStop"] },
+      "mcp": { "servers": [] },
+      "memory": { "mode": "none", "scopes": [] },
+      "completion": {
+        "maxTurns": 12,
+        "requiredSections": ["结论", "证据", "风险", "建议下一步"]
+      },
+      "sandbox": {
+        "filesystem": "read-only",
+        "network": "deny",
+        "process": "policy"
+      },
+      "delegation": { "planReadonlyExplorer": true }
+    },
+    {
+      "schemaVersion": 1,
+      "name": "verification_reviewer",
+      "aliases": ["reviewer"],
+      "description": "独立验证 Agent。只读审查项目变更，适合复核非平凡计划、核验验证命令和检查风险遗漏。",
+      "prompt": "verification_reviewer.md",
+      "model": { "inherit": true, "allowedProfiles": [] },
+      "tools": {
+        "allow": ["run_command", "read_file", "glob", "grep"]
+      },
+      "skills": { "allow": [] },
+      "hooks": { "allow": ["SubagentStart", "SubagentStop"] },
+      "mcp": { "servers": [] },
+      "memory": { "mode": "none", "scopes": [] },
+      "completion": {
+        "maxTurns": 14,
+        "requiredSections": ["结论", "证据", "风险", "建议下一步"]
+      },
+      "sandbox": {
+        "filesystem": "read-only",
+        "network": "deny",
+        "process": "policy"
+      },
+      "delegation": { "planReadonlyExplorer": true }
+    },
+    {
+      "schemaVersion": 1,
+      "name": "implementation_engineer",
+      "aliases": ["general"],
+      "description": "实现工程 Agent。可读写并执行命令，适合修改文件、搭建工程和运行验收。",
+      "prompt": "implementation_engineer.md",
+      "model": { "inherit": true, "allowedProfiles": [] },
+      "tools": {
+        "allow": [
+          "run_command",
+          "web_fetch",
+          "load_skill",
+          "read_file",
+          "write_file",
+          "edit_file",
+          "apply_patch",
+          "delete_file",
+          "rename_file",
+          "glob",
+          "grep"
+        ]
+      },
+      "skills": { "allow": ["*"] },
+      "hooks": { "allow": ["SubagentStart", "SubagentStop"] },
+      "mcp": { "servers": [] },
+      "memory": { "mode": "none", "scopes": [] },
+      "completion": {
+        "maxTurns": 20,
+        "requiredSections": ["结论", "证据", "风险", "建议下一步"]
+      },
+      "sandbox": {
+        "filesystem": "workspace-write",
+        "network": "policy",
+        "process": "policy"
+      },
+      "delegation": { "planReadonlyExplorer": false }
+    },
+    {
+      "schemaVersion": 1,
+      "name": "plan_architect",
+      "aliases": ["planner"],
+      "description": "方案设计 Agent。基于已经记录的项目证据进行只读架构设计，输出推荐方案、复用点、关键文件、权衡与可执行验证，不直接实施。",
+      "prompt": "plan_architect.md",
+      "model": { "inherit": true, "allowedProfiles": [] },
+      "tools": {
+        "allow": ["read_file", "glob", "grep", "run_command"]
+      },
+      "skills": { "allow": [] },
+      "hooks": { "allow": ["SubagentStart", "SubagentStop"] },
+      "mcp": { "servers": [] },
+      "memory": { "mode": "none", "scopes": [] },
+      "completion": {
+        "maxTurns": 14,
+        "requiredSections": ["推荐方案", "复用点", "关键文件", "验证", "权衡"]
+      },
+      "sandbox": {
+        "filesystem": "read-only",
+        "network": "deny",
+        "process": "policy"
+      },
+      "delegation": { "planReadonlyExplorer": true }
+    }
+  ]
+}

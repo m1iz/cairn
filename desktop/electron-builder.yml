@@ -1,0 +1,78 @@
+appId: com.cairn.agent.desktop
+productName: Cairn
+
+directories:
+  output: dist
+
+beforePack: scripts/before-pack.cjs
+afterPack: scripts/after-pack.cjs
+
+files:
+  - out/**/*
+  - package.json
+  - '!node_modules{,/**/*}'
+  - node_modules/typescript/package.json
+  - node_modules/typescript/lib/typescript.js
+  - node_modules/node-pty/package.json
+  - node_modules/node-pty/lib/**/*.js
+  - '!node_modules/node-pty/lib/**/*.test.js'
+  - node_modules/node-pty/prebuilds/**/*
+  - node_modules/node-pty/build/Release/**/*
+
+extraResources:
+  - from: build/icon.png
+    to: icon.png
+  - from: ../templates
+    to: runtime-defaults/templates
+    filter:
+      - SOUL.md
+      - TOOL.md
+      - agent/identity.md
+      - agent/skills_section.md
+      - init/MEMORY.md
+      - init/USER.md
+      - subagents/agents.json
+      - subagents/web_researcher.md
+      - subagents/implementation_engineer.md
+      - subagents/inventory_reviewer.md
+      - subagents/code_explorer.md
+      - subagents/verification_reviewer.md
+      - subagents/quick_check.md
+  - from: ../skills
+    to: runtime-defaults/skills
+  - from: ../config/examples/model_config.example.json
+    to: runtime-defaults/model_config.example.json
+  - from: ../config/examples/mcp_config.example.json
+    to: runtime-defaults/mcp_config.example.json
+  - from: ../.env.example
+    to: runtime-defaults/.env.example
+  - from: build/runtime-defaults-manifest.json
+    to: runtime-defaults/runtime-manifest.json
+asar: true
+asarUnpack:
+  - node_modules/node-pty/prebuilds/**/*
+  - node_modules/node-pty/build/Release/**/*
+
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.productivity
+  icon: build/icon.png
+  artifactName: Cairn-Agent-${version}-mac-${arch}.${ext}
+
+win:
+  target:
+    - nsis
+  artifactName: Cairn-Agent-${version}-win-${arch}.${ext}
+
+linux:
+  target:
+    - AppImage
+  executableName: cairn
+  icon: build/icon.png
+  category: Utility
+  artifactName: Cairn-Agent-${version}-linux-${arch}.${ext}
+
+# Release builds host CoreApi in the Electron main process and read signed
+# runtime defaults directly from the application resources directory.

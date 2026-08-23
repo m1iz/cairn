@@ -1,0 +1,2590 @@
+/**
+ * CoreApi (MIG-IPC-001)。
+ * 进程内核心 API 门面，替代 aiohttp routes；Electron main 进程持有此单例，
+ * renderer 后续通过 IPC 调用这些方法。
+ */
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { DRAFT_SESSION_PREFIX } from '../sessions/constants'
+import { dirname, join, resolve } from 'node:path'
+import { AttachmentStore } from '../attachments/store'
+import {
+  AgentLoop,
+  type AgentLoopCreateOptions,
+  type LoopModelRouter,
+} from '../agent/loop'
+import type { RuntimePaths } from '../runtime/paths'
+import type { EventEnvelopeV2 } from '../runtime/envelope'
+import {
+  assertCoreMutationAllowed,
+  CoreMutationGuardError,
+} from './mutation-guard'
+import {
+  ChatService,
+  InvalidSessionError,
+  MainlineTurnService,
+  type DraftSessionInput,
+} from './chat-service'
+import {
+  CoreConfigService,
+  type UserConfigPayload,
+} from './services/config-service'
+import { CoreDiagnosticsService } from './services/diagnostics-service'
+import { CoreEffectiveConfigService } from './services/effective-config-service'
+import { CoreEnvironmentService } from './services/environment-service'
+import { CoreFileCheckpointService } from './services/file-checkpoint-service'
+import { CoreHooksService } from './services/hooks-service'
+import { CoreMemoryService } from './services/memory-service'
+import { CoreModelService } from './services/model-service'
+import { CorePlanService } from './services/plan-service'
+import {
+  CoreInteractionService,
+  type InteractionResumeOptions,
+} from './services/interaction-service'
+import {
+  CoreSkillService,
+  type SkillInfoPayload,
+} from './services/skill-service'
+import { CoreTeamService } from './services/team-service'
+import { GoalService } from './services/goal-service'
+import { goalSummary, type GoalRecord } from '../goals/models'
+import { SidechainTranscript } from '../tasks/sidechain'
+import { ToolResultStore } from '../context/tool-results'
+import { WatchlistService } from '../watchlist/service'
+import {
+  SchedulerMisfirePolicy,
+  SchedulerPayload,
+  SchedulerSchedule,
+  schedulerJobPublicPayload,
+} from '../scheduler/models'
+import type { CoreOperationKey } from './operations'
+import { missingSkillRequirementsFromStatus } from '../environment/probe'
+import type { SkillRequirements } from '../skills/manager'
+import { NodeEnvironmentProcessRunner } from '../environment/process-runner'
+import {
+  WorkspaceFilesService,
+  type WorkspaceFileListResult,
+  type WorkspaceFileReadResult,
+} from '../workspace/files'
+import { WorkspaceGitService, type GitStatusResult } from '../workspace/git'
+import { WorkspaceBindingStore } from '../workspace/git-worktrees'
+import { GitOperationReceiptStore } from '../workspace/git-receipts'
+import {
+  TerminalService,
+  type PtyHost,
+  type TerminalEvent,
+} from '../workspace/terminal'
+import { WorkspaceOperationError } from '../workspace/common'
+import { FileCheckpointService } from '../checkpoints/file-checkpoints'
+import {
+  projectWorkspaceGoal,
+  projectWorkspacePlan,
+  projectWorkspaceProcess,
+  projectWorkspaceSubagent,
+  projectWorkspaceTeam,
+  projectWorkspaceTerminal,
+  type WorkspaceSnapshot,
+} from '../workspace/snapshot'
+import {
+  CommandPlatform,
+  type CommandExecutionContext,
+} from '../commands/platform'
+import { SessionTransitionService } from '../commands/session-transition'
+import type {
+  CommandCompletion,
+  CommandInvocationResult,
+  CommandInvocationSource,
+} from '../commands/types'
+import { CurrentInteractionAdapter } from '../v2/interaction/current-interaction-adapter'
+import {
+  CurrentRuntimeEventRepository,
+  CurrentRuntimeEventRepositoryFactory,
+} from '../v2/adapters/current-runtime-event-repository'
+import { CurrentSessionRepository } from '../v2/adapters/current-session-repository'
+
+type StreamEmitter = (event: Record<string, unknown>) => void | Promise<void>
+type Dict = Record<string, unknown>
+
+export interface CoreApiCreateOptions extends AgentLoopCreateOptions {
+  loop?: AgentLoop | null
+  appVersion?: string
+  runtimeRevision?: string
+  terminalHost?: PtyHost | null
+  terminalEventSink?: ((event: TerminalEvent) => void) | null
+}
+
+export interface RouteOperation {
+  key: CoreOperationKey
+  method: string
+  route: string
+}
+
+export interface CoreRuntimeEventPayload {
+  event: string
+  [key: string]: unknown
+}
+
+export type CoreRuntimeReplayFormat = 'projection' | 'envelope_v2'
+
+export interface CoreRuntimeReplayPayload<
+  TFormat extends CoreRuntimeReplayFormat = 'projection',
+> {
+  sessionId: string
+  afterSeq: number
+  latestSeq: number
+  format: TFormat
+  events: Array<
+    TFormat extends 'envelope_v2' ? EventEnvelopeV2 : CoreRuntimeEventPayload
+  >
+  [key: string]: unknown
+}
+
+const CORE_API_ROUTE_OPERATION_LIST = [
+  op('chat.submit', 'IPC', 'chat.submit'),
+  op('chat.listQueuedPrompts', 'IPC', 'chat.listQueuedPrompts'),
+  op('chat.manageQueuedPrompt', 'IPC', 'chat.manageQueuedPrompt'),
+  op('bootstrap', 'GET', '/api/bootstrap'),
+  op('chat.stopRuntime', 'POST', '/api/runtime/stop'),
+  op('commands.list', 'IPC', 'commands.list'),
+  op('commands.complete', 'IPC', 'commands.complete'),
+  op('commands.invoke', 'IPC', 'commands.invoke'),
+  op('config.effective', 'GET', '/api/config/effective'),
+  op('config.get', 'GET', '/api/config'),
+  op('config.save', 'POST', '/api/config'),
+  op('attachments.save', 'POST', '/api/attachments'),
+  op('attachments.rawPath', 'GET', '/api/attachments/{id}/raw'),
+  op('mcp.getConfig', 'GET', '/api/mcp-config'),
+  op('mcp.status', 'GET', '/api/mcp-status'),
+  op('mcp.saveConfig', 'POST', '/api/mcp-config'),
+  op('model.discoverModels', 'IPC', 'model.discoverModels'),
+  op('model.getConfig', 'GET', '/api/model-config'),
+  op('model.resolveProfile', 'IPC', 'model.resolveProfile'),
+  op('model.saveEntry', 'POST', '/api/models'),
+  op('model.savePolicy', 'PATCH', '/api/model-policy'),
+  op('model.deleteEntry', 'DELETE', '/api/models/{entryId}'),
+  op('model.activate', 'POST', '/api/models/{entryId}/activate'),
+  op(
+    'model.setReasoningEffort',
+    'PATCH',
+    '/api/models/{entryId}/reasoning-effort',
+  ),
+  op('model.test', 'POST', '/api/model-test'),
+  op('onboarding.getProfileStatus', 'GET', '/api/onboarding/profile'),
+  op(
+    'onboarding.startProfileInterview',
+    'POST',
+    '/api/onboarding/profile/start',
+  ),
+  op('onboarding.skipProfileInterview', 'POST', '/api/onboarding/profile/skip'),
+  op('control.get', 'GET', '/api/control'),
+  op('control.setPermissionMode', 'IPC', 'control.setPermissionMode'),
+  op('control.setMode', 'POST', '/api/control/mode'),
+  op('control.answerInteraction', 'IPC', 'control.answerInteraction'),
+  op('control.commentPlan', 'IPC', 'control.commentPlan'),
+  op('control.approvePlan', 'IPC', 'control.approvePlan'),
+  op(
+    'control.cancelInteraction',
+    'POST',
+    '/api/control/interactions/{id}/cancel',
+  ),
+  op('goals.start', 'IPC', 'goals.start'),
+  op('goals.list', 'IPC', 'goals.list'),
+  op('goals.get', 'IPC', 'goals.get'),
+  op('goals.pause', 'IPC', 'goals.pause'),
+  op('goals.resume', 'IPC', 'goals.resume'),
+  op('goals.replace', 'IPC', 'goals.replace'),
+  op('goals.cancel', 'IPC', 'goals.cancel'),
+  op('plans.list', 'GET', '/api/plans'),
+  op('plans.get', 'GET', '/api/plans/{plan_id}'),
+  op('scheduler.get', 'GET', '/api/scheduler'),
+  op('scheduler.createJob', 'POST', '/api/scheduler/jobs'),
+  op('scheduler.updateJob', 'PATCH', '/api/scheduler/jobs/{id}'),
+  op('scheduler.runJob', 'POST', '/api/scheduler/jobs/{id}/run'),
+  op('scheduler.pauseJob', 'POST', '/api/scheduler/jobs/{id}/pause'),
+  op('scheduler.resumeJob', 'POST', '/api/scheduler/jobs/{id}/resume'),
+  op('scheduler.deleteJob', 'DELETE', '/api/scheduler/jobs/{id}'),
+  op('sessions.list', 'GET', '/api/sessions'),
+  op('sessions.create', 'POST', '/api/sessions'),
+  op('sessions.rename', 'PATCH', '/api/sessions/{id}'),
+  op('sessions.delete', 'DELETE', '/api/sessions/{id}'),
+  op('sessions.activate', 'POST', '/api/sessions/{id}/activate'),
+  op('team.get', 'GET', '/api/team'),
+  op('team.spawnMember', 'POST', '/api/team/members'),
+  op('team.getMember', 'GET', '/api/team/members/{name}'),
+  op('team.sendMessage', 'POST', '/api/team/messages'),
+  op('team.wakeMember', 'POST', '/api/team/members/{name}/wake'),
+  op('team.shutdownMember', 'POST', '/api/team/members/{name}/shutdown'),
+  op('workspace.snapshot', 'IPC', 'workspace.snapshot'),
+  op('git.status', 'IPC', 'git.status'),
+  op('git.repository', 'IPC', 'git.repository'),
+  op('git.log', 'IPC', 'git.log'),
+  op('git.worktrees', 'IPC', 'git.worktrees'),
+  op('git.enterWorktree', 'IPC', 'git.enterWorktree'),
+  op('git.exitWorktree', 'IPC', 'git.exitWorktree'),
+  op('git.pullRequest', 'IPC', 'git.pullRequest'),
+  op('git.publishPreview', 'IPC', 'git.publishPreview'),
+  op('git.publishPullRequest', 'IPC', 'git.publishPullRequest'),
+  op('git.readyPullRequest', 'IPC', 'git.readyPullRequest'),
+  op('git.mergePullRequest', 'IPC', 'git.mergePullRequest'),
+  op('git.closePullRequest', 'IPC', 'git.closePullRequest'),
+  op('git.diff', 'IPC', 'git.diff'),
+  op('git.branches', 'IPC', 'git.branches'),
+  op('git.compare', 'IPC', 'git.compare'),
+  op('git.stage', 'IPC', 'git.stage'),
+  op('git.unstage', 'IPC', 'git.unstage'),
+  op('git.discard', 'IPC', 'git.discard'),
+  op('git.commit', 'IPC', 'git.commit'),
+  op('git.fetch', 'IPC', 'git.fetch'),
+  op('git.pull', 'IPC', 'git.pull'),
+  op('git.push', 'IPC', 'git.push'),
+  op('git.createBranch', 'IPC', 'git.createBranch'),
+  op('git.switchBranch', 'IPC', 'git.switchBranch'),
+  op('files.list', 'IPC', 'files.list'),
+  op('files.search', 'IPC', 'files.search'),
+  op('files.read', 'IPC', 'files.read'),
+  op('terminals.list', 'IPC', 'terminals.list'),
+  op('terminals.create', 'IPC', 'terminals.create'),
+  op('terminals.read', 'IPC', 'terminals.read'),
+  op('terminals.write', 'IPC', 'terminals.write'),
+  op('terminals.resize', 'IPC', 'terminals.resize'),
+  op('terminals.close', 'IPC', 'terminals.close'),
+  op('fileCheckpoints.list', 'IPC', 'fileCheckpoints.list'),
+  op('fileCheckpoints.preview', 'IPC', 'fileCheckpoints.preview'),
+  op('fileCheckpoints.rewind', 'IPC', 'fileCheckpoints.rewind'),
+  op('fileCheckpoints.rewindGit', 'IPC', 'fileCheckpoints.rewindGit'),
+  op('hooks.getConfig', 'GET', '/api/hooks'),
+  op('hooks.saveConfig', 'POST', '/api/hooks'),
+  op('hooks.getAudit', 'GET', '/api/hooks/audit'),
+  op('hooks.getMetadata', 'GET', '/api/hooks/metadata'),
+  op('hooks.validateConfig', 'POST', '/api/hooks/validate'),
+  op('hooks.setProjectTrust', 'POST', '/api/hooks/project-trust'),
+  op('hooks.testMatch', 'POST', '/api/hooks/test-match'),
+  op('hooks.testRun', 'POST', '/api/hooks/test-run'),
+  op('hooks.cancelRun', 'POST', '/api/hooks/cancel-run'),
+  op('tasks.list', 'GET', '/api/tasks'),
+  op('tasks.get', 'GET', '/api/tasks/{task_id}'),
+  op('tasks.transcript', 'GET', '/api/tasks/{task_id}/transcript'),
+  op('tasks.wait', 'IPC', 'tasks.wait'),
+  op('tasks.readOutput', 'GET', '/api/tasks/{task_id}/output'),
+  op('tasks.cancel', 'POST', '/api/tasks/{task_id}/cancel'),
+  op('tasks.resume', 'POST', '/api/tasks/{task_id}/resume'),
+  op('processes.list', 'GET', '/api/processes'),
+  op('processes.cancel', 'POST', '/api/processes/{process_id}/cancel'),
+  op('processes.reparent', 'POST', '/api/processes/{process_id}/reparent'),
+  op('tools.readResult', 'GET', '/api/tools/results/{ref}'),
+  op('memory.get', 'GET', '/api/memory'),
+  op('memory.save', 'POST', '/api/memory'),
+  op('memory.getEpisode', 'GET', '/api/memory/episode'),
+  op('memory.saveEpisode', 'POST', '/api/memory/episode'),
+  op('memory.listVersions', 'GET', '/api/memory/versions'),
+  op('memory.getVersion', 'GET', '/api/memory/versions/{id}'),
+  op('memory.restoreVersion', 'POST', '/api/memory/versions/{id}/restore'),
+  op('memory.getWatchlist', 'GET', '/api/watchlist'),
+  op('memory.saveWatchlist', 'POST', '/api/watchlist'),
+  op('memory.checkWatchlist', 'POST', '/api/watchlist/check'),
+  op('memory.tokens', 'GET', '/api/tokens'),
+  op('memory.compact', 'POST', '/api/compact'),
+  op('memory.explainContext', 'GET', '/api/memory/explain-context'),
+  op('projects.list', 'GET', '/api/projects'),
+  op('projects.resolve', 'POST', '/api/projects/resolve'),
+  op('runtime.replay', 'GET', '/api/runtime/replay'),
+  op('skills.tools', 'GET', '/api/tools'),
+  op('skills.list', 'GET', '/api/skills'),
+  op('skills.get', 'GET', '/api/skill'),
+  op('skills.create', 'POST', '/api/skills/create'),
+  op('skills.validate', 'POST', '/api/skills/validate'),
+  op('skills.package', 'POST', '/api/skills/package'),
+  op('skills.save', 'POST', '/api/skill'),
+  op('skills.delete', 'DELETE', '/api/skill'),
+  op('skills.previewInstall', 'POST', '/api/skills/install/preview'),
+  op('skills.confirmInstall', 'POST', '/api/skills/install/confirm'),
+  op('sidebar.get', 'GET', '/api/sidebar-state'),
+  op('sidebar.patch', 'PATCH', '/api/sidebar-state'),
+  op('diagnostics.get', 'GET', '/api/diagnostics'),
+  op('environment.getStatus', 'GET', '/api/environment'),
+  op('environment.createInstallPlan', 'POST', '/api/environment/plans'),
+  op('environment.install', 'POST', '/api/environment/install'),
+  op('environment.cancelInstall', 'POST', '/api/environment/cancel'),
+  op('environment.getInstallLog', 'GET', '/api/environment/install-log'),
+] as const
+
+type MissingRouteOperation = Exclude<
+  CoreOperationKey,
+  (typeof CORE_API_ROUTE_OPERATION_LIST)[number]['key']
+>
+const _coreApiRouteCoverage: [MissingRouteOperation] extends [never]
+  ? true
+  : never = true
+
+export const CORE_API_ROUTE_OPERATIONS: RouteOperation[] = [
+  ...CORE_API_ROUTE_OPERATION_LIST,
+].sort((a, b) => a.key.localeCompare(b.key))
+
+export class CoreApi {
+  readonly root: string
+  readonly paths: RuntimePaths
+  readonly loop: AgentLoop
+  readonly attachmentStore: AttachmentStore
+  readonly watchlist: WatchlistService
+  readonly mainline: MainlineTurnService
+  readonly chatService: ChatService
+  readonly configService: CoreConfigService
+  readonly effectiveConfigService: CoreEffectiveConfigService
+  readonly diagnosticsService: CoreDiagnosticsService
+  readonly environmentService: CoreEnvironmentService
+  readonly fileCheckpointService: CoreFileCheckpointService
+  readonly hooksService: CoreHooksService
+  readonly memoryService: CoreMemoryService
+  readonly modelService: CoreModelService
+  readonly planService: CorePlanService
+  readonly interactionService: CoreInteractionService
+  readonly skillService: CoreSkillService
+  readonly teamService: CoreTeamService
+  readonly goalService: GoalService
+  readonly workspaceFilesService: WorkspaceFilesService
+  readonly workspaceGitService: WorkspaceGitService
+  readonly workspaceBindings: WorkspaceBindingStore
+  readonly gitReceipts: GitOperationReceiptStore
+  readonly terminalService: TerminalService
+  readonly sessionTransitionService: SessionTransitionService
+  readonly commandPlatform: CommandPlatform
+  readonly interactions: import('../v2/contracts/interaction').InteractionPort
+  readonly runtimeEventRepositories: CurrentRuntimeEventRepositoryFactory
+  readonly sessionRepository: CurrentSessionRepository
+
+  private constructor(
+    root: string,
+    loop: AgentLoop,
+    opts: Pick<
+      CoreApiCreateOptions,
+      'appVersion' | 'runtimeRevision' | 'terminalHost' | 'terminalEventSink'
+    > = {},
+  ) {
+    this.root = resolve(root)
+    this.loop = loop
+    this.runtimeEventRepositories = new CurrentRuntimeEventRepositoryFactory()
+    this.sessionRepository = new CurrentSessionRepository(
+      this.loop.sessionStore,
+    )
+    this.planService = new CorePlanService(this.loop.controlManager.planStore)
+    this.paths = loop.paths
+    this.attachmentStore = new AttachmentStore(this.paths.stateRoot)
+    this.watchlist = new WatchlistService(this.paths.stateRoot, {
+      tokenTracker: this.loop.tokenTracker,
+    })
+    this.configService = new CoreConfigService(
+      this.paths.stateRoot,
+      {
+        refreshRuntimeContext: () => {
+          this.loop.refreshRuntimeContext()
+        },
+        reconcileProfileOnboarding: () => {
+          this.loop.reconcileProfileOnboarding()
+        },
+        reloadMcp: () => this.loop.reloadMcp(),
+      },
+      { templatesDir: this.loop.templatesDir },
+    )
+    this.effectiveConfigService = new CoreEffectiveConfigService(
+      this.paths.stateRoot,
+      {
+        skillManager: this.loop.skillManager,
+        skillResolutions: () => this.loop.effectiveSkillConfigResolutions(),
+        agentDefinitions: () => this.loop.subagentRegistry.snapshot(),
+      },
+    )
+    this.modelService = new CoreModelService(this.paths.stateRoot, {
+      router: () => this.loop.modelRouter,
+      refreshModelConfig: () => this.loop.refreshModelConfig(),
+      afterConfigSaved: () =>
+        this.loop.startProfileInterview({ manual: false }),
+    })
+    this.hooksService = new CoreHooksService(this.paths.stateRoot, {
+      service: this.loop.hookService,
+      activeSessionId: () => this.loop.activeSessionId,
+      activeWorkspaceRoot: () =>
+        (this.loop.workspacePolicyDiagnostics().workspaceRoot as string) ||
+        this.root,
+      activeProjectRoot: () =>
+        this.loop.activeSession?.mode === 'build'
+          ? (this.loop.activeSession.project_path ?? null)
+          : null,
+      assertMutation: (area, action) => this.assertMutation(area, action),
+    })
+    this.memoryService = new CoreMemoryService(this.paths.stateRoot, {
+      loop: this.loop,
+      watchlist: this.watchlist,
+      refreshRuntimeContext: () => {
+        this.loop.refreshRuntimeContext()
+      },
+    })
+    this.skillService = new CoreSkillService(this.paths.stateRoot, {
+      runtimeRoot: this.paths.runtimeRoot,
+      manager: this.loop.skillManager,
+      registry: this.loop.registry,
+      refreshRuntimeContext: () => {
+        this.loop.refreshRuntimeContext()
+      },
+      resolveMissing: async (requirements: SkillRequirements) => {
+        const skillName = 'install-candidate'
+        const projectRoot =
+          this.loop.activeSession?.mode === 'build'
+            ? (this.loop.activeSession.project_path ?? this.root)
+            : this.root
+        const status = await this.loop.environmentProbe.getStatus({
+          projectRoot,
+          forceRefresh: true,
+          skillRequirements: [
+            { skillName, skillStatus: 'active', requirements },
+          ],
+        })
+        return missingSkillRequirementsFromStatus(
+          status,
+          skillName,
+          requirements,
+        )
+      },
+    })
+    this.environmentService = new CoreEnvironmentService({
+      stateRoot: this.paths.stateRoot,
+      catalog: this.loop.environmentCatalog,
+      probe: this.loop.environmentProbe,
+      skillManager: this.loop.skillManager,
+      projectRoot: () =>
+        this.loop.activeSession?.mode === 'build'
+          ? (this.loop.activeSession.project_path ?? this.root)
+          : this.root,
+      appVersion: opts.appVersion ?? '0.0.0-dev',
+      runtimeRevision:
+        opts.runtimeRevision ?? this.loop.environmentCatalog.revision,
+      emitRuntime: async (event) => {
+        await this.emitRuntime(event, {
+          sessionId: this.loop.activeSessionId,
+        })
+      },
+      reconcileBlockedSkills: async () =>
+        await this.skillService.reconcileBlocked(),
+    })
+    this.teamService = new CoreTeamService({
+      teamManager: () => this.loop.teamManagerForActiveSession(),
+      activeSession: () => this.loop.activeSession,
+      assertMutation: (area, action) => this.assertMutation(area, action),
+    })
+    this.fileCheckpointService = new CoreFileCheckpointService({
+      checkpoints: this.loop.fileCheckpoints,
+      softGitRewind: this.loop.softGitRewind,
+      applicationRoot: this.root,
+      activeSessionId: () => this.loop.activeSessionId,
+      requireReadableSession: (sessionId, operation) =>
+        this.requireReadableSession(sessionId, operation) as never,
+      assertMutation: (area, action) => this.assertMutation(area, action),
+    })
+    this.workspaceBindings = new WorkspaceBindingStore(this.paths.stateRoot)
+    this.gitReceipts = new GitOperationReceiptStore(this.paths.stateRoot)
+    const resolveWorkspaceProject = (sessionId: string) => {
+      const session = this.requireReadableSession(sessionId, 'workspace') as {
+        id: string
+        mode?: string | null
+        project_path?: string | null
+        project_name?: string | null
+        title?: string | null
+      }
+      if (session.mode !== 'build' || !session.project_path)
+        throw new WorkspaceOperationError(
+          'workspace_project_required',
+          '当前会话没有绑定 Build 项目。',
+        )
+      return {
+        sessionId: session.id,
+        projectRoot: this.workspaceBindings.resolve(
+          session.id,
+          resolve(session.project_path),
+        ),
+        projectName:
+          String(session.project_name ?? session.title ?? '').trim() ||
+          session.project_path.split(/[\\/]/).pop() ||
+          '项目',
+      }
+    }
+    const gitProcessRunner = new NodeEnvironmentProcessRunner()
+    const workspaceFileCheckpoints = this.loop.fileCheckpoints.enabled
+      ? this.loop.fileCheckpoints
+      : new FileCheckpointService({
+          stateRoot: this.paths.stateRoot,
+          enabled: true,
+          gitCapture:
+            this.loop.softGitRewind.requestedMode === 'off'
+              ? null
+              : this.loop.softGitRewind,
+        })
+    this.workspaceGitService = new WorkspaceGitService({
+      resolveProject: resolveWorkspaceProject,
+      resolveRuntime: async (projectRoot) => {
+        const runtime = await this.loop.resolveWorkspaceGitRuntime(projectRoot)
+        if (!runtime)
+          throw new WorkspaceOperationError(
+            'git_unavailable',
+            '当前签名执行环境中没有可用 Git。',
+          )
+        return runtime
+      },
+      run: async (request) => {
+        const result = await gitProcessRunner.run({
+          ...request,
+          timeoutMs: 120_000,
+          maxOutputBytes: 4 * 1024 * 1024,
+          outputPolicy: 'truncate_tail',
+          outputQuotaScope: 'per_stream',
+        })
+        return {
+          exitCode: result.exitCode ?? (result.status === 'completed' ? 0 : 1),
+          stdout: result.stdout,
+          stderr: result.stderr || result.error || '',
+          stdoutTruncated: result.stdoutTruncated === true,
+          stderrTruncated: result.stderrTruncated === true,
+        }
+      },
+      checkpoint: async ({ sessionId, projectRoot, paths, effect }) =>
+        (
+          await workspaceFileCheckpoints.capture(
+            {
+              sessionId,
+              turnId: `workspace-git-${Date.now()}`,
+              toolCallId: `workspace-discard-${Date.now()}`,
+              toolName: 'git.discard',
+              workspaceRoot: projectRoot,
+              paths,
+            },
+            effect,
+          )
+        ).value,
+      hasActiveWriter: (sessionId) =>
+        this.loop.activeTasks.hasActiveForSession(sessionId) ||
+        this.loop.taskManager.store
+          .list()
+          .some(
+            (task) =>
+              task.session_id === sessionId && task.status === 'running',
+          ),
+      stateRoot: this.paths.stateRoot,
+      bindings: this.workspaceBindings,
+      receipts: this.gitReceipts,
+      emitReceipt: async (sessionId, receipt) => {
+        await this.emitRuntime(
+          { event: 'git_operation_completed', ...receipt },
+          { sessionId },
+        )
+      },
+    })
+    this.workspaceFilesService = new WorkspaceFilesService({
+      resolveProject: resolveWorkspaceProject,
+      filterIgnored: async (sessionId, _projectRoot, paths) =>
+        await this.workspaceGitService.ignoredPaths({ sessionId, paths }),
+    })
+    this.terminalService = new TerminalService({
+      host: opts.terminalHost ?? unavailablePtyHost(),
+      resolveProject: resolveWorkspaceProject,
+      shell: defaultSystemShell,
+      env: terminalEnvironment,
+      emit: opts.terminalEventSink ?? undefined,
+    })
+    this.mainline = new MainlineTurnService(this.loop)
+    this.interactionService = new CoreInteractionService(
+      this.loop,
+      this.mainline,
+      (event, options) => this.emitRuntime(event, options),
+    )
+    this.interactions = new CurrentInteractionAdapter(this.control)
+    this.chatService = new ChatService(this.mainline)
+    this.goalService = new GoalService({
+      goalStore: this.loop.goalStore,
+      coordinator: this.loop.goalCoordinator,
+      activeTasks: this.loop.activeTasks,
+      materializeSession: async (input) =>
+        (
+          await this.mainline.materializeSession(
+            { ...input, emit: null },
+            'goals.start',
+          )
+        ).session,
+      requireReadableSession: (sessionId, operation) =>
+        this.requireReadableSession(sessionId, operation) as never,
+      scopeForSession: (session) =>
+        this.loop.goalScopeForSession(session as never),
+      activeSessionId: () => this.loop.activeSessionId,
+      summarize: async (goal) => await this.goalSummary(goal),
+      clearPendingInteraction: (goal) => {
+        if (goal.runtime.pendingInteractionId)
+          this.loop.controlManager.clearPendingInteractionForGoal(
+            goal.runtime.pendingInteractionId,
+          )
+        this.loop.controlManager.clearPendingInteractionForGoal(goal.id)
+      },
+    })
+    this.sessionTransitionService = new SessionTransitionService({
+      stateRoot: this.paths.stateRoot,
+      sessions: this.loop.sessionStore,
+      assertBoundary: (sessionId) => this.assertClearBoundary(sessionId),
+      runSessionEnd: (sessionId, reason) =>
+        this.loop.notifySessionTransitionEnd(sessionId, reason),
+      activate: (sessionId) => this.loop.activateSession(sessionId),
+      inheritWorkspaceBinding: (sourceSessionId, targetSessionId) =>
+        this.workspaceBindings.inherit(sourceSessionId, targetSessionId),
+    })
+    this.commandPlatform = new CommandPlatform({
+      stateRoot: this.paths.stateRoot,
+      listSkills: (sessionId) => this.commandSkillsForSession(sessionId),
+      sessionContext: async (sessionId) =>
+        await this.commandSessionContext(sessionId),
+      isBusy: (sessionId) => this.commandSessionBusy(sessionId),
+      executeBuiltin: async (context) =>
+        await this.executeBuiltinCommand(context),
+      submitSkill: async (context) => await this.submitSkillCommand(context),
+      queueAfterTurn: async ({ sessionId, requestId, run }) => {
+        const promise = this.loop.sessionRuntimes.run(
+          sessionId,
+          requestId,
+          async () => await run(),
+        )
+        void promise.catch(() => undefined)
+        return requestId
+      },
+      completeDynamic: async (descriptor, rawArgs, cursor, sessionId) =>
+        await this.completeCommand(descriptor.name, rawArgs, cursor, sessionId),
+    })
+    this.loop.setSchedulerAgentTurnSubmitter((payload) =>
+      this.mainline.submitSchedulerTurn(payload),
+    )
+    this.diagnosticsService = new CoreDiagnosticsService(this.root, {
+      runtimePaths: this.paths,
+      legacyStateMigration: this.loop.legacyStateMigration,
+      activeProjectLegacyPrivateData: () => {
+        const projectPath = this.loop.activeSession?.project_path
+        if (!projectPath) return null
+        const detected =
+          this.loop.projectStore.detectLegacyPrivateData(projectPath)
+        return { projectPath, ...detected }
+      },
+      schedulerDiagnostics: () => this.loop.schedulerStore.diagnostics(),
+      runtimeStats: () =>
+        this.loop.runtimeStore.stats({
+          activeTurnIds: this.loop.activeMemoryStore.loadUnarchivedTurnIds(),
+        }),
+      workspacePolicy: () => this.loop.workspacePolicyDiagnostics() as Dict,
+      sandboxCapability: () => ({ ...this.loop.processSandbox.capability() }),
+      processRuntime: () => this.loop.processRuntime.capabilityReport(),
+      lifecycle: () => this.loop.lifecycleSupervisor.snapshot(),
+      subagents: () => this.loop.subagentSupervisor.snapshot(),
+      agentDefinitions: () => this.loop.subagentRegistry.snapshot(),
+      effectiveConfig: () => this.effectiveConfigService.payload(),
+      hybridMemory: () => this.loop.hybridMemory.diagnostics(),
+      codeIntelligence: () => this.loop.codeIntelligence.diagnostics(),
+      mcp: () => this.loop.mcpClient.snapshot(),
+      activeTasks: () => this.loop.activeTasks.list(),
+      sessionRuntimes: () => this.loop.sessionRuntimes.snapshot(),
+      environmentSummary: () => this.environmentService.diagnosticsSummary(),
+    })
+  }
+
+  static async create(opts: CoreApiCreateOptions): Promise<CoreApi> {
+    const root = resolve(opts.root)
+    const loop = opts.loop ?? (await AgentLoop.create(opts))
+    let api: CoreApi | null = null
+    try {
+      api = new CoreApi(root, loop, opts)
+      await api.environmentService.initialize()
+      await api.sessionTransitionService.recover()
+      return api
+    } catch (error) {
+      if (api) await api.close().catch(() => {})
+      else await loop.close().catch(() => {})
+      throw error
+    }
+  }
+
+  async close(): Promise<void> {
+    this.terminalService.closeAll()
+    await this.loop.close()
+  }
+
+  async bootstrap(opts: { sessionId?: string | null } = {}) {
+    const sessionId = String(opts.sessionId ?? '').trim()
+    if (sessionId) this.activateBootstrapSession(sessionId)
+    this.loop.reconcileSessionControlPending()
+    const sessionDiagnostics = this.loop.sessionStore.diagnostics()
+    const route = this.loop.modelRouter.route('main_agent')
+    const activeTurnIds = this.loop.activeMemoryStore.loadUnarchivedTurnIds()
+    const runtimeReplay = this.runtime.replay({
+      sessionId: this.loop.activeSessionId,
+      afterSeq: 0,
+      limit: 5000,
+    })
+    const goals = await this.goalService.bootstrap(this.loop.activeSessionId)
+    return {
+      app: 'Cairn',
+      sessionIndexSource: sessionDiagnostics.sessionIndexSource,
+      repairedSessions: sessionDiagnostics.repairedSessions,
+      model: route.snapshot.model,
+      provider: route.snapshot.providerName,
+      providerLabel: route.snapshot.providerLabel,
+      tools: this.skills.tools(),
+      skills: this.skills.list(),
+      memory: this.memory.get(),
+      modelConfig: await this.model.getConfig(),
+      profileOnboarding: this.onboarding.getProfileStatus(),
+      team: this.team.get(),
+      scheduler: this.scheduler.get(),
+      control: this.control.get(),
+      goals,
+      hooks: await this.hooks.getConfig(),
+      context_used: this.loop.tokenTracker.lastInputTokensValue(),
+      unarchivedHistory: this.memoryService.historyPayload(),
+      runtime: {
+        events: runtimeReplay.events,
+        latestSeq: runtimeReplay.latestSeq,
+        busy: this.loop.activeTasks.hasActiveForSession(
+          this.loop.activeSessionId,
+        ),
+        active_tasks: this.loop.activeTasks.list(),
+        stats: this.loop.runtimeStore.stats({ activeTurnIds }),
+      },
+      mcp: this.mcp.status(),
+      projects: this.projects.list(),
+      diagnostics: await this.diagnostics.get(),
+    }
+  }
+
+  readonly chat = {
+    submit: async (opts: {
+      content: string
+      turnId?: string | null
+      emit?: StreamEmitter | null
+      displayContent?: string | null
+      clientMessageId?: string | null
+      sessionId?: string | null
+      uiHidden?: boolean | null
+      delivery?: 'queue' | 'interject' | null
+      clientDraftId?: string | null
+      draftSession?: DraftSessionInput | null
+      attachments?: string[] | null
+      requestedSkills?: Array<{ name: string; source?: string }> | null
+      /** In-process adapters only; IPC validation never accepts AbortSignal objects. */
+      signal?: AbortSignal | null
+      /** Trusted in-process adapter provenance. Browser IPC remains `chat`. */
+      source?: string | null
+    }) => {
+      const result = await this.chatService.submit({
+        content: String(opts.content ?? ''),
+        turnId: opts.turnId ?? null,
+        emit: opts.emit ?? null,
+        displayContent: opts.displayContent ?? null,
+        clientMessageId: opts.clientMessageId ?? null,
+        sessionId: opts.sessionId ?? null,
+        uiHidden: opts.uiHidden ?? false,
+        delivery: opts.delivery ?? 'queue',
+        clientDraftId: opts.clientDraftId ?? null,
+        draftSession: opts.draftSession ?? null,
+        attachmentIds: opts.attachments ?? null,
+        requestedSkills: opts.requestedSkills ?? null,
+        signal: opts.signal ?? null,
+        source: opts.source ?? 'chat',
+      })
+      return result
+    },
+    listQueuedPrompts: (opts: { sessionId: string }) =>
+      this.chatService.listQueuedPrompts(opts),
+    manageQueuedPrompt: (opts: {
+      sessionId: string
+      promptId: string
+      action: 'cancel' | 'interject'
+    }) => this.chatService.manageQueuedPrompt(opts),
+    stopRuntime: async (
+      opts: {
+        taskId?: string | null
+        kind?: 'turn' | 'scheduler' | 'team' | 'watchlist' | 'goal' | null
+      } = {},
+    ) => {
+      const goalTasks = this.loop.activeTasks
+        .list()
+        .filter(
+          (task) =>
+            task.kind === 'goal' &&
+            (!opts.taskId || task.id === opts.taskId) &&
+            (!opts.kind || opts.kind === 'goal'),
+        )
+      for (const task of goalTasks) {
+        await this.goalService.pause(
+          task.id.replace(/^goal:/, ''),
+          task.session_id,
+          'user_stop',
+        )
+      }
+      const cancelled = this.loop.activeTasks.cancel({
+        taskId: opts.taskId ?? null,
+        kind: opts.kind ?? null,
+      })
+      return { cancelled, active: this.loop.activeTasks.list() }
+    },
+  }
+
+  readonly commands = {
+    list: (input: {
+      sessionId: string
+      includeUnavailable?: boolean
+      invocationSource?: CommandInvocationSource
+    }) => this.commandPlatform.list(input),
+    complete: (input: {
+      sessionId: string
+      commandId: string
+      rawArgs: string
+      cursor: number
+      invocationSource: CommandInvocationSource
+    }): Promise<CommandCompletion[]> => this.commandPlatform.complete(input),
+    invoke: (input: {
+      sessionId: string
+      commandId: string
+      rawInput: string
+      invocationId: string
+      invocationSource: CommandInvocationSource
+      attachments?: string[]
+    }): Promise<CommandInvocationResult> => this.commandPlatform.invoke(input),
+  }
+
+  readonly runtime = {
+    replay: <TFormat extends CoreRuntimeReplayFormat = 'projection'>(
+      opts: {
+        sessionId?: string | null
+        afterSeq?: number | string | null
+        after_seq?: number | string | null
+        limit?: number | string | null
+        includeArchive?: boolean | string | null
+        include_archive?: boolean | string | null
+        compact?: boolean | string | null
+        format?: TFormat | null
+      } = {},
+    ): CoreRuntimeReplayPayload<TFormat> => {
+      const sessionId = this.requireReadableSessionId(
+        opts.sessionId ?? this.loop.activeSessionId ?? null,
+        'runtime.replay',
+      )
+      const afterSeq = normalizedNonNegativeNumber(
+        opts.afterSeq ?? opts.after_seq ?? 0,
+      )
+      const limit = normalizedPositiveNumber(opts.limit ?? null)
+      const includeArchive = normalizedBoolean(
+        opts.includeArchive ?? opts.include_archive ?? false,
+      )
+      // P1-5：回放默认读取侧压缩（磁盘不变）；传 compact:false 取原始流
+      const compact =
+        opts.compact === undefined ? true : normalizedBoolean(opts.compact)
+      const format = opts.format ?? 'projection'
+      const store = this.runtimeEventRepositories.openSession(
+        this.sessionRepository.sessionDirectory(sessionId),
+      )
+      return {
+        sessionId,
+        afterSeq,
+        latestSeq: store.latestSequence,
+        format,
+        events:
+          format === 'envelope_v2'
+            ? store.replayEnvelopesAfter(afterSeq, {
+                sessionId,
+                limit,
+                includeArchive,
+              })
+            : store
+                .replayProjectionAfter(afterSeq, {
+                  sessionId,
+                  limit,
+                  includeArchive,
+                  compact,
+                })
+                .map((event) => ({
+                  ...event,
+                  event: String(event.event ?? ''),
+                })),
+      } as CoreRuntimeReplayPayload<TFormat>
+    },
+  }
+
+  readonly fileCheckpoints = {
+    list: (input: { sessionId?: string | null } = {}) =>
+      this.fileCheckpointService.list(input),
+    preview: (input: { sessionId: string; checkpointId: string }) =>
+      this.fileCheckpointService.preview(input),
+    rewind: (input: {
+      sessionId: string
+      checkpointId: string
+      confirmed: boolean
+    }) => this.fileCheckpointService.rewind(input),
+    rewindGit: (input: {
+      sessionId: string
+      checkpointId: string
+      confirmed: boolean
+      confirmedGitRisk: boolean
+      previewRevision: string
+      dirtyStrategy: 'abort' | 'stash'
+    }) => this.fileCheckpointService.rewindGit(input),
+  }
+
+  readonly config = {
+    effective: () => this.effectiveConfigService.payload(),
+    get: (): UserConfigPayload => this.configService.getUserConfig(),
+    save: (
+      body: { content?: unknown } | string = {},
+    ): Promise<UserConfigPayload> => {
+      this.assertMutation('config', 'save')
+      const content =
+        typeof body === 'string' ? body : String(body.content ?? '')
+      return (async () => {
+        await this.hooksService.authorizeConfigChange('config.save', {
+          content,
+        })
+        return this.configService.saveUserConfig(content)
+      })()
+    },
+  }
+
+  readonly attachments = {
+    save: (opts: { raw: Buffer | Uint8Array; name: string; mime: string }) =>
+      this.attachmentStore.save(opts),
+    rawPath: (attachmentId: string) => {
+      const ref = this.attachmentStore.get(attachmentId)
+      return ref
+        ? { path: join(this.attachmentStore.root, ref.rel_path), ref }
+        : null
+    },
+  }
+
+  readonly mcp = {
+    getConfig: () => this.configService.getMcpConfig(),
+    status: () => this.loop.mcpClient.snapshot(),
+    saveConfig: async (raw: Dict) => {
+      // mcp.saveConfig 落盘后会经 MCPClient 以 servers.*.command 起子进程（stdio transport）；
+      // 未经审批就能被 renderer 一条 IPC 写任意 command/args 是一条进程执行 pivot（审计 P0-5）。
+      this.assertMutation('mcp', 'saveConfig')
+      await this.hooksService.authorizeConfigChange('mcp.saveConfig', raw)
+      return this.configService.saveMcpConfig(raw)
+    },
+  }
+
+  readonly hooks = {
+    getConfig: async (opts: Dict = {}) => this.hooksService.getConfig(opts),
+    saveConfig: async (raw: unknown) => this.hooksService.saveConfig(raw),
+    getAudit: async (
+      opts: {
+        cursor?: string | number | null
+        limit?: number | string | null
+        eventName?: string | null
+        outcome?: string | null
+        sourceId?: string | null
+        runId?: string | null
+      } = {},
+    ) => this.hooksService.getAudit(opts),
+    getMetadata: () => this.hooksService.getMetadata(),
+    validateConfig: (input: Dict) => this.hooksService.validateConfig(input),
+    setProjectTrust: async (input: Dict) =>
+      this.hooksService.setProjectTrust(input),
+    testMatch: async (input: Dict) => this.hooksService.testMatch(input),
+    testRun: async (input: Dict): Promise<Dict> =>
+      this.hooksService.testRun(input),
+    cancelRun: async (input: Dict) => this.hooksService.cancelRun(input),
+  }
+
+  readonly model = {
+    getConfig: async () => this.modelService.getConfig(),
+    resolveProfile: (
+      input: Parameters<CoreModelService['resolveProfile']>[0],
+    ) => this.modelService.resolveProfile(input),
+    saveEntry: async (entry: Parameters<CoreModelService['saveEntry']>[0]) => {
+      this.assertMutation('model', 'saveEntry')
+      await this.hooksService.authorizeConfigChange('model.saveEntry', entry)
+      return this.modelService.saveEntry(entry)
+    },
+    savePolicy: async (
+      policy: Parameters<CoreModelService['savePolicy']>[0],
+    ) => {
+      this.assertMutation('model', 'savePolicy')
+      await this.hooksService.authorizeConfigChange('model.savePolicy', policy)
+      return this.modelService.savePolicy(policy)
+    },
+    deleteEntry: async ({ entryId }: { entryId: string }) => {
+      this.assertMutation('model', 'deleteEntry')
+      await this.hooksService.authorizeConfigChange('model.deleteEntry', {
+        entryId,
+      })
+      return this.modelService.deleteEntry(entryId)
+    },
+    activate: async ({ entryId }: { entryId: string }) => {
+      this.assertMutation('model', 'activate')
+      await this.hooksService.authorizeConfigChange('model.activate', {
+        entryId,
+      })
+      return this.modelService.activate(entryId)
+    },
+    setReasoningEffort: async ({
+      entryId,
+      reasoningEffort,
+    }: {
+      entryId: string
+      reasoningEffort: string | null
+    }) => {
+      this.assertMutation('model', 'setReasoningEffort')
+      await this.hooksService.authorizeConfigChange(
+        'model.setReasoningEffort',
+        { entryId, reasoningEffort },
+      )
+      return this.modelService.setReasoningEffort(entryId, reasoningEffort)
+    },
+    discoverModels: async (body: Dict) =>
+      this.modelService.discoverModels(body),
+    test: async (body: Dict): Promise<Dict> => this.modelService.test(body),
+  }
+
+  readonly onboarding = {
+    getProfileStatus: () => this.loop.profileOnboardingPayload(),
+    startProfileInterview: () =>
+      this.loop.startProfileInterview({ manual: true }),
+    skipProfileInterview: async () => {
+      const state = this.loop.profileOnboardingPayload()
+      if (state.interactionId) {
+        const pending = this.loop.controlManager.payload().pending
+        if (pending?.id === state.interactionId)
+          await this.control.cancelInteraction(state.interactionId)
+      }
+      return this.loop.skipProfileInterview()
+    },
+  }
+
+  readonly control = {
+    get: () => this.interactionService.get(),
+    setPermissionMode: (mode: string) =>
+      this.interactionService.setPermissionMode(mode),
+    setMode: (mode: string) => this.interactionService.setMode(mode),
+    answerInteraction: async (
+      id: string,
+      answers: Dict,
+      opts: InteractionResumeOptions = {},
+    ): Promise<Dict> =>
+      this.interactionService.answerInteraction(id, answers, opts),
+    commentPlan: (
+      id: string,
+      comment: string,
+      opts: InteractionResumeOptions = {},
+    ): Promise<Dict> => this.interactionService.commentPlan(id, comment, opts),
+    approvePlan: async (
+      id: string,
+      opts: InteractionResumeOptions = {},
+    ): Promise<Dict> => this.interactionService.approvePlan(id, opts),
+    cancelInteraction: async (id: string): Promise<Dict> =>
+      this.interactionService.cancelInteraction(id),
+  }
+
+  readonly plans = {
+    list: (): Dict[] => this.planService.list(),
+    get: (planId: string): Dict | null => this.planService.get(planId),
+  }
+
+  readonly goals = {
+    start: (input: Parameters<GoalService['start']>[0]) =>
+      this.goalService.start(input),
+    list: (input: { sessionId?: string | null } = {}) =>
+      this.goalService.list(input),
+    get: (goalId: string) => this.goalService.get(goalId),
+    pause: (goalId: string) => this.goalService.pause(goalId),
+    resume: (goalId: string) => this.goalService.resume(goalId),
+    replace: (input: Parameters<GoalService['replace']>[0]) =>
+      this.goalService.replace(input),
+    cancel: (goalId: string, reason?: string | null) =>
+      this.goalService.cancel(goalId, reason),
+  }
+
+  readonly scheduler = {
+    get: () => ({
+      status: this.loop.schedulerService.status(),
+      jobs: this.loop.schedulerService
+        .listJobs({ includeDisabled: true })
+        .map(schedulerJobPublicPayload),
+      diagnostics: this.loop.schedulerStore.diagnostics(),
+    }),
+    createJob: (args: Dict) => {
+      this.assertMutation('scheduler', 'create')
+      const schedule = SchedulerSchedule.fromDict(
+        requiredRecord(args.schedule, 'schedule'),
+      )
+      const payload = schedulerPayloadFromApi(
+        requiredRecord(args.payload, 'payload'),
+      )
+      const job = this.loop.schedulerService.addJob({
+        name: String(args.name ?? '').trim() || 'Scheduled job',
+        schedule,
+        payload,
+        deleteAfterRun: Boolean(
+          args.deleteAfterRun ?? args.delete_after_run ?? false,
+        ),
+        misfirePolicy: schedulerMisfirePolicyFromApi(args.misfirePolicy),
+      })
+      return {
+        job: schedulerJobPublicPayload(job),
+        scheduler: this.scheduler.get(),
+      }
+    },
+    updateJob: (jobId: string, args: Dict) => {
+      this.assertMutation('scheduler', 'update')
+      const current = this.loop.schedulerService.getJob(jobId)
+      if (!current) throw new Error(`scheduler job not found: ${jobId}`)
+      if (current.protected)
+        throw new Error(`scheduler job is protected: ${jobId}`)
+      const result = this.loop.schedulerService.updateJob(jobId, {
+        name:
+          args.name === undefined || args.name === null
+            ? undefined
+            : String(args.name),
+        schedule: isRecord(args.schedule)
+          ? SchedulerSchedule.fromDict(args.schedule)
+          : undefined,
+        payload: isRecord(args.payload)
+          ? schedulerPayloadFromApi(args.payload, current.payload)
+          : undefined,
+        deleteAfterRun:
+          args.deleteAfterRun === undefined &&
+          args.delete_after_run === undefined
+            ? undefined
+            : Boolean(args.deleteAfterRun ?? args.delete_after_run),
+        misfirePolicy:
+          args.misfirePolicy === undefined
+            ? undefined
+            : schedulerMisfirePolicyFromApi(args.misfirePolicy),
+      })
+      if (result === 'not_found')
+        throw new Error(`scheduler job not found: ${jobId}`)
+      if (result === 'protected')
+        throw new Error(`scheduler job is protected: ${jobId}`)
+      return {
+        job: schedulerJobPublicPayload(result),
+        scheduler: this.scheduler.get(),
+      }
+    },
+    runJob: async (jobId: string) => {
+      this.assertMutation('scheduler', 'run')
+      const ran = await this.loop.schedulerService.runJob(jobId, {
+        force: true,
+      })
+      if (!ran) throw new Error(`scheduler job not found: ${jobId}`)
+      return { scheduler: this.scheduler.get() }
+    },
+    pauseJob: (jobId: string) => {
+      this.assertMutation('scheduler', 'pause')
+      const job = this.loop.schedulerService.enableJob(jobId, false)
+      if (job === 'not_found')
+        throw new Error(`scheduler job not found: ${jobId}`)
+      return {
+        job: schedulerJobPublicPayload(job),
+        scheduler: this.scheduler.get(),
+      }
+    },
+    resumeJob: (jobId: string) => {
+      this.assertMutation('scheduler', 'resume')
+      const job = this.loop.schedulerService.enableJob(jobId, true)
+      if (job === 'not_found')
+        throw new Error(`scheduler job not found: ${jobId}`)
+      return {
+        job: schedulerJobPublicPayload(job),
+        scheduler: this.scheduler.get(),
+      }
+    },
+    deleteJob: (jobId: string) => {
+      this.assertMutation('scheduler', 'delete')
+      const result = this.loop.schedulerService.removeJob(jobId)
+      if (result === 'not_found')
+        throw new Error(`scheduler job not found: ${jobId}`)
+      if (result === 'protected')
+        throw new Error(`scheduler job is protected: ${jobId}`)
+      if (result === 'active')
+        throw new Error(`scheduler job is active: ${jobId}`)
+      return { deleted: jobId, scheduler: this.scheduler.get() }
+    },
+  }
+
+  readonly sessions = {
+    list: (opts: { includeArchived?: boolean } = {}) => {
+      this.loop.reconcileSessionControlPending()
+      return this.sessionRepository.list({
+        includeArchived: opts.includeArchived ?? false,
+      })
+    },
+    create: (
+      opts: {
+        title?: string
+        mode?: string
+        project?: Dict | null
+        project_path?: string | null
+      } = {},
+    ) => {
+      let project = opts.project ?? null
+      const mode = opts.mode === 'build' ? 'build' : 'chat'
+      if (mode === 'build' && !project) {
+        const projectPath = String(opts.project_path || '').trim()
+        if (!projectPath) throw new Error('Build session requires project_path')
+        project = this.loop.projectStore.resolve(projectPath) as unknown as Dict
+      }
+      return this.sessionRepository.create(opts.title ?? 'Untitled', {
+        mode,
+        project,
+      })
+    },
+    rename: async (
+      sessionId: string,
+      patch: string | { title?: string | null; archived?: boolean | null },
+    ) => {
+      if (typeof patch === 'object' && patch !== null && 'archived' in patch) {
+        if (patch.archived)
+          await this.goalService.pauseBySession(sessionId, 'session_archived')
+        const entry = patch.archived
+          ? this.sessionRepository.archive(sessionId)
+          : this.loop.sessionStore.restore(sessionId)
+        if (!entry) throw new Error('session not found')
+        return entry
+      }
+      const title =
+        typeof patch === 'string' ? patch : String(patch?.title ?? '').trim()
+      if (!title) throw new Error('title is required')
+      if (!this.sessionRepository.rename(sessionId, title))
+        throw new Error('session not found')
+      const entry = this.sessionRepository.get(sessionId)
+      if (!entry) throw new Error('session not found')
+      return entry
+    },
+    delete: async (sessionId: string): Promise<Dict> => {
+      if (!this.sessionRepository.get(sessionId))
+        throw new Error('cannot delete session')
+      if (this.sessionRepository.list({ includeArchived: true }).length <= 1)
+        throw new CoreMutationGuardError(
+          409,
+          'Cannot delete the last persisted session.',
+        )
+      const pausedGoal = await this.goalService.pauseBySession(
+        sessionId,
+        'session_delete_pending',
+      )
+      const activeGoal = pausedGoal
+        ? this.loop.goalCoordinator.active(pausedGoal.id)
+        : null
+      if (activeGoal) await activeGoal.promise
+      await this.loop.endSession(sessionId, 'deleted')
+      if (!this.sessionRepository.delete(sessionId))
+        throw new Error('cannot delete session')
+      this.terminalService.closeSession(sessionId)
+      await this.goalService.cancelAndSettleBySession(
+        sessionId,
+        'session_deleted',
+      )
+      const removedGoals = await this.loop.goalStore.deleteBySession(sessionId)
+      const removedTasks =
+        this.loop.taskManager.store.deleteBySession(sessionId)
+      const removedPlans =
+        this.loop.controlManager.planStore.deleteBySession(sessionId)
+      return { deleted: true, removedGoals, removedTasks, removedPlans }
+    },
+    activate: (sessionId: string) => {
+      this.loop.activateSession(sessionId)
+      return { active: sessionId, complete: true }
+    },
+  }
+
+  readonly team = {
+    get: () => this.teamService.get(),
+    getMember: (name: string) => this.teamService.getMember(name),
+    spawnMember: (opts: {
+      name: string
+      role: string
+      task?: string | null
+      agent_type?: string | null
+    }) => this.teamService.spawnMember(opts),
+    sendMessage: (opts: { to: string; content: string; wake?: boolean }) =>
+      this.teamService.sendMessage(opts),
+    wakeMember: (
+      name: string,
+      opts: { purpose?: string; recovery?: 'auto' | 'retry' } = {},
+    ) => this.teamService.wakeMember(name, opts),
+    shutdownMember: (name: string) => this.teamService.shutdownMember(name),
+  }
+
+  readonly processes = {
+    list: (opts: { activeOnly?: boolean } = {}): Dict[] =>
+      this.loop.processRuntime
+        .list({
+          activeOnly: opts.activeOnly,
+          sessionId: this.loop.activeSessionId,
+        })
+        .map((receipt) => receipt as unknown as Dict),
+    cancel: (
+      processId: string,
+      opts: { leaseId: string; reason?: string },
+    ): Dict => {
+      this.assertMutation('processes', 'cancel')
+      this.assertProcessOwner(processId)
+      return this.loop.processRuntime.cancel(
+        processId,
+        opts.leaseId,
+        opts.reason,
+      ) as unknown as Dict
+    },
+    reparent: (
+      processId: string,
+      opts: {
+        leaseId: string
+        ownerKind: 'session' | 'task' | 'terminal'
+        ownerId: string
+      },
+    ): Dict => {
+      this.assertMutation('processes', 'reparent')
+      this.assertProcessOwner(processId)
+      return this.loop.processRuntime.reparent(processId, opts.leaseId, {
+        kind: opts.ownerKind,
+        id: opts.ownerId,
+        sessionId: this.loop.activeSessionId,
+      }) as unknown as Dict
+    },
+  }
+
+  readonly tasks = {
+    list: (opts: { sessionId?: string | null } = {}): Dict[] => {
+      const sessionId = String(opts.sessionId ?? '').trim()
+      const records = this.loop.taskManager.store.list()
+      const filtered = sessionId
+        ? records.filter((task) => task.session_id === sessionId)
+        : records
+      return filtered.map((task) => task.toDict() as unknown as Dict)
+    },
+    get: (taskId: string): Dict | null =>
+      (this.loop.taskManager.store.get(taskId)?.toDict() as unknown as Dict) ??
+      null,
+    transcript: (
+      taskId: string,
+      opts: { offset?: number; limit?: number } = {},
+    ) => new SidechainTranscript(this.paths.stateRoot, taskId).read(opts),
+    wait: async (
+      taskId: string,
+      opts: { timeoutMs?: number } = {},
+    ): Promise<Dict | null> => {
+      this.loop.subagentSupervisor.assertOwner(
+        taskId,
+        this.loop.activeSessionId,
+      )
+      const terminal = await this.loop.subagentSupervisor.wait(taskId, opts)
+      if (!terminal) return null
+      return {
+        status: terminal.status,
+        task: terminal.record.toDict(),
+        ...(terminal.reason ? { reason: terminal.reason } : {}),
+        ...(terminal.error ? { error: terminal.error } : {}),
+      }
+    },
+    readOutput: async (taskId: string, opts: { cursor?: string } = {}) => {
+      this.loop.subagentSupervisor.assertOwner(
+        taskId,
+        this.loop.activeSessionId,
+      )
+      const output = await this.loop.subagentSupervisor.readOutput(
+        taskId,
+        opts.cursor,
+      )
+      return {
+        content: output.content,
+        nextCursor: output.nextCursor,
+        eof: output.eof,
+        truncated: output.truncated,
+        truncation: output.truncation,
+      }
+    },
+    cancel: async (
+      taskId: string,
+      opts: { reason?: string } = {},
+    ): Promise<Dict> => {
+      this.assertMutation('tasks', 'cancel')
+      this.loop.subagentSupervisor.assertOwner(
+        taskId,
+        this.loop.activeSessionId,
+      )
+      const task = await this.loop.subagentSupervisor.cancel(
+        taskId,
+        opts.reason,
+      )
+      return task.toDict() as unknown as Dict
+    },
+    resume: async (
+      taskId: string,
+      opts: {
+        mode?: 'foreground' | 'background'
+        ttlMs?: number
+      } = {},
+    ): Promise<Dict> => {
+      this.assertMutation('tasks', 'resume')
+      this.loop.subagentSupervisor.assertOwner(
+        taskId,
+        this.loop.activeSessionId,
+      )
+      const launched = await this.loop.subagentSupervisor.resume(taskId, opts)
+      return {
+        task: launched.task.toDict(),
+        mode: launched.mode,
+      }
+    },
+  }
+
+  readonly workspace = {
+    snapshot: async (input: {
+      sessionId: string
+    }): Promise<WorkspaceSnapshot> => {
+      const session = this.requireReadableSession(
+        input.sessionId,
+        'workspace.snapshot',
+      ) as {
+        id: string
+        mode?: string | null
+        project_id?: string | null
+        project_path?: string | null
+        project_name?: string | null
+        title?: string | null
+      }
+      if (session.mode !== 'build' || !session.project_path)
+        throw new WorkspaceOperationError(
+          'workspace_project_required',
+          '当前会话没有绑定 Build 项目。',
+        )
+      let git: GitStatusResult | { repository: false; error: string }
+      let worktrees: WorkspaceSnapshot['worktrees'] = {
+        worktrees: [],
+        owned: [],
+      }
+      try {
+        git = await this.workspaceGitService.status(input)
+        worktrees = await this.workspaceGitService.worktrees(input)
+      } catch (error) {
+        git = {
+          repository: false,
+          error:
+            error instanceof WorkspaceOperationError
+              ? error.message
+              : '无法读取 Git 状态。',
+        }
+      }
+      const plans = this.loop.controlManager.planStore
+        .list()
+        .filter((plan) => plan.sessionId === input.sessionId)
+        .sort((left, right) => right.updatedAt - left.updatedAt)
+      const currentPlan = plans.find(
+        (plan) => !['completed', 'failed', 'cancelled'].includes(plan.status),
+      )
+      const goals = await this.goalService.list({ sessionId: input.sessionId })
+      const tasks = this.loop.taskManager.store
+        .list()
+        .filter((task) => task.session_id === input.sessionId)
+      const subagents = tasks
+        .filter((task) => task.kind === 'subagent')
+        .sort((left, right) => {
+          const leftActive = ['pending', 'running'].includes(left.status)
+          const rightActive = ['pending', 'running'].includes(right.status)
+          if (leftActive !== rightActive) return leftActive ? -1 : 1
+          return right.started_at - left.started_at
+        })
+        .slice(0, 12)
+        .map(projectWorkspaceSubagent)
+      const team = projectWorkspaceTeam(
+        this.loop.teamManagerForSession(session as never)?.payload() ?? null,
+      )
+      const currentGoal =
+        goals.find(
+          (goal) => !['completed', 'cancelled', 'failed'].includes(goal.status),
+        ) ?? null
+      return {
+        version: 1,
+        sessionId: input.sessionId,
+        project: {
+          id: session.project_id ?? null,
+          name:
+            String(session.project_name ?? session.title ?? '').trim() ||
+            session.project_path.split(/[\\/]/).pop() ||
+            '项目',
+          path: this.workspaceBindings.resolve(
+            session.id,
+            resolve(session.project_path),
+          ),
+        },
+        git,
+        worktrees,
+        gitReceipts: this.gitReceipts.list(input.sessionId).slice(-8),
+        plan: projectWorkspacePlan(currentPlan ?? null),
+        goal: projectWorkspaceGoal(currentGoal),
+        subagents,
+        team,
+        processes: this.loop.processRuntime
+          .list({ sessionId: input.sessionId, activeOnly: true })
+          .map(projectWorkspaceProcess),
+        terminals: this.terminalService
+          .list(input)
+          .map(projectWorkspaceTerminal),
+        capturedAt: Date.now(),
+      }
+    },
+  }
+
+  readonly git = {
+    status: (input: Parameters<WorkspaceGitService['status']>[0]) =>
+      this.workspaceGitService.status(input),
+    repository: (input: Parameters<WorkspaceGitService['repository']>[0]) =>
+      this.workspaceGitService.repository(input),
+    log: (input: Parameters<WorkspaceGitService['log']>[0]) =>
+      this.workspaceGitService.log(input),
+    worktrees: (input: Parameters<WorkspaceGitService['worktrees']>[0]) =>
+      this.workspaceGitService.worktrees(input),
+    enterWorktree: (
+      input: Parameters<WorkspaceGitService['enterWorktree']>[0],
+    ) =>
+      this.withWorkspaceGitMutation(input.sessionId, () =>
+        this.workspaceGitService.enterWorktree(input),
+      ),
+    exitWorktree: (input: Parameters<WorkspaceGitService['exitWorktree']>[0]) =>
+      this.withWorkspaceGitMutation(input.sessionId, () =>
+        this.workspaceGitService.exitWorktree(input),
+      ),
+    pullRequest: (input: Parameters<WorkspaceGitService['pullRequest']>[0]) =>
+      this.workspaceGitService.pullRequest(input),
+    publishPreview: (
+      input: Parameters<WorkspaceGitService['publishPreview']>[0],
+    ) => this.workspaceGitService.publishPreview(input),
+    publishPullRequest: (
+      input: Parameters<WorkspaceGitService['publishPullRequest']>[0],
+    ) =>
+      this.withWorkspaceGitMutation(input.sessionId, () =>
+        this.workspaceGitService.publishPullRequest(input),
+      ),
+    readyPullRequest: (
+      input: Parameters<WorkspaceGitService['readyPullRequest']>[0],
+    ) =>
+      this.withWorkspaceGitMutation(input.sessionId, () =>
+        this.workspaceGitService.readyPullRequest(input),
+      ),
+    mergePullRequest: (
+      input: Parameters<WorkspaceGitService['mergePullRequest']>[0],
+    ) =>
+      this.withWorkspaceGitMutation(input.sessionId, () =>
+        this.workspaceGitService.mergePullRequest(input),
+      ),
+    closePullRequest: (
+      input: Parameters<WorkspaceGitService['closePullRequest']>[0],
+    ) =>
+      this.withWorkspaceGitMutation(input.sessionId, () =>
+        this.workspaceGitService.closePullRequest(input),
+      ),
+    diff: (input: Parameters<WorkspaceGitService['diff']>[0]) =>
+      this.workspaceGitService.diff(input),
+    branches: (input: Parameters<WorkspaceGitService['branches']>[0]) =>
+      this.workspaceGitService.branches(input),
+    compare: (input: Parameters<WorkspaceGitService['compare']>[0]) =>
+      this.workspaceGitService.compare(input),
+    stage: (input: Parameters<WorkspaceGitService['stage']>[0]) =>
+      this.withWorkspaceGitMutation(input.sessionId, () =>
+        this.workspaceGitService.stage(input),
+      ),
+    unstage: (input: Parameters<WorkspaceGitService['unstage']>[0]) =>
+      this.withWorkspaceGitMutation(input.sessionId, () =>
+        this.workspaceGitService.unstage(input),
+      ),
+    discard: (input: Parameters<WorkspaceGitService['discard']>[0]) =>
+      this.withWorkspaceGitMutation(input.sessionId, () =>
+        this.workspaceGitService.discard(input),
+      ),
+    commit: (input: Parameters<WorkspaceGitService['commit']>[0]) =>
+      this.withWorkspaceGitMutation(input.sessionId, () =>
+        this.workspaceGitService.commit(input),
+      ),
+    fetch: (input: Parameters<WorkspaceGitService['fetch']>[0]) =>
+      this.withWorkspaceGitMutation(input.sessionId, () =>
+        this.workspaceGitService.fetch(input),
+      ),
+    pull: (input: Parameters<WorkspaceGitService['pull']>[0]) =>
+      this.withWorkspaceGitMutation(input.sessionId, () =>
+        this.workspaceGitService.pull(input),
+      ),
+    push: (input: Parameters<WorkspaceGitService['push']>[0]) =>
+      this.withWorkspaceGitMutation(input.sessionId, () =>
+        this.workspaceGitService.push(input),
+      ),
+    createBranch: (input: Parameters<WorkspaceGitService['createBranch']>[0]) =>
+      this.withWorkspaceGitMutation(input.sessionId, () =>
+        this.workspaceGitService.createBranch(input),
+      ),
+    switchBranch: (input: Parameters<WorkspaceGitService['switchBranch']>[0]) =>
+      this.withWorkspaceGitMutation(input.sessionId, () =>
+        this.workspaceGitService.switchBranch(input),
+      ),
+  }
+
+  readonly files = {
+    list: (
+      input: Parameters<WorkspaceFilesService['list']>[0],
+    ): Promise<WorkspaceFileListResult> =>
+      this.workspaceFilesService.list(input),
+    search: (
+      input: Parameters<WorkspaceFilesService['search']>[0],
+    ): Promise<WorkspaceFileListResult> =>
+      this.workspaceFilesService.search(input),
+    read: (
+      input: Parameters<WorkspaceFilesService['read']>[0],
+    ): Promise<WorkspaceFileReadResult> =>
+      this.workspaceFilesService.read(input),
+  }
+
+  readonly terminals = {
+    list: (input: Parameters<TerminalService['list']>[0]) =>
+      this.terminalService.list(input),
+    create: (input: Parameters<TerminalService['create']>[0]) =>
+      this.terminalService.create(input),
+    read: (input: Parameters<TerminalService['read']>[0]) =>
+      this.terminalService.read(input),
+    write: (input: Parameters<TerminalService['write']>[0]) => {
+      this.terminalService.write(input)
+      return { written: true }
+    },
+    resize: (input: Parameters<TerminalService['resize']>[0]) => {
+      this.terminalService.resize(input)
+      return { resized: true }
+    },
+    close: (input: Parameters<TerminalService['close']>[0]) => {
+      this.terminalService.close(input)
+      return { closed: true }
+    },
+  }
+
+  readonly tools = {
+    readResult: (opts: { ref: string }) => {
+      const content = new ToolResultStore(this.paths.stateRoot).readArtifact(
+        String(opts?.ref ?? ''),
+      )
+      return { content }
+    },
+  }
+
+  readonly memory = {
+    get: () => this.memoryService.getMemory(),
+    save: (content: string) => this.memoryService.saveMemory(content),
+    getEpisode: (date?: string | null) =>
+      this.memoryService.getEpisode(String(date ?? '')),
+    saveEpisode: (content: string, date?: string | null) =>
+      this.memoryService.saveEpisode(content, String(date ?? '')),
+    listVersions: (opts: { limit?: number; target?: string | null } = {}) =>
+      this.memoryService.listVersions(opts),
+    getVersion: (versionId: string) => this.memoryService.getVersion(versionId),
+    restoreVersion: (versionId: string) =>
+      this.memoryService.restoreVersion(versionId),
+    getWatchlist: () => this.memoryService.getWatchlist(),
+    saveWatchlist: (content: string) =>
+      this.memoryService.saveWatchlist(content),
+    checkWatchlist: async () => this.memoryService.checkWatchlist(),
+    tokens: () => this.memoryService.tokens(),
+    compact: (opts: { force?: boolean } = {}) =>
+      this.memoryService.compact(opts),
+    explainContext: (
+      opts: { sessionId?: string | null; turnId?: string | null } = {},
+    ) => this.memoryService.explainContext(opts),
+  }
+
+  readonly projects = {
+    list: () => this.loop.projectStore.list(),
+    resolve: (path: string) => this.loop.projectStore.resolve(path),
+  }
+
+  readonly skills = {
+    tools: () => this.skillService.tools(),
+    list: () => this.skillService.list(),
+    get: (name: string) => this.skillService.get(name),
+    create: (input: Parameters<CoreSkillService['create']>[0]) => {
+      this.assertMutation('skills', 'create')
+      return this.skillService.create(input)
+    },
+    validate: (input: Parameters<CoreSkillService['validate']>[0]) =>
+      this.skillService.validate(input),
+    package: (input: Parameters<CoreSkillService['package']>[0]) => {
+      this.assertMutation('skills', 'package')
+      return this.skillService.package(input)
+    },
+    save: (name: string, content: string) => {
+      this.assertMutation('skills', 'save')
+      return this.skillService.save(name, content)
+    },
+    delete: (name: string) => {
+      this.assertMutation('skills', 'delete')
+      return this.skillService.delete(name)
+    },
+    previewInstall: (
+      input: Parameters<CoreSkillService['previewInstall']>[0],
+    ) => this.skillService.previewInstall(input),
+    confirmInstall: (
+      input: Parameters<CoreSkillService['confirmInstall']>[0],
+    ) => {
+      this.assertMutation('skills', 'confirm install')
+      return this.skillService.confirmInstall(input)
+    },
+  }
+
+  readonly environment = {
+    getStatus: (
+      input: Parameters<CoreEnvironmentService['getStatus']>[0] = {},
+    ) => this.environmentService.getStatus(input),
+    createInstallPlan: (
+      input: Parameters<CoreEnvironmentService['createInstallPlan']>[0],
+    ) => this.environmentService.createInstallPlan(input),
+    install: (input: Parameters<CoreEnvironmentService['install']>[0]) => {
+      this.assertMutation('environment', 'install')
+      return this.environmentService.install(input)
+    },
+    cancelInstall: (
+      input: Parameters<CoreEnvironmentService['cancelInstall']>[0],
+    ) => {
+      this.assertMutation('environment', 'cancel install')
+      return this.environmentService.cancelInstall(input)
+    },
+    getInstallLog: (
+      input: Parameters<CoreEnvironmentService['getInstallLog']>[0],
+    ) => this.environmentService.getInstallLog(input),
+  }
+
+  readonly sidebar = {
+    get: (): Dict =>
+      normalizeSidebarState(
+        readJson(
+          join(this.paths.memoryRoot, 'sidebar_state.json'),
+          readJson(join(this.root, 'memory', 'sidebar_state.json'), {}),
+        ),
+      ),
+    patch: (patch: Dict): Dict => {
+      const path = join(this.paths.memoryRoot, 'sidebar_state.json')
+      const next = normalizeSidebarState({ ...readJson(path, {}), ...patch })
+      atomicWriteText(path, JSON.stringify(next, null, 2) + '\n')
+      return next
+    },
+  }
+
+  readonly diagnostics = {
+    get: async () => this.diagnosticsService.payload(),
+  }
+
+  private async commandSessionContext(sessionId: string): Promise<{
+    exists: boolean
+    hasProject: boolean
+    hasGit: boolean
+  }> {
+    const session = this.sessionRepository.get(sessionId)
+    if (!session) return { exists: false, hasProject: false, hasGit: false }
+    const hasProject = session.mode === 'build' && Boolean(session.project_path)
+    if (!hasProject) return { exists: true, hasProject: false, hasGit: false }
+    try {
+      await this.workspaceGitService.status({ sessionId })
+      return { exists: true, hasProject: true, hasGit: true }
+    } catch {
+      return { exists: true, hasProject: true, hasGit: false }
+    }
+  }
+
+  private commandSkillsForSession(sessionId: string): SkillInfoPayload[] {
+    const resolved = this.loop.resolvedSkillsForSession(sessionId)
+    if (!resolved.length) return this.skillService.list()
+    return resolved.map((skill) => this.skillService.describeResolved(skill))
+  }
+
+  private commandSessionBusy(sessionId: string): boolean {
+    const actor = this.loop.sessionRuntimes.get(sessionId)
+    return (
+      this.loop.activeTasks.hasActiveForSession(sessionId) ||
+      Boolean(actor?.activeCommandId) ||
+      Number(actor?.snapshot().queued ?? 0) > 0
+    )
+  }
+
+  private assertClearBoundary(sessionId: string): void {
+    const session = this.requireReadableSession(
+      sessionId,
+      'commands.clear',
+    ) as {
+      control_pending?: unknown
+    }
+    if (session.control_pending)
+      throw new CoreMutationGuardError(
+        409,
+        '请先处理当前 Ask、Permission 或 Plan 审批，再创建新上下文。',
+      )
+    if (this.chatService.listQueuedPrompts({ sessionId }).length)
+      throw new CoreMutationGuardError(
+        409,
+        '请先处理当前会话中的排队消息，再创建新上下文。',
+      )
+  }
+
+  private async completeCommand(
+    name: string,
+    rawArgs: string,
+    _cursor: number,
+    sessionId: string,
+  ): Promise<CommandCompletion[]> {
+    const query = String(rawArgs ?? '')
+      .trim()
+      .toLowerCase()
+    if (name === 'model') {
+      const config = await this.modelService.getConfig()
+      return config.models
+        .filter((item) =>
+          [item.entryId, item.modelId, item.effectiveDisplayName]
+            .join(' ')
+            .toLowerCase()
+            .includes(query),
+        )
+        .map((item) => ({
+          value: item.entryId,
+          label: item.effectiveDisplayName,
+          description: `${item.provider} · ${item.modelId}`,
+          kind: 'model',
+        }))
+    }
+    if (name === 'effort') {
+      const config = await this.modelService.getConfig()
+      return (config.current?.reasoningEfforts ?? [])
+        .filter((value) => value.toLowerCase().includes(query))
+        .map((value) => ({ value, label: value, kind: 'reasoning_effort' }))
+    }
+    if (name === 'resume') {
+      return this.loop.sessionStore
+        .list({ includeArchived: true })
+        .filter((item) =>
+          [item.id, item.title, item.preview]
+            .join(' ')
+            .toLowerCase()
+            .includes(query),
+        )
+        .slice(0, 20)
+        .map((item) => ({
+          value: item.id,
+          label: item.title,
+          description: item.preview,
+          kind: 'session',
+        }))
+    }
+    if (name === 'skills') {
+      return this.skillService
+        .list()
+        .filter((item) => item.status === 'active' && item.name.includes(query))
+        .map((item) => ({
+          value: item.name,
+          label: item.name,
+          description: item.description,
+          kind: 'skill',
+        }))
+    }
+    if (name === 'tools') {
+      return this.skillService
+        .tools()
+        .filter((item) =>
+          `${item.name} ${item.description}`.toLowerCase().includes(query),
+        )
+        .slice(0, 30)
+        .map((item) => ({
+          value: item.name,
+          label: item.name,
+          description: item.description,
+          kind: item.source === 'mcp' ? 'mcp_tool' : 'tool',
+        }))
+    }
+    if (name === 'files' || name === 'diff') {
+      if (!query) return []
+      try {
+        const result = await this.workspaceFilesService.search({
+          sessionId,
+          query,
+          limit: 20,
+        })
+        return result.entries.map((entry) => ({
+          value: entry.path,
+          label: entry.name,
+          description: entry.path,
+          kind: entry.kind,
+        }))
+      } catch {
+        return []
+      }
+    }
+    return []
+  }
+
+  private async executeBuiltinCommand(
+    context: CommandExecutionContext,
+  ): Promise<CommandInvocationResult> {
+    const { descriptor, parsed, sessionId, invocationId } = context
+    const name = descriptor.name
+    const tail = parsed.args.join(' ').trim()
+    const completed = (
+      code: string,
+      message: string,
+      data?: Record<string, unknown>,
+    ): CommandInvocationResult => ({
+      status: 'completed',
+      receipt: {
+        commandId: descriptor.id,
+        code,
+        message,
+        ...(data ? { data } : {}),
+      },
+    })
+
+    if (name === 'reload') {
+      await this.loop.refreshModelConfig()
+      await this.loop.reloadMcp()
+      this.loop.refreshRuntimeContext()
+      return completed('reloaded', '工作台状态已刷新。')
+    }
+    if (name === 'clear') {
+      const result = await this.sessionTransitionService.clear({
+        sessionId,
+        invocationId,
+      })
+      return completed('session_transitioned', '已创建全新上下文。', {
+        session: result.session as unknown as Record<string, unknown>,
+        previousSessionId: sessionId,
+      })
+    }
+    if (name === 'compact') {
+      const result = await this.memoryService.compact({
+        force: true,
+        sessionId,
+        instructions: tail,
+      })
+      return completed('compacted', '当前会话已压缩并保留摘要。', {
+        result: result as unknown as Record<string, unknown>,
+      })
+    }
+    if (name === 'copy')
+      return completed('copy_last_assistant', '已准备复制最后一条回复。')
+    if (name === 'stop') {
+      const tasks = this.loop.activeTasks
+        .list()
+        .filter((task) => task.session_id === sessionId)
+      for (const task of tasks) {
+        if (task.kind === 'goal')
+          await this.goalService.pause(
+            task.id.replace(/^goal:/, ''),
+            sessionId,
+            'user_stop',
+          )
+        this.loop.activeTasks.cancel({ taskId: task.id })
+      }
+      const actorCancelled = this.loop.sessionRuntimes.cancel(sessionId)
+      const cancelled = tasks.length > 0 || actorCancelled
+      return completed(
+        cancelled ? 'stop_requested' : 'nothing_running',
+        cancelled ? '已请求停止当前任务。' : '当前没有正在运行的任务。',
+      )
+    }
+    if (name === 'rename' && tail) {
+      const session = await this.sessions.rename(sessionId, { title: tail })
+      return completed(
+        'session_renamed',
+        `会话已重命名为“${session.title}”。`,
+        {
+          session: session as unknown as Record<string, unknown>,
+        },
+      )
+    }
+    if (name === 'model' && tail) {
+      const config = await this.modelService.getConfig()
+      const model = config.models.find(
+        (item) => item.entryId === tail || item.modelId === tail,
+      )
+      if (!model)
+        return {
+          status: 'rejected',
+          code: 'model_not_found',
+          message: `找不到模型：${tail}`,
+        }
+      await this.model.activate({ entryId: model.entryId })
+      return completed(
+        'model_activated',
+        `已切换到 ${model.effectiveDisplayName}。`,
+      )
+    }
+    if (name === 'effort' && tail) {
+      const config = await this.modelService.getConfig()
+      if (!config.current)
+        return {
+          status: 'rejected',
+          code: 'model_unavailable',
+          message: '当前没有可用模型。',
+        }
+      await this.model.setReasoningEffort({
+        entryId: config.current.entryId,
+        reasoningEffort: tail,
+      })
+      return completed('effort_updated', `思考强度已切换为 ${tail}。`)
+    }
+    if (name === 'permissions' && tail) {
+      if (tail === 'status')
+        return {
+          status: 'opened',
+          surface: 'permissions',
+          params: {
+            rawArgs: '',
+            invokedName: parsed.name,
+            commandId: descriptor.id,
+          },
+        }
+      const mode =
+        tail === 'ask'
+          ? 'ask_before_edit'
+          : tail === 'smart' || tail === 'edits'
+            ? 'smart_auto'
+            : tail === 'full' || tail === 'auto'
+              ? 'full_access'
+              : null
+      if (!mode)
+        return {
+          status: 'rejected',
+          code: 'invalid_permission_mode',
+          message: '权限模式必须是 ask、smart 或 full。',
+        }
+      this.control.setPermissionMode(mode)
+      return completed('permission_mode_updated', '执行权限已更新。', { mode })
+    }
+    if (name === 'plan') return await this.executePlanCommand(context)
+    if (name === 'goal') return await this.executeGoalCommand(context)
+    if (name === 'continue') {
+      const promptId = this.scheduleCommandPrompt(context, '继续执行')
+      return { status: 'submitted', promptId }
+    }
+
+    if (descriptor.uiSurface) {
+      return {
+        status: 'opened',
+        surface: descriptor.uiSurface,
+        params: {
+          rawArgs: parsed.args.join(' '),
+          options: parsed.options,
+          invokedName: parsed.name,
+          commandId: descriptor.id,
+        },
+      }
+    }
+    return completed('completed', '命令已执行。')
+  }
+
+  private async executePlanCommand(
+    context: CommandExecutionContext,
+  ): Promise<CommandInvocationResult> {
+    const tail = context.parsed.args.join(' ').trim()
+    const normalized = tail.toLowerCase()
+    if (!tail || normalized === 'status' || normalized === 'open')
+      return {
+        status: 'opened',
+        surface: 'plan',
+        params: { action: normalized || 'open' },
+      }
+    if (normalized === 'on') {
+      await this.control.setMode('plan')
+      return commandCompleted(context, 'plan_enabled', 'Plan 模式已开启。')
+    }
+    if (normalized === 'off') {
+      const control = this.control.get()
+      const restore =
+        control.mode === 'plan' && control.previous_mode
+          ? control.previous_mode
+          : 'smart_auto'
+      await this.control.setMode(restore)
+      return commandCompleted(context, 'plan_disabled', 'Plan 模式已关闭。')
+    }
+    await this.control.setMode('plan')
+    const promptId = this.scheduleCommandPrompt(
+      context,
+      tail,
+      context.parsed.raw,
+    )
+    return { status: 'submitted', promptId }
+  }
+
+  private async executeGoalCommand(
+    context: CommandExecutionContext,
+  ): Promise<CommandInvocationResult> {
+    const legacyAction = context.parsed.name.startsWith('goal-')
+      ? context.parsed.name.slice('goal-'.length)
+      : ''
+    const explicitTail = context.parsed.args.join(' ').trim()
+    const tail = legacyAction
+      ? `${legacyAction}${explicitTail ? ` ${explicitTail}` : ''}`
+      : explicitTail
+    if (!tail || tail === 'status' || tail === 'list')
+      return {
+        status: 'opened',
+        surface: 'goal',
+        params: { action: tail || 'open' },
+      }
+    const goals = await this.goalService.list({ sessionId: context.sessionId })
+    const active = goals.find(
+      (goal) => goal.status !== 'completed' && goal.status !== 'cancelled',
+    )
+    if (tail === 'pause' || tail === 'resume' || tail === 'cancel') {
+      if (!active)
+        return {
+          status: 'rejected',
+          code: 'goal_not_found',
+          message: '当前会话没有可操作的 Goal。',
+        }
+      if (tail === 'pause')
+        await this.goalService.pause(active.id, context.sessionId)
+      else if (tail === 'resume')
+        await this.goalService.resume(active.id, context.sessionId)
+      else
+        await this.goalService.cancel(
+          active.id,
+          'slash_command',
+          context.sessionId,
+        )
+      return commandCompleted(
+        context,
+        `goal_${tail}`,
+        `Goal 已${tail === 'pause' ? '暂停' : tail === 'resume' ? '恢复' : '取消'}。`,
+      )
+    }
+    const outcome = tail.replace(/^start\s+/i, '').trim()
+    if (!outcome)
+      return { status: 'opened', surface: 'goal', params: { action: 'start' } }
+    await this.goalService.start({ outcome, sessionId: context.sessionId })
+    return commandCompleted(context, 'goal_started', 'Goal 已启动。')
+  }
+
+  private async submitSkillCommand(
+    context: CommandExecutionContext,
+  ): Promise<CommandInvocationResult> {
+    const binding = context.descriptor.skill
+    if (!binding)
+      return {
+        status: 'rejected',
+        code: 'skill_binding_missing',
+        message: 'Skill 命令绑定缺失。',
+      }
+    const task = context.parsed.args.join(' ').trim()
+    let forkAgent = binding.agent
+    if (binding.context === 'fork') {
+      forkAgent =
+        forkAgent ||
+        (this.loop.subagentRegistry.get('quick_check')
+          ? 'quick_check'
+          : this.loop.subagentRegistry.names({ includeAliases: false })[0] ||
+            null)
+      const spec = forkAgent ? this.loop.subagentRegistry.get(forkAgent) : null
+      if (!spec)
+        return {
+          status: 'rejected',
+          code: 'skill_fork_agent_unavailable',
+          message: 'Skill 指定的子代理不可用。',
+        }
+      const unsupportedTools = binding.allowedTools.filter(
+        (tool) => !spec.toolNames.includes(tool),
+      )
+      if (unsupportedTools.length)
+        return {
+          status: 'rejected',
+          code: 'skill_fork_tool_scope_invalid',
+          message: `Skill 请求了子代理未获授权的工具：${unsupportedTools.join('、')}`,
+        }
+    }
+    const content =
+      binding.context === 'fork'
+        ? `[CONTROL:SKILL_FORK]\nAgent: ${forkAgent}\nAllowed tools: ${binding.allowedTools.join(', ') || 'agent definition'}\nEffort: ${binding.effort || 'inherit'}\nTask: ${task || '按 Skill 默认流程执行'}`
+        : task || '按 Skill 默认流程执行'
+    const promptId = this.scheduleCommandPrompt(
+      context,
+      content,
+      context.parsed.raw,
+      binding.name,
+    )
+    return { status: 'submitted', promptId }
+  }
+
+  private scheduleCommandPrompt(
+    context: CommandExecutionContext,
+    content: string,
+    displayContent = context.parsed.raw,
+    skillName?: string,
+  ): string {
+    const promptId = `command_prompt_${randomUUID().replace(/-/g, '').slice(0, 20)}`
+    void this.chat
+      .submit({
+        sessionId: context.sessionId,
+        content,
+        displayContent,
+        clientMessageId: promptId,
+        turnId: promptId,
+        delivery: 'queue',
+        source: 'command',
+        requestedSkills: skillName
+          ? [{ name: skillName, source: 'slash' }]
+          : [],
+        attachments: context.attachments,
+      })
+      .catch(() => undefined)
+    return promptId
+  }
+
+  private async goalSummary(goal: GoalRecord) {
+    const evidence = await this.loop.goalEvidenceLedger.listEvidence(goal.id)
+    return goalSummary(
+      goal,
+      Object.fromEntries(
+        evidence.map((item) => [
+          item.id,
+          { verdict: item.verdict, summary: item.summary },
+        ]),
+      ),
+    )
+  }
+
+  private assertMutation(area: string, action: string): void {
+    assertCoreMutationAllowed(this.loop.controlManager.payload(), {
+      area,
+      action,
+    })
+  }
+
+  private async withWorkspaceGitMutation<T>(
+    sessionId: string,
+    action: () => Promise<T>,
+  ): Promise<T> {
+    const session = this.requireReadableSession(sessionId, 'workspace.git') as {
+      mode?: string | null
+      project_path?: string | null
+    }
+    if (session.mode !== 'build' || !session.project_path)
+      throw new WorkspaceOperationError(
+        'workspace_project_required',
+        '当前会话没有绑定 Build 项目。',
+      )
+    return await this.loop.workspaceMutations.runExclusive(
+      this.workspaceBindings.resolve(sessionId, resolve(session.project_path)),
+      'renderer_git',
+      action,
+    )
+  }
+
+  private assertProcessOwner(processId: string): void {
+    const receipt = this.loop.processRuntime.get(processId)
+    if (!receipt || receipt.owner.sessionId !== this.loop.activeSessionId)
+      throw new CoreMutationGuardError(
+        403,
+        `Process is not owned by the active session: ${processId}`,
+      )
+  }
+
+  private async emitRuntime(
+    event: Dict,
+    opts: { emit?: StreamEmitter | null; sessionId?: string | null } = {},
+  ): Promise<Dict> {
+    const targetSessionId = String(opts.sessionId ?? '').trim()
+    const store =
+      targetSessionId && targetSessionId !== this.loop.activeSessionId
+        ? this.runtimeEventRepositories.openSession(
+            this.sessionRepository.sessionDirectory(targetSessionId),
+          )
+        : new CurrentRuntimeEventRepository(this.loop.runtimeStore)
+    const payload = store.append(event, { sessionId: targetSessionId || null })
+    const sink = opts.emit ?? this.loop.eventSink
+    if (sink) await sink(payload)
+    return payload
+  }
+
+  private activateBootstrapSession(sessionId: string): void {
+    const session = this.requireReadableSession(sessionId, 'bootstrap')
+    this.loop.activateSession(session.id)
+  }
+
+  private requireReadableSessionId(
+    sessionId: string | null | undefined,
+    operation: string,
+  ): string {
+    return this.requireReadableSession(
+      String(sessionId ?? '').trim(),
+      operation,
+    ).id
+  }
+
+  private requireReadableSession(
+    sessionId: string,
+    operation: string,
+  ): { id: string; archived_at?: string | null } {
+    if (!sessionId) {
+      throw new InvalidSessionError(
+        `${operation} requires a real sessionId`,
+        null,
+      )
+    }
+    if (sessionId.startsWith(DRAFT_SESSION_PREFIX)) {
+      throw new InvalidSessionError(
+        `${operation} cannot read draft session ${sessionId}`,
+        sessionId,
+      )
+    }
+    const session = this.sessionRepository.get(sessionId)
+    if (!session || session.archived_at) {
+      throw new InvalidSessionError(
+        `${operation} received unknown session ${sessionId}`,
+        sessionId,
+      )
+    }
+    return session
+  }
+}
+
+function commandCompleted(
+  context: CommandExecutionContext,
+  code: string,
+  message: string,
+  data?: Record<string, unknown>,
+): CommandInvocationResult {
+  return {
+    status: 'completed',
+    receipt: {
+      commandId: context.descriptor.id,
+      code,
+      message,
+      ...(data ? { data } : {}),
+    },
+  }
+}
+
+function op<const Key extends CoreOperationKey>(
+  key: Key,
+  method: string,
+  route: string,
+): RouteOperation & { key: Key } {
+  return { key, method, route }
+}
+
+function readJson(path: string, fallback: Dict): Dict {
+  try {
+    const raw = JSON.parse(readFileSync(path, 'utf8') || '{}')
+    return raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? (raw as Dict)
+      : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function atomicWriteText(path: string, content: string): void {
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(path, content, 'utf8')
+}
+
+const DEFAULT_SIDEBAR_STATE: Dict = {
+  section_order: ['projects', 'chats'],
+  project_sort: 'updated_at',
+  chat_sort: 'updated_at',
+  project_order: [],
+  chat_order: [],
+  project_session_order: {},
+  collapsed_project_ids: [],
+  right_workspace: {
+    version: 3,
+    workbenchOpen: false,
+    width: 840,
+    filesTreeWidth: 280,
+    pane: 'launcher',
+  },
+}
+
+function normalizeSidebarState(value: unknown): Dict {
+  const raw = isRecord(value) ? value : {}
+  return {
+    section_order: normalizeSidebarSectionOrder(raw.section_order),
+    project_sort: normalizeSidebarSort(raw.project_sort),
+    chat_sort: normalizeSidebarSort(raw.chat_sort),
+    project_order: stringList(raw.project_order),
+    chat_order: stringList(raw.chat_order),
+    project_session_order: normalizeSidebarProjectSessionOrder(
+      raw.project_session_order,
+    ),
+    collapsed_project_ids: stringList(raw.collapsed_project_ids),
+    right_workspace: normalizeRightWorkspace(raw.right_workspace),
+  }
+}
+
+function normalizeRightWorkspace(value: unknown): Dict {
+  const raw = isRecord(value) ? value : {}
+  const width = Number(raw.width)
+  const filesTreeWidth = Number(raw.filesTreeWidth)
+  const pane = String(raw.pane ?? '')
+  if (Number(raw.version) === 3) {
+    return {
+      version: 3,
+      workbenchOpen: raw.workbenchOpen === true,
+      width: Number.isFinite(width)
+        ? Math.max(520, Math.min(960, Math.round(width)))
+        : 840,
+      filesTreeWidth: Number.isFinite(filesTreeWidth)
+        ? Math.max(240, Math.min(320, Math.round(filesTreeWidth)))
+        : 280,
+      pane: ['review', 'terminal', 'files'].includes(pane) ? pane : 'launcher',
+    }
+  }
+  if (Number(raw.version) === 2) {
+    return {
+      version: 3,
+      workbenchOpen: raw.workbenchOpen === true,
+      width: Number.isFinite(width)
+        ? Math.max(520, Math.min(960, Math.round(width)))
+        : 840,
+      filesTreeWidth: Number.isFinite(filesTreeWidth)
+        ? Math.max(240, Math.min(320, Math.round(filesTreeWidth)))
+        : 280,
+      pane: ['review', 'terminal', 'files'].includes(pane) ? pane : 'launcher',
+    }
+  }
+  const open = raw.open === undefined ? true : raw.open === true
+  const migratedPane = ['review', 'terminal', 'files'].includes(pane)
+    ? pane
+    : 'launcher'
+  return {
+    version: 3,
+    workbenchOpen: open && migratedPane !== 'launcher',
+    width:
+      Number.isFinite(width) && width >= 520
+        ? Math.max(520, Math.min(960, Math.round(width)))
+        : 840,
+    filesTreeWidth: 280,
+    pane: migratedPane,
+  }
+}
+
+function normalizeSidebarSort(value: unknown): string {
+  return value === 'manual' || value === 'created_at' || value === 'updated_at'
+    ? value
+    : String(DEFAULT_SIDEBAR_STATE.project_sort)
+}
+
+function normalizeSidebarSectionOrder(value: unknown): string[] {
+  const allowed = new Set(['projects', 'chats'])
+  const out = stringList(value).filter((item) => allowed.has(item))
+  for (const item of DEFAULT_SIDEBAR_STATE.section_order as string[]) {
+    if (!out.includes(item)) out.push(item)
+  }
+  return out.slice(0, 2)
+}
+
+function normalizeSidebarProjectSessionOrder(
+  value: unknown,
+): Record<string, string[]> {
+  if (!isRecord(value)) return {}
+  const out: Record<string, string[]> = {}
+  for (const [key, ids] of Object.entries(value)) out[key] = stringList(ids)
+  return out
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.map((item) => String(item)).filter(Boolean)
+}
+
+function normalizedNonNegativeNumber(value: unknown): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0
+}
+
+function normalizedPositiveNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null
+}
+
+function normalizedBoolean(value: unknown): boolean {
+  return value === true || value === 'true' || value === '1' || value === 1
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function requiredRecord(value: unknown, label: string): Dict {
+  if (!isRecord(value)) throw new Error(`${label} must be an object`)
+  return value
+}
+
+function unavailablePtyHost(): PtyHost {
+  return {
+    spawn: () => {
+      throw new WorkspaceOperationError(
+        'terminal_unavailable',
+        '当前宿主没有提供 PTY 终端能力。',
+      )
+    },
+  }
+}
+
+function defaultSystemShell(): { executable: string; args: string[] } {
+  if (process.platform === 'win32') {
+    const windowsRoot = process.env.SystemRoot || process.env.WINDIR
+    return {
+      executable: windowsRoot
+        ? join(
+            windowsRoot,
+            'System32',
+            'WindowsPowerShell',
+            'v1.0',
+            'powershell.exe',
+          )
+        : 'powershell.exe',
+      args: ['-NoLogo'],
+    }
+  }
+  return { executable: process.env.SHELL || '/bin/sh', args: [] }
+}
+
+function terminalEnvironment(): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value === 'string') env[key] = value
+  }
+  env.TERM ||= 'xterm-256color'
+  env.COLORTERM ||= 'truecolor'
+  return env
+}
+
+function schedulerPayloadFromApi(
+  raw: Dict,
+  current?: SchedulerPayload,
+): SchedulerPayload {
+  const merged = current ? { ...current.toDict(), ...raw } : raw
+  const kind = String(merged.kind ?? 'agent_turn')
+  if (kind === 'system_event')
+    throw new Error('system_event jobs are internal and cannot be configured')
+  if (kind !== 'agent_turn' && kind !== 'team_wake')
+    throw new Error('scheduler payload kind must be agent_turn or team_wake')
+  const payload = SchedulerPayload.fromDict({ ...merged, kind })
+  if (!payload.message.trim())
+    throw new Error('message is required for scheduler jobs')
+  if (kind === 'team_wake' && !payload.target)
+    throw new Error('target is required for team_wake scheduler jobs')
+  if (kind === 'team_wake' && !payload.project_id)
+    throw new Error('projectId is required for team_wake scheduler jobs')
+  return payload
+}
+
+function schedulerMisfirePolicyFromApi(value: unknown): SchedulerMisfirePolicy {
+  if (value === undefined || value === null) return SchedulerMisfirePolicy.SKIP
+  if (value === SchedulerMisfirePolicy.SKIP) return SchedulerMisfirePolicy.SKIP
+  if (value === SchedulerMisfirePolicy.LATEST)
+    return SchedulerMisfirePolicy.LATEST
+  if (value === SchedulerMisfirePolicy.CATCH_UP_ONE)
+    return SchedulerMisfirePolicy.CATCH_UP_ONE
+  throw new Error(
+    'scheduler misfirePolicy must be skip, latest, or catch-up-one',
+  )
+}
+
+export type { LoopModelRouter }

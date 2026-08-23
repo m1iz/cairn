@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 样式入口:主题 token 表见 theme/dark.css、theme/light.css;全局 base 见
+   theme/base.css;按表面拆分的组件样式见 styles/ 目录,均由 main.ts 引入。
+   @layer base 必须留在本文件——Tailwind 按文件处理,它依赖同文件的
+   @tailwind base 指令。 */
+
+@layer base {
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  textarea:disabled {
+    cursor: not-allowed;
+  }
+
+  input,
+  select,
+  textarea {
+    @apply w-full border px-3 py-2 text-sm outline-none transition;
+    border-radius: var(--radius);
+    border-color: rgb(var(--border));
+    background: rgb(var(--bg-inset));
+    color: rgb(var(--fg));
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    border-color: rgb(var(--accent) / 0.7);
+    box-shadow: 0 0 0 3px rgb(var(--accent) / 0.18);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: rgb(var(--fg-subtle));
+  }
+
+  textarea {
+    @apply resize-none leading-6;
+  }
+}

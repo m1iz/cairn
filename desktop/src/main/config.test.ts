@@ -1,0 +1,129 @@
+import { describe, it, expect } from 'vitest'
+import * as path from 'node:path'
+import { resolveConfig } from './config'
+
+const throwingRead = (): string => {
+  throw new Error('ENOENT')
+}
+
+describe('resolveConfig', () => {
+  it('falls back to defaults when cairn.local.json is unreadable', () => {
+    const cfg = resolveConfig({ readFile: throwingRead })
+    expect(cfg.configSource).toBe('default')
+  })
+
+  it('detects a readable cairn.local.json', () => {
+    const readFile = () =>
+      JSON.stringify({ webui: { host: '0.0.0.0', port: 9100 } })
+    const cfg = resolveConfig({ readFile })
+    expect(cfg.configSource).toBe('file')
+  })
+
+  it('honors --root and CAIRN_ROOT for runtimeRoot only (cairn.local.json now lives under stateRoot)', () => {
+    const readFile = throwingRead
+
+    const explicit = resolveConfig({
+      argv: ['--root', '/tmp/custom-root'],
+      env: { CAIRN_CONFIG_DIR: '/tmp/custom-state' },
+      readFile,
+    })
+    expect(explicit.runtimeRoot).toBe('/tmp/custom-root')
+
+    const envRoot = resolveConfig({
+      env: {
+        CAIRN_ROOT: '/tmp/env-root',
+        CAIRN_CONFIG_DIR: '/tmp/custom-state',
+      },
+      readFile,
+    })
+    expect(envRoot.runtimeRoot).toBe('/tmp/env-root')
+  })
+
+  it('uses packaged default root when no explicit root is provided', () => {
+    const cfg = resolveConfig({
+      defaultRoot:
+        '/Users/me/Library/Application Support/Cairn/runtime',
+      env: { CAIRN_CONFIG_DIR: '/tmp/cairn-config-test-state' },
+      readFile: throwingRead,
+    })
+
+    expect(cfg.runtimeRoot).toBe(
+      '/Users/me/Library/Application Support/Cairn/runtime',
+    )
+    expect(cfg.runtimeRootSource).toBe('default')
+  })
+
+  it('keeps explicit runtime roots ahead of the packaged default root', () => {
+    const readFile = throwingRead
+
+    const explicit = resolveConfig({
+      argv: ['--root', '/manual'],
+      defaultRoot: '/runtime',
+      readFile,
+    })
+    expect(explicit.runtimeRoot).toBe('/manual')
+    expect(explicit.runtimeRootSource).toBe('explicit')
+
+    const envRoot = resolveConfig({
+      env: { CAIRN_ROOT: '/env' },
+      defaultRoot: '/runtime',
+      readFile,
+    })
+    expect(envRoot.runtimeRoot).toBe('/env')
+    expect(envRoot.runtimeRootSource).toBe('env')
+  })
+
+  it('resolves stateRoot independently of runtimeRoot: CAIRN_CONFIG_DIR overrides the default', () => {
+    const readFile = throwingRead
+
+    const withEnv = resolveConfig({
+      argv: ['--root', '/manual-runtime'],
+      env: { CAIRN_CONFIG_DIR: '/manual-state' },
+      readFile,
+    })
+    expect(withEnv.runtimeRoot).toBe('/manual-runtime')
+    expect(withEnv.stateRoot).toBe('/manual-state')
+    expect(withEnv.stateRootSource).toBe('env')
+
+    // Without CAIRN_CONFIG_DIR, stateRoot falls back to the real ~/.cairn default —
+    // only assert the source tag here, never assert/act on the literal path in a unit test.
+    const withoutEnv = resolveConfig({
+      argv: ['--root', '/manual-runtime'],
+      readFile,
+    })
+    expect(withoutEnv.stateRootSource).toBe('default')
+    expect(withoutEnv.runtimeRoot).toBe('/manual-runtime')
+  })
+
+  it('forces packaged runtime resources ahead of argv and environment overrides', () => {
+    const cfg = resolveConfig({
+      argv: ['--root', '/untrusted-argv'],
+      env: {
+        CAIRN_ROOT: '/untrusted-env',
+        CAIRN_CONFIG_DIR: '/private-state',
+      },
+      forcedRuntimeRoot: '/signed/resources/runtime-defaults',
+    })
+
+    expect(cfg.runtimeRoot).toBe('/signed/resources/runtime-defaults')
+    expect(cfg.runtimeRootSource).toBe('packaged')
+    expect(cfg.stateRoot).toBe('/private-state')
+  })
+
+  it('reads cairn.local.json from stateRoot, not runtimeRoot', () => {
+    const seen: string[] = []
+    const readFile = (p: string): string => {
+      seen.push(p)
+      return JSON.stringify({ webui: { host: '0.0.0.0', port: 9100 } })
+    }
+
+    const cfg = resolveConfig({
+      argv: ['--root', '/manual-runtime'],
+      env: { CAIRN_CONFIG_DIR: '/manual-state' },
+      readFile,
+    })
+
+    expect(cfg.configSource).toBe('file')
+    expect(seen).toEqual([path.join('/manual-state', 'cairn.local.json')])
+  })
+})

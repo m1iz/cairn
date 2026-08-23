@@ -1,0 +1,90 @@
+# Environment / local config
+.env
+.env.*
+!.env.example
+model_config.json
+mcp_config.json
+cairn.local.json
+/templates/USER.local.md
+/templates/*.local.md
+
+# Python caches kept only for legacy tooling/skill helpers, not product runtime
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# OS / editor noise
+.DS_Store
+.idea/
+.vscode/
+.history/
+*.swp
+*.swo
+*~
+
+# JavaScript / TypeScript dependencies and build caches
+node_modules/
+desktop/node_modules/
+packages/*/dist/
+packages/*/coverage/
+coverage/
+.vite/
+.cache/
+.eslintcache
+*.tsbuildinfo
+
+# Build and test outputs
+/build/
+/desktop/out/
+/desktop/dist/
+/desktop/build/backend/
+/desktop/build/runtime-defaults-manifest.json*
+/desktop/screenshots/
+/desktop/test-results/
+/desktop/.uiplan-progress.json
+
+# Logs / local automation state
+/logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+/.claude/
+/.superpowers/
+
+# Personal development documents (local-only; never publish)
+/private-docs/
+/docs/private/
+/docs/archive/
+/docs/superpowers/
+/docs/audit/
+/docs/diagnostics/
+/docs/research/
+/docs/roadmap/
+/docs/qa/
+/docs/plans/
+/docs/specs/
+/docs/design/
+/docs/tasks/
+/docs/migration/
+/PROJECT_AUDIT_REPORT.md
+
+# 运行期产生的私人数据（长期记忆 / 会话历史 / token 用量）
+# 规则必须锚定在仓库根目录，避免误忽略 packages/core/src/memory 等源码目录。
+/memory/
+/sessions/
+/desktop/memory/
+/desktop/sessions/
+.cairn/
+/packages/*/memory/
+/packages/*/sessions/
+
+# Agent Team 运行期状态（队友配置 / inbox / 独立 thread）
+.team/
+/packages/*/.team/

@@ -1,0 +1,46 @@
+import { describe, expect, it } from 'vitest'
+import { readFileSync, readdirSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+const repoRoot = resolve(__dirname, '..', '..', '..')
+const workflowsRoot = resolve(repoRoot, '.github', 'workflows')
+
+describe('GitHub Actions governance', () => {
+  it('checks out tracked text with LF on every runner', () => {
+    const attributes = readFileSync(resolve(repoRoot, '.gitattributes'), 'utf8')
+
+    expect(attributes).toMatch(/^\* text=auto eol=lf$/m)
+  })
+
+  it('uses the release-pinned Node 24 toolchain in every workflow', () => {
+    const workflows = readdirSync(workflowsRoot)
+      .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
+      .map((name) => ({
+        name,
+        content: readFileSync(resolve(workflowsRoot, name), 'utf8'),
+      }))
+
+    expect(workflows.length).toBeGreaterThan(0)
+    for (const workflow of workflows) {
+      const versions = [
+        ...workflow.content.matchAll(/node-version:\s*['"]?([^'"\s]+)['"]?/g),
+      ].map((match) => match[1])
+      expect(versions, workflow.name).not.toHaveLength(0)
+      expect(new Set(versions), workflow.name).toEqual(new Set(['24']))
+    }
+  })
+
+  it('typechecks Desktop tests in CI before the Desktop build', () => {
+    const workflow = readFileSync(resolve(workflowsRoot, 'ci.yml'), 'utf8')
+    const desktopTests = workflow.indexOf('- name: Desktop tests')
+    const testTypecheck = workflow.indexOf('- name: Desktop test typecheck')
+    const desktopBuild = workflow.indexOf('- name: Desktop build')
+
+    expect(desktopTests).toBeGreaterThan(-1)
+    expect(testTypecheck).toBeGreaterThan(desktopTests)
+    expect(desktopBuild).toBeGreaterThan(testTypecheck)
+    expect(workflow.slice(testTypecheck, desktopBuild)).toContain(
+      'run: npm run typecheck:test',
+    )
+  })
+})
