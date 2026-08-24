@@ -4,7 +4,7 @@ import type { RuntimeEvent } from '../runtime/types'
  * Compatibility fingerprint for the public Core operation registry.
  *
  * The operation names remain owned by `api/operations.ts`; this digest makes an
- * accidental rename, addition, or removal fail loudly during the v2 migration.
+ * accidental rename, addition, or removal fail loudly at the public boundary.
  */
 export const CORE_OPERATION_COMPATIBILITY = Object.freeze({
   count: 154,

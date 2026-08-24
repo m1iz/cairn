@@ -113,18 +113,18 @@ function normalizeRightWorkspace(
     }
   }
   if (Number(value?.version) === 2) {
-    const legacyV2 = value as unknown as {
+    const previousWorkspace = value as unknown as {
       width?: number
       filesTreeWidth?: number
       pane?: string
       workbenchOpen?: boolean
     }
-    const width = Number(legacyV2.width)
-    const filesTreeWidth = Number(legacyV2.filesTreeWidth)
-    const pane = legacyV2.pane
+    const width = Number(previousWorkspace.width)
+    const filesTreeWidth = Number(previousWorkspace.filesTreeWidth)
+    const pane = previousWorkspace.pane
     return {
       version: 3,
-      workbenchOpen: legacyV2.workbenchOpen === true,
+      workbenchOpen: previousWorkspace.workbenchOpen === true,
       width: Number.isFinite(width)
         ? Math.max(520, Math.min(960, Math.round(width)))
         : 840,

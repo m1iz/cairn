@@ -1,8 +1,8 @@
 /**
  * 控制态模型 (MIG-CTRL-001)。对齐 Python `agent/control/models.py`。
  * Interaction/Question/QuestionOption/ControlState + from_dict/to_dict 校验逐字保真。
- * Control v2 会由 ControlStore.load() 将 v1 的 accept_edits/auto 以及 Plan
- * previous_mode 原子迁移为 smart_auto/full_access。
+ * ControlStore.load() 会把旧的 accept_edits/auto 以及 Plan previous_mode
+ * 原子迁移为当前的 smart_auto/full_access。
  */
 import { nowTs } from '../util/time'
 import { randomUUID } from 'node:crypto'

@@ -339,7 +339,7 @@ export class ProfileOnboardingCoordinator {
 
     try {
       const parsed = JSON.parse(readFileSync(this.statePath, 'utf8')) as unknown
-      const state = parseV2State(parsed, this.seedHash)
+      const state = parsePersistedState(parsed, this.seedHash)
       if (state) return this.reconcileSeedRevision(state, current)
       if (isLegacyLatch(parsed)) {
         const migrated = fallback()
@@ -408,7 +408,7 @@ export class ProfileOnboardingCoordinator {
   }
 }
 
-function parseV2State(
+function parsePersistedState(
   raw: unknown,
   seedHash: string,
 ): ProfileOnboardingState | null {
