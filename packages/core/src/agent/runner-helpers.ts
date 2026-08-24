@@ -1,7 +1,7 @@
 /**
  * Runner 纯辅助函数 (MIG-CORE-008 支撑)。对齐 Python `agent/runner_helpers.py`。
  */
-import type { ToolCallRequest } from '../providers/base'
+import type { ChatArgs, ToolCallRequest } from '../providers/base'
 import type { ToolResultObj } from '../tools/base'
 
 const TODO_ICON: Record<string, string> = {
@@ -337,4 +337,76 @@ export function applyRepeatedRefusalNudge(
   counts.set(SAFETY_REFUSAL_BUCKET, count)
   if (count < 2) return
   result.modelContent += `\n（该类尝试本轮已被拒绝 ${count} 次——包括更换命令形式的重试，必须改变策略：把代码写入临时脚本文件后执行，或运行现有测试/脚本文件；不要再重试同类命令。）`
+}
+
+export function sanitizeProviderMessage(
+  message: Record<string, unknown>,
+): ChatArgs['messages'][number] {
+  const out: Record<string, unknown> = {
+    role: String(message.role ?? ''),
+  }
+  for (const key of [
+    'content',
+    'tool_calls',
+    'tool_call_id',
+    'name',
+    'reasoning_content',
+    'extra_content',
+  ]) {
+    if (key in message) out[key] = message[key]
+  }
+  return out as ChatArgs['messages'][number]
+}
+
+export function positiveOptionalInt(value: unknown): number | null {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) return null
+  return Math.trunc(parsed)
+}
+
+export function modelUsageTokens(usage: Record<string, number>): number {
+  const total = Number(usage.total ?? usage.total_tokens)
+  if (Number.isFinite(total) && total > 0) return Math.trunc(total)
+  const input = Number(usage.input ?? usage.input_tokens)
+  const output = Number(usage.output ?? usage.output_tokens)
+  return Math.max(
+    0,
+    Math.trunc(Number.isFinite(input) ? input : 0) +
+      Math.trunc(Number.isFinite(output) ? output : 0),
+  )
+}
+
+export function currentTaskIntent(
+  history: Array<Record<string, unknown>>,
+): string | null {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const message = history[index]
+    if (message?.role !== 'user') continue
+    const content = String(message.content ?? '').trim()
+    if (content.startsWith('[CONTROL:')) continue
+    if (content) return content.slice(0, 2_000)
+  }
+  return null
+}
+
+export function currentPermissionAuthorization(
+  history: Array<Record<string, unknown>>,
+): string | null {
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const message = history[index]
+    if (message?.role !== 'user') continue
+    const content = String(message.content ?? '').trim()
+    if (!content.startsWith('[CONTROL:PERMISSION_ANSWERED]')) return null
+    const match = content.match(/^authorization_id:\s*([^\s]+)$/m)
+    return match?.[1]?.trim() || null
+  }
+  return null
+}
+
+export function progressPauseReason(
+  reasonCode: 'no_progress' | 'blocked' | 'verification_remaining',
+): 'continuation_rejected' | 'no_progress' | 'verification_required' {
+  if (reasonCode === 'no_progress') return 'no_progress'
+  if (reasonCode === 'verification_remaining') return 'verification_required'
+  return 'continuation_rejected'
 }

@@ -57,7 +57,6 @@ import {
   SchedulerSchedule,
   schedulerJobPublicPayload,
 } from '../scheduler/models'
-import type { CoreOperationKey } from './operations'
 import { missingSkillRequirementsFromStatus } from '../environment/probe'
 import type { SkillRequirements } from '../skills/manager'
 import { NodeEnvironmentProcessRunner } from '../environment/process-runner'
@@ -113,11 +112,10 @@ export interface CoreApiCreateOptions extends AgentLoopCreateOptions {
   terminalEventSink?: ((event: TerminalEvent) => void) | null
 }
 
-export interface RouteOperation {
-  key: CoreOperationKey
-  method: string
-  route: string
-}
+export {
+  CORE_API_ROUTE_OPERATIONS,
+  type RouteOperation,
+} from './route-operations'
 
 export interface CoreRuntimeEventPayload {
   event: string
@@ -138,187 +136,6 @@ export interface CoreRuntimeReplayPayload<
   >
   [key: string]: unknown
 }
-
-const CORE_API_ROUTE_OPERATION_LIST = [
-  op('chat.submit', 'IPC', 'chat.submit'),
-  op('chat.listQueuedPrompts', 'IPC', 'chat.listQueuedPrompts'),
-  op('chat.manageQueuedPrompt', 'IPC', 'chat.manageQueuedPrompt'),
-  op('bootstrap', 'GET', '/api/bootstrap'),
-  op('chat.stopRuntime', 'POST', '/api/runtime/stop'),
-  op('commands.list', 'IPC', 'commands.list'),
-  op('commands.complete', 'IPC', 'commands.complete'),
-  op('commands.invoke', 'IPC', 'commands.invoke'),
-  op('config.effective', 'GET', '/api/config/effective'),
-  op('config.get', 'GET', '/api/config'),
-  op('config.save', 'POST', '/api/config'),
-  op('attachments.save', 'POST', '/api/attachments'),
-  op('attachments.rawPath', 'GET', '/api/attachments/{id}/raw'),
-  op('mcp.getConfig', 'GET', '/api/mcp-config'),
-  op('mcp.status', 'GET', '/api/mcp-status'),
-  op('mcp.saveConfig', 'POST', '/api/mcp-config'),
-  op('model.discoverModels', 'IPC', 'model.discoverModels'),
-  op('model.getConfig', 'GET', '/api/model-config'),
-  op('model.resolveProfile', 'IPC', 'model.resolveProfile'),
-  op('model.saveEntry', 'POST', '/api/models'),
-  op('model.savePolicy', 'PATCH', '/api/model-policy'),
-  op('model.deleteEntry', 'DELETE', '/api/models/{entryId}'),
-  op('model.activate', 'POST', '/api/models/{entryId}/activate'),
-  op(
-    'model.setReasoningEffort',
-    'PATCH',
-    '/api/models/{entryId}/reasoning-effort',
-  ),
-  op('model.test', 'POST', '/api/model-test'),
-  op('onboarding.getProfileStatus', 'GET', '/api/onboarding/profile'),
-  op(
-    'onboarding.startProfileInterview',
-    'POST',
-    '/api/onboarding/profile/start',
-  ),
-  op('onboarding.skipProfileInterview', 'POST', '/api/onboarding/profile/skip'),
-  op('control.get', 'GET', '/api/control'),
-  op('control.setPermissionMode', 'IPC', 'control.setPermissionMode'),
-  op('control.setMode', 'POST', '/api/control/mode'),
-  op('control.answerInteraction', 'IPC', 'control.answerInteraction'),
-  op('control.commentPlan', 'IPC', 'control.commentPlan'),
-  op('control.approvePlan', 'IPC', 'control.approvePlan'),
-  op(
-    'control.cancelInteraction',
-    'POST',
-    '/api/control/interactions/{id}/cancel',
-  ),
-  op('goals.start', 'IPC', 'goals.start'),
-  op('goals.list', 'IPC', 'goals.list'),
-  op('goals.get', 'IPC', 'goals.get'),
-  op('goals.pause', 'IPC', 'goals.pause'),
-  op('goals.resume', 'IPC', 'goals.resume'),
-  op('goals.replace', 'IPC', 'goals.replace'),
-  op('goals.cancel', 'IPC', 'goals.cancel'),
-  op('plans.list', 'GET', '/api/plans'),
-  op('plans.get', 'GET', '/api/plans/{plan_id}'),
-  op('scheduler.get', 'GET', '/api/scheduler'),
-  op('scheduler.createJob', 'POST', '/api/scheduler/jobs'),
-  op('scheduler.updateJob', 'PATCH', '/api/scheduler/jobs/{id}'),
-  op('scheduler.runJob', 'POST', '/api/scheduler/jobs/{id}/run'),
-  op('scheduler.pauseJob', 'POST', '/api/scheduler/jobs/{id}/pause'),
-  op('scheduler.resumeJob', 'POST', '/api/scheduler/jobs/{id}/resume'),
-  op('scheduler.deleteJob', 'DELETE', '/api/scheduler/jobs/{id}'),
-  op('sessions.list', 'GET', '/api/sessions'),
-  op('sessions.create', 'POST', '/api/sessions'),
-  op('sessions.rename', 'PATCH', '/api/sessions/{id}'),
-  op('sessions.delete', 'DELETE', '/api/sessions/{id}'),
-  op('sessions.activate', 'POST', '/api/sessions/{id}/activate'),
-  op('team.get', 'GET', '/api/team'),
-  op('team.spawnMember', 'POST', '/api/team/members'),
-  op('team.getMember', 'GET', '/api/team/members/{name}'),
-  op('team.sendMessage', 'POST', '/api/team/messages'),
-  op('team.wakeMember', 'POST', '/api/team/members/{name}/wake'),
-  op('team.shutdownMember', 'POST', '/api/team/members/{name}/shutdown'),
-  op('workspace.snapshot', 'IPC', 'workspace.snapshot'),
-  op('git.status', 'IPC', 'git.status'),
-  op('git.repository', 'IPC', 'git.repository'),
-  op('git.log', 'IPC', 'git.log'),
-  op('git.worktrees', 'IPC', 'git.worktrees'),
-  op('git.enterWorktree', 'IPC', 'git.enterWorktree'),
-  op('git.exitWorktree', 'IPC', 'git.exitWorktree'),
-  op('git.pullRequest', 'IPC', 'git.pullRequest'),
-  op('git.publishPreview', 'IPC', 'git.publishPreview'),
-  op('git.publishPullRequest', 'IPC', 'git.publishPullRequest'),
-  op('git.readyPullRequest', 'IPC', 'git.readyPullRequest'),
-  op('git.mergePullRequest', 'IPC', 'git.mergePullRequest'),
-  op('git.closePullRequest', 'IPC', 'git.closePullRequest'),
-  op('git.diff', 'IPC', 'git.diff'),
-  op('git.branches', 'IPC', 'git.branches'),
-  op('git.compare', 'IPC', 'git.compare'),
-  op('git.stage', 'IPC', 'git.stage'),
-  op('git.unstage', 'IPC', 'git.unstage'),
-  op('git.discard', 'IPC', 'git.discard'),
-  op('git.commit', 'IPC', 'git.commit'),
-  op('git.fetch', 'IPC', 'git.fetch'),
-  op('git.pull', 'IPC', 'git.pull'),
-  op('git.push', 'IPC', 'git.push'),
-  op('git.createBranch', 'IPC', 'git.createBranch'),
-  op('git.switchBranch', 'IPC', 'git.switchBranch'),
-  op('files.list', 'IPC', 'files.list'),
-  op('files.search', 'IPC', 'files.search'),
-  op('files.read', 'IPC', 'files.read'),
-  op('terminals.list', 'IPC', 'terminals.list'),
-  op('terminals.create', 'IPC', 'terminals.create'),
-  op('terminals.read', 'IPC', 'terminals.read'),
-  op('terminals.write', 'IPC', 'terminals.write'),
-  op('terminals.resize', 'IPC', 'terminals.resize'),
-  op('terminals.close', 'IPC', 'terminals.close'),
-  op('fileCheckpoints.list', 'IPC', 'fileCheckpoints.list'),
-  op('fileCheckpoints.preview', 'IPC', 'fileCheckpoints.preview'),
-  op('fileCheckpoints.rewind', 'IPC', 'fileCheckpoints.rewind'),
-  op('fileCheckpoints.rewindGit', 'IPC', 'fileCheckpoints.rewindGit'),
-  op('hooks.getConfig', 'GET', '/api/hooks'),
-  op('hooks.saveConfig', 'POST', '/api/hooks'),
-  op('hooks.getAudit', 'GET', '/api/hooks/audit'),
-  op('hooks.getMetadata', 'GET', '/api/hooks/metadata'),
-  op('hooks.validateConfig', 'POST', '/api/hooks/validate'),
-  op('hooks.setProjectTrust', 'POST', '/api/hooks/project-trust'),
-  op('hooks.testMatch', 'POST', '/api/hooks/test-match'),
-  op('hooks.testRun', 'POST', '/api/hooks/test-run'),
-  op('hooks.cancelRun', 'POST', '/api/hooks/cancel-run'),
-  op('tasks.list', 'GET', '/api/tasks'),
-  op('tasks.get', 'GET', '/api/tasks/{task_id}'),
-  op('tasks.transcript', 'GET', '/api/tasks/{task_id}/transcript'),
-  op('tasks.wait', 'IPC', 'tasks.wait'),
-  op('tasks.readOutput', 'GET', '/api/tasks/{task_id}/output'),
-  op('tasks.cancel', 'POST', '/api/tasks/{task_id}/cancel'),
-  op('tasks.resume', 'POST', '/api/tasks/{task_id}/resume'),
-  op('processes.list', 'GET', '/api/processes'),
-  op('processes.cancel', 'POST', '/api/processes/{process_id}/cancel'),
-  op('processes.reparent', 'POST', '/api/processes/{process_id}/reparent'),
-  op('tools.readResult', 'GET', '/api/tools/results/{ref}'),
-  op('memory.get', 'GET', '/api/memory'),
-  op('memory.save', 'POST', '/api/memory'),
-  op('memory.getEpisode', 'GET', '/api/memory/episode'),
-  op('memory.saveEpisode', 'POST', '/api/memory/episode'),
-  op('memory.listVersions', 'GET', '/api/memory/versions'),
-  op('memory.getVersion', 'GET', '/api/memory/versions/{id}'),
-  op('memory.restoreVersion', 'POST', '/api/memory/versions/{id}/restore'),
-  op('memory.getWatchlist', 'GET', '/api/watchlist'),
-  op('memory.saveWatchlist', 'POST', '/api/watchlist'),
-  op('memory.checkWatchlist', 'POST', '/api/watchlist/check'),
-  op('memory.tokens', 'GET', '/api/tokens'),
-  op('memory.compact', 'POST', '/api/compact'),
-  op('memory.explainContext', 'GET', '/api/memory/explain-context'),
-  op('projects.list', 'GET', '/api/projects'),
-  op('projects.resolve', 'POST', '/api/projects/resolve'),
-  op('runtime.replay', 'GET', '/api/runtime/replay'),
-  op('skills.tools', 'GET', '/api/tools'),
-  op('skills.list', 'GET', '/api/skills'),
-  op('skills.get', 'GET', '/api/skill'),
-  op('skills.create', 'POST', '/api/skills/create'),
-  op('skills.validate', 'POST', '/api/skills/validate'),
-  op('skills.package', 'POST', '/api/skills/package'),
-  op('skills.save', 'POST', '/api/skill'),
-  op('skills.delete', 'DELETE', '/api/skill'),
-  op('skills.previewInstall', 'POST', '/api/skills/install/preview'),
-  op('skills.confirmInstall', 'POST', '/api/skills/install/confirm'),
-  op('sidebar.get', 'GET', '/api/sidebar-state'),
-  op('sidebar.patch', 'PATCH', '/api/sidebar-state'),
-  op('diagnostics.get', 'GET', '/api/diagnostics'),
-  op('environment.getStatus', 'GET', '/api/environment'),
-  op('environment.createInstallPlan', 'POST', '/api/environment/plans'),
-  op('environment.install', 'POST', '/api/environment/install'),
-  op('environment.cancelInstall', 'POST', '/api/environment/cancel'),
-  op('environment.getInstallLog', 'GET', '/api/environment/install-log'),
-] as const
-
-type MissingRouteOperation = Exclude<
-  CoreOperationKey,
-  (typeof CORE_API_ROUTE_OPERATION_LIST)[number]['key']
->
-const _coreApiRouteCoverage: [MissingRouteOperation] extends [never]
-  ? true
-  : never = true
-
-export const CORE_API_ROUTE_OPERATIONS: RouteOperation[] = [
-  ...CORE_API_ROUTE_OPERATION_LIST,
-].sort((a, b) => a.key.localeCompare(b.key))
 
 export class CoreApi {
   readonly root: string
@@ -2356,14 +2173,6 @@ function commandCompleted(
       ...(data ? { data } : {}),
     },
   }
-}
-
-function op<const Key extends CoreOperationKey>(
-  key: Key,
-  method: string,
-  route: string,
-): RouteOperation & { key: Key } {
-  return { key, method, route }
 }
 
 function readJson(path: string, fallback: Dict): Dict {

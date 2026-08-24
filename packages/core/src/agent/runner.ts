@@ -93,12 +93,18 @@ import {
   buildTodoContinuationPausedSummary,
   contextUsedFromUsage,
   controlInteractionEvent,
+  currentPermissionAuthorization,
+  currentTaskIntent,
   estimateMessagesTokens,
   latestUserText,
+  modelUsageTokens,
   optionalInt,
   planDecisionContract,
   planGuardMessage,
+  positiveOptionalInt,
+  progressPauseReason,
   renderTodos,
+  sanitizeProviderMessage,
   summarizeToolResult,
 } from './runner-helpers'
 import { toolIntentThought, toolResultSummaryThought } from './runner-thoughts'
@@ -3611,25 +3617,6 @@ function toolBatchEmitter(
   }
 }
 
-function sanitizeProviderMessage(
-  message: Record<string, unknown>,
-): ChatArgs['messages'][number] {
-  const out: Record<string, unknown> = {
-    role: String(message.role ?? ''),
-  }
-  for (const key of [
-    'content',
-    'tool_calls',
-    'tool_call_id',
-    'name',
-    'reasoning_content',
-    'extra_content',
-  ]) {
-    if (key in message) out[key] = message[key]
-  }
-  return out as ChatArgs['messages'][number]
-}
-
 function throwIfAborted(signal: AbortSignal | null | undefined): void {
   if (signal?.aborted) throw new CancelledTaskError('turn')
 }
@@ -3665,24 +3652,6 @@ async function consumeRunnerInterjections(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))
-}
-
-function positiveOptionalInt(value: unknown): number | null {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed) || parsed <= 0) return null
-  return Math.trunc(parsed)
-}
-
-function modelUsageTokens(usage: Record<string, number>): number {
-  const total = Number(usage.total ?? usage.total_tokens)
-  if (Number.isFinite(total) && total > 0) return Math.trunc(total)
-  const input = Number(usage.input ?? usage.input_tokens)
-  const output = Number(usage.output ?? usage.output_tokens)
-  return Math.max(
-    0,
-    Math.trunc(Number.isFinite(input) ? input : 0) +
-      Math.trunc(Number.isFinite(output) ? output : 0),
-  )
 }
 
 function emptyHookDecision(): HookAggregateDecision {
@@ -3735,29 +3704,6 @@ function permissionHookPayload(
   }
 }
 
-function currentTaskIntent(history: Msg[]): string | null {
-  for (let index = history.length - 1; index >= 0; index -= 1) {
-    const message = history[index]
-    if (message?.role !== 'user') continue
-    const content = String(message.content ?? '').trim()
-    if (content.startsWith('[CONTROL:')) continue
-    if (content) return content.slice(0, 2_000)
-  }
-  return null
-}
-
-function currentPermissionAuthorization(history: Msg[]): string | null {
-  for (let index = history.length - 1; index >= 0; index -= 1) {
-    const message = history[index]
-    if (message?.role !== 'user') continue
-    const content = String(message.content ?? '').trim()
-    if (!content.startsWith('[CONTROL:PERMISSION_ANSWERED]')) return null
-    const match = content.match(/^authorization_id:\s*([^\s]+)$/m)
-    return match?.[1]?.trim() || null
-  }
-  return null
-}
-
 function blockedToolBatch(
   calls: ToolCallRequest[],
   preparedCalls: Map<string, ToolCallRequest>,
@@ -3775,14 +3721,6 @@ function blockedToolBatch(
     )
   }
   return { preparedCalls, results }
-}
-
-function progressPauseReason(
-  reasonCode: ProgressPauseDecision['reasonCode'],
-): 'continuation_rejected' | 'no_progress' | 'verification_required' {
-  if (reasonCode === 'no_progress') return 'no_progress'
-  if (reasonCode === 'verification_remaining') return 'verification_required'
-  return 'continuation_rejected'
 }
 
 interface PlanStepSnapshot {
