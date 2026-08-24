@@ -2072,16 +2072,20 @@ export class AgentLoop {
               },
             )
           }
-          return await this.runUserTurnInner(
-            content,
-            turnId,
-            opts,
-            actorSignal,
-            owned,
-          ).finally(() => {
-            this.hookService.endTurn(turnId)
-            restorePreviousSession()
-          })
+          return await this.controlManager.withRuntimeScope(
+            this.controlRuntimeScopeForSession(owned.session),
+            async () =>
+              await this.runUserTurnInner(
+                content,
+                turnId,
+                opts,
+                actorSignal,
+                owned,
+              ).finally(() => {
+                this.hookService.endTurn(turnId)
+                restorePreviousSession()
+              }),
+          )
         },
         { signal },
       )
@@ -3085,9 +3089,6 @@ export class AgentLoop {
     const memoryStore = bindings.memoryStore
     const runner = bindings.runner
     const runtimeStore = bindings.runtimeStore
-    this.controlManager.setRuntimeScope(
-      this.controlRuntimeScopeForSession(session),
-    )
     const scope = this.turnScope(session, turnId)
     bindings.contextBuilder.setSessionScope(this.sessionScope(session))
     const requestedSkills = opts.requestedSkills ?? []
@@ -3415,15 +3416,14 @@ export class AgentLoop {
       get(target, property) {
         const value = Reflect.get(target, property, target)
         if (typeof value !== 'function') return value
-        return (...args: unknown[]) => {
-          if (todoStore && SESSION_TODO_CONTROL_METHODS.has(property))
-            return target.withTodoStore(todoStore, () => {
-              target.setRuntimeScope(scope)
-              return value.apply(target, args)
-            })
-          target.setRuntimeScope(scope)
-          return value.apply(target, args)
-        }
+        return (...args: unknown[]) =>
+          target.withRuntimeScope(scope, () => {
+            if (todoStore && SESSION_TODO_CONTROL_METHODS.has(property))
+              return target.withTodoStore(todoStore, () =>
+                value.apply(target, args),
+              )
+            return value.apply(target, args)
+          })
       },
     })
   }

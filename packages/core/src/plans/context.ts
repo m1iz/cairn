@@ -115,7 +115,7 @@ export class PlanContextBuilder {
 
   private latestScopedPlan(): PlanRecord | null {
     const plans = this.planStore
-      .list()
+      .snapshot()
       .filter((record) => (this.filter ? this.filter(record) : true))
     if (!plans.length) return null
     return plans.reduce((a, b) => (b.updatedAt > a.updatedAt ? b : a))

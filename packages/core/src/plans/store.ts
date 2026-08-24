@@ -140,6 +140,29 @@ export class PlanStore {
     })
   }
 
+  /**
+   * Returns a non-authoritative, read-only view of the hot Plan index.
+   *
+   * Prompt construction uses this method because it may run concurrently with
+   * asynchronous Goal reads. The index is replaced atomically, so readers see
+   * either the previous or next complete document without taking the shared
+   * Goal mutation lease. Unlike `list()`, this method never repairs storage or
+   * records a mutation.
+   */
+  snapshot(): PlanRecord[] {
+    if (!existsSync(this.indexFile)) return []
+    let raw: unknown
+    try {
+      raw = JSON.parse(readFileSync(this.indexFile, 'utf8') || '{}')
+    } catch {
+      return []
+    }
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return []
+    return Object.values(raw)
+      .filter((item) => item && typeof item === 'object')
+      .map((item) => planFromDict(item as Record<string, unknown>))
+  }
+
   get(planId: string): PlanRecord | null {
     return this.goalMutations.guard.runExclusiveSync('mutation', (lease) => {
       const payload = this.read(lease)[String(planId)]
@@ -458,6 +481,26 @@ export class PlanStore {
     const id = String(planId).trim()
     if (!id) return false
     return this.isQuarantined(id) || hasBlockingSkipIntent(this.get(id))
+  }
+
+  /** Read-only execution guard for prompt and tool-catalog projections. */
+  isExecutionBlockedSnapshot(record: PlanRecord): boolean {
+    const id = String(record.id).trim()
+    if (!id) return true
+    if (planApprovalIntent(record) || hasBlockingSkipIntent(record)) return true
+    if (this.quarantinedMemory.has(id)) return true
+    if (!existsSync(this.quarantineFile)) return false
+    try {
+      const raw = JSON.parse(readFileSync(this.quarantineFile, 'utf8'))
+      return Boolean(
+        raw &&
+        typeof raw === 'object' &&
+        !Array.isArray(raw) &&
+        (raw as Record<string, unknown>)[id],
+      )
+    } catch {
+      return true
+    }
   }
 
   listQuarantined(): string[] {

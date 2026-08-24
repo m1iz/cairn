@@ -2,6 +2,7 @@
  * ControlManager (MIG-CTRL-002/011)。对齐 Python `agent/control/manager.py`。
  * 薄门面，委托 8 个子管理器；Ask/Plan 交互流 + 模式管理 + resume 消息逐字保真。
  */
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { nowTs } from '../util/time'
 import { PermissionManager } from '../permissions/manager'
 import type { PlanPermissionToken } from '../permissions/models'
@@ -106,7 +107,10 @@ export class ControlManager implements ControlManagerHost, ToolManagerHost {
   private pendingObserver: ControlPendingObserver | null = null
   private askMetaProvider: AskMetaProvider | null = null
   private runtimeScope: Required<ControlRuntimeScope> | null = null
-  private goalPlanContext: GoalRecord | null = null
+  private readonly runtimeScopeContext =
+    new AsyncLocalStorage<Required<ControlRuntimeScope> | null>()
+  private readonly goalPlanContexts = new Map<string, GoalRecord>()
+  private unscopedGoalPlanContext: GoalRecord | null = null
   private readonly goalMutations: GoalGateMutationLedger
 
   constructor(
@@ -239,20 +243,39 @@ export class ControlManager implements ControlManagerHost, ToolManagerHost {
     )
   }
 
+  withRuntimeScope<T>(scope: ControlRuntimeScope | null, action: () => T): T {
+    return this.runtimeScopeContext.run(normalizeRuntimeScope(scope), action)
+  }
+
+  private currentRuntimeScope(): Required<ControlRuntimeScope> | null {
+    return this.runtimeScopeContext.getStore() ?? this.runtimeScope
+  }
+
   runtimeScopeSnapshot(): Required<ControlRuntimeScope> | null {
-    return this.runtimeScope ? Object.freeze({ ...this.runtimeScope }) : null
+    const current = this.currentRuntimeScope()
+    return current ? Object.freeze({ ...current }) : null
   }
 
   setActiveGoalPlanContext(goal: GoalRecord | null): void {
-    this.goalPlanContext = goal
+    const sessionId =
+      goal?.scope.sessionId ?? this.currentRuntimeScope()?.sessionId
+    if (sessionId) {
+      if (goal) this.goalPlanContexts.set(sessionId, goal)
+      else this.goalPlanContexts.delete(sessionId)
+      return
+    }
+    this.unscopedGoalPlanContext = goal
   }
 
   activeGoalPlanContext(): GoalRecord | null {
-    const goal = this.goalPlanContext
+    const sessionId = this.currentRuntimeScope()?.sessionId
+    const goal = sessionId
+      ? (this.goalPlanContexts.get(sessionId) ?? null)
+      : this.unscopedGoalPlanContext
     if (goal === null) return null
     if (goal.status !== 'active' || goal.runtime.phase !== 'planning')
       throw new Error('active Goal must be in planning phase to propose a Plan')
-    const current = this.runtimeScope
+    const current = this.currentRuntimeScope()
     if (current === null || !goalScopesEqual(current, goal.scope))
       throw new Error('active Goal scope does not match the current Plan scope')
     return goal
@@ -691,22 +714,20 @@ export class ControlManager implements ControlManagerHost, ToolManagerHost {
   }
 
   planScopeMetadata(): Record<string, unknown> | null {
-    if (this.runtimeScope === null) return null
+    const current = this.currentRuntimeScope()
+    if (current === null) return null
     const scope: Record<string, unknown> = {}
-    if (this.runtimeScope.sessionId)
-      scope.session_id = this.runtimeScope.sessionId
-    if (this.runtimeScope.mode) scope.mode = this.runtimeScope.mode
-    if (this.runtimeScope.projectId)
-      scope.project_id = this.runtimeScope.projectId
-    if (this.runtimeScope.workspaceRoot)
-      scope.workspace_root = this.runtimeScope.workspaceRoot
-    if (this.runtimeScope.projectFingerprint)
-      scope.project_fingerprint = this.runtimeScope.projectFingerprint
+    if (current.sessionId) scope.session_id = current.sessionId
+    if (current.mode) scope.mode = current.mode
+    if (current.projectId) scope.project_id = current.projectId
+    if (current.workspaceRoot) scope.workspace_root = current.workspaceRoot
+    if (current.projectFingerprint)
+      scope.project_fingerprint = current.projectFingerprint
     return Object.keys(scope).length ? scope : null
   }
 
   planMatchesCurrentScope(record: PlanRecord): boolean {
-    return planMatchesScope(record, this.runtimeScope)
+    return planMatchesScope(record, this.currentRuntimeScope())
   }
 
   private notifyPendingCleared(interaction: Interaction): void {
@@ -1286,12 +1307,12 @@ export class ControlManager implements ControlManagerHost, ToolManagerHost {
 
   latestExecutablePlan(): PlanRecord | null {
     const current = latestApprovedPlanGeneration(
-      this.planStore.list(),
+      this.planStore.snapshot(),
       (record) => this.planMatchesCurrentScope(record),
     )
     if (
       current === null ||
-      this.planStore.isExecutionBlocked(current.id) ||
+      this.planStore.isExecutionBlockedSnapshot(current) ||
       isPlanInvalidated(current) ||
       (current.status !== PlanStatus.APPROVED &&
         current.status !== PlanStatus.EXECUTING)
@@ -1360,12 +1381,12 @@ export class ControlManager implements ControlManagerHost, ToolManagerHost {
 
   latestReviewablePlan(): PlanRecord | null {
     const current = latestApprovedPlanGeneration(
-      this.planStore.list(),
+      this.planStore.snapshot(),
       (record) => this.planMatchesCurrentScope(record),
     )
     if (
       current === null ||
-      this.planStore.isExecutionBlocked(current.id) ||
+      this.planStore.isExecutionBlockedSnapshot(current) ||
       isPlanInvalidated(current) ||
       (current.status !== PlanStatus.APPROVED &&
         current.status !== PlanStatus.EXECUTING &&

@@ -312,6 +312,25 @@ describe('ControlManager (test_control.py)', () => {
     expect(manager.latestExecutablePlan()).toBeNull()
   })
 
+  it('keeps concurrent runtime scopes isolated across asynchronous session work', async () => {
+    const manager = new ControlManager(tmp('cairn-ctrl-concurrent-scope-'))
+    const seen: string[] = []
+
+    await Promise.all([
+      manager.withRuntimeScope({ sessionId: 'session_a' }, async () => {
+        await Promise.resolve()
+        seen.push(manager.runtimeScopeSnapshot()?.sessionId ?? '')
+      }),
+      manager.withRuntimeScope({ sessionId: 'session_b' }, async () => {
+        await Promise.resolve()
+        seen.push(manager.runtimeScopeSnapshot()?.sessionId ?? '')
+      }),
+    ])
+
+    expect(seen.sort()).toEqual(['session_a', 'session_b'])
+    expect(manager.runtimeScopeSnapshot()).toBeNull()
+  })
+
   it('stamps first-class session ownership onto created plans', () => {
     const manager = new ControlManager(tmp('cairn-ctrl-plan-session-'))
     manager.setRuntimeScope({
@@ -492,9 +511,7 @@ describe('ControlManager (test_control.py)', () => {
   })
 
   it('rejects approval when the pending Goal Plan is not the current approval generation', () => {
-    const manager = new ControlManager(
-      tmp('cairn-ctrl-goal-plan-generation-'),
-    )
+    const manager = new ControlManager(tmp('cairn-ctrl-goal-plan-generation-'))
     const goal = lockedGoal('goal-plan-generation', {
       sessionId: 'session-goal-plan-generation',
       mode: 'build',

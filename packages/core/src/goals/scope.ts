@@ -69,7 +69,8 @@ function planGoalScope(plan: PlanRecord): ComparableGoalScope | null {
 
 export function portableGoalWorkspace(value: unknown): string {
   const raw = exact(value)
-  const windows = /^[a-z]:[\\/]/i.test(raw) || /^[\\/]{2}/.test(raw)
+  const windows =
+    raw.startsWith('\\') || /^[a-z]:[\\/]/i.test(raw) || /^[\\/]{2}/.test(raw)
   if (!windows) return raw
   const portable = raw.replace(/\\/g, '/')
   return portable.toLowerCase()

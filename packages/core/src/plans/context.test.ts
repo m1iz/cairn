@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { PlanContextBuilder } from './context'
 import { PlanStatus, PlanStepStatus, makePlanRecord, makeStep } from './models'
 import { PlanStore } from './store'
+import { GoalMutationGuard } from '../goals/mutation-guard'
 
 function tmp(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -106,5 +107,19 @@ describe('PlanContextBuilder throttling (Wave4.4)', () => {
     expect(first.content).toContain('恢复')
     const second = builder.messageFor([])!
     expect(second.content).not.toContain('恢复一个执行中的')
+  })
+
+  it('reads prompt context without competing for an active Goal mutation lease', async () => {
+    const root = tmp('cairn-plan-ctx-concurrent-goal-')
+    const store = new PlanStore(root)
+    seedPlan(store)
+    const builder = new PlanContextBuilder(store)
+    const guard = new GoalMutationGuard(root)
+
+    await guard.runExclusive('mutation', async () => {
+      expect(builder.messageFor([])?.content).toContain(
+        '[PLAN_RUNTIME_CONTEXT]',
+      )
+    })
   })
 })
