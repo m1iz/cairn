@@ -10,7 +10,10 @@ import type { ToolCallRequest } from '../providers/base'
 import type { CheckpointWriteOptions } from '../sessions/checkpoint'
 import type { ToolResultObj } from '../tools/base'
 import { controlInteractionEvent } from './runner-helpers'
-import type { ControlManagerRunnerHost, MemoryStoreLike } from './runner'
+import type {
+  ControlManagerRunnerHost,
+  MemoryStoreLike,
+} from './runner-contracts'
 
 type Msg = Record<string, unknown>
 type StreamEmitter = (event: Record<string, unknown>) => void | Promise<void>

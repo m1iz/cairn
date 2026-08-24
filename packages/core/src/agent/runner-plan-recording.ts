@@ -8,7 +8,7 @@ import type { ToolResultObj } from '../tools/base'
 import type { ToolRegistry } from '../tools/registry'
 import { planToDict, type PlanRecord } from '../plans/models'
 import { type VerificationCommand } from '../plans/verification'
-import type { ControlManagerRunnerHost } from './runner'
+import type { ControlManagerRunnerHost } from './runner-contracts'
 import {
   discoveryEvidenceRefs,
   discoveryFiles,

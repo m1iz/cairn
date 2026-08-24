@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { TokenTrackerLike } from '../agent/runner'
+import type { TokenTrackerLike } from '../agent/runner-contracts'
 import { ModelConfigurationError } from '../errors'
 import type { ModelRole, ModelRoute } from '../model/router'
 import {

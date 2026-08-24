@@ -2,7 +2,7 @@
  * AgentLoop 的两个 ControlManagerRunnerHost 工厂（W7：从 loop.ts 下沉）。
  */
 import type { ControlManager } from '../control/manager'
-import type { ControlManagerRunnerHost } from './runner'
+import type { ControlManagerRunnerHost } from './runner-contracts'
 
 export function dispatchControlHost(control: ControlManager): {
   mode?: string

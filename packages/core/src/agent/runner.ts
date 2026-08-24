@@ -25,10 +25,9 @@ import { ToolResultObj, type Tool, type ToolDefinition } from '../tools/base'
 import { ToolExecutionEngine } from '../tools/execution'
 import { PlanGenerationFailedError, TurnPaused } from '../control/exceptions'
 import { parsePauseResult } from '../control/tools'
-import { interactionToPublicDict, type Interaction } from '../control/models'
+import { interactionToPublicDict } from '../control/models'
 import { PlanContextBuilder } from '../plans/context'
 import { PlanStatus, planToDict, type PlanRecord } from '../plans/models'
-import type { PlanStore } from '../plans/store'
 import {
   latestPromptProjection,
   writePromptSnapshot,
@@ -41,10 +40,7 @@ import {
 } from '../prompts/projection'
 import type { PromptPrefetchReport } from '../prompts/prefetch'
 import { PromptPolicy } from '../prompts/policy'
-import {
-  readTurnCheckpoint,
-  type CheckpointWriteOptions,
-} from '../sessions/checkpoint'
+import { readTurnCheckpoint } from '../sessions/checkpoint'
 import {
   TransitionReason,
   beginIteration,
@@ -132,6 +128,22 @@ import type {
   TurnChangeSnapshot,
   TurnMutationInput,
 } from '../changes/turn-change-ledger'
+import type {
+  AgentRunnerInterjectionHost,
+  CompactorLike,
+  ControlManagerRunnerHost,
+  MemoryStoreLike,
+  TodoStoreLike,
+  TokenTrackerLike,
+} from './runner-contracts'
+export type {
+  AgentRunnerInterjectionHost,
+  CompactorLike,
+  ControlManagerRunnerHost,
+  MemoryStoreLike,
+  TodoStoreLike,
+  TokenTrackerLike,
+} from './runner-contracts'
 
 type StreamEmitter = (event: Record<string, unknown>) => void | Promise<void>
 type Msg = Record<string, unknown>
@@ -152,220 +164,6 @@ const MAX_LENGTH_RECOVERIES = 3
 const ASK_GUARD_BLOCK =
   'Error: Ask Guard requires `ask_user` before this high-impact action. ' +
   'Use read-only tools if needed, then ask the user to resolve the ambiguity.'
-
-// ── 协作者接口（null 守卫；真实实现来自后续波次）──
-
-export interface MemoryStoreLike {
-  memoryDir?: string
-  checkpointFile?: string
-  versions?: { list(opts?: { limit?: number; target?: unknown }): unknown[] }
-  writeCheckpoint(history: Msg[], opts?: CheckpointWriteOptions): void
-  clearCheckpoint(): void
-  readCheckpoint(): Msg[] | null
-  appendHistory(
-    role: string,
-    content: string,
-    opts?: { extra?: Record<string, unknown> | null },
-  ): void
-}
-
-export interface AgentRunnerInterjectionHost {
-  consume():
-    Array<Record<string, unknown>> | Promise<Array<Record<string, unknown>>>
-  tombstonePartial(record: {
-    turnId: string | null
-    content: string
-    reason: 'interjected' | 'cancelled' | 'model_failed'
-  }): void | Promise<void>
-}
-
-export interface TokenTrackerLike {
-  record(
-    model: string,
-    usage: Record<string, number>,
-    opts: Record<string, unknown>,
-  ): void
-  shouldCompact(maxContext: number, threshold: number): boolean
-  lastInputTokensValue?(): number
-}
-
-export interface CompactorLike {
-  compactAfterTurn?(opts: {
-    history: Msg[]
-    turnId: string | null
-    currentTokens: number
-    maxContext: number
-    goalHint?: {
-      readonly goalId: string
-      readonly lastEventSeq: number
-    } | null
-  }): Promise<unknown> | unknown
-  compactAsync?(history: Msg[]): Promise<Msg[]>
-  compact?(history: Msg[]): Msg[]
-}
-
-export interface TodoStoreLike {
-  todos: Array<Record<string, unknown>>
-  revision?: number
-}
-
-/** runner 需要的 ControlManager 表面（W05）。全部可选/容错调用。 */
-export interface ControlManagerRunnerHost {
-  planStore?: PlanStore
-  latestExecutablePlan?(): PlanRecord | null
-  requestPlanExecutionDecision?(input: {
-    turnId: string
-    executionId: string
-  }): Interaction | null
-  currentPlanExecutionPhase?(): {
-    planId: string
-    stepId: string
-    phase:
-      | 'implementing'
-      | 'verifying'
-      | 'repairing'
-      | 'waiting_user'
-      | 'completed'
-      | 'cancelled'
-  } | null
-  pausePlanExecution?(input: {
-    reason: 'continuation_rejected' | 'no_progress' | 'verification_required'
-    turnId: string
-    executionId?: string | null
-    pausedAt: number
-    evaluationCount: number
-    totalIterations: number
-    nextActions: string[]
-  }): PlanRecord | null
-  resumePlanExecution?(input: { turnId: string }): PlanRecord | null
-  systemPrompt(): string
-  toolDefinitions(registry: ToolRegistry): ToolDefinition[]
-  assessPermission(
-    name: string,
-    args: Record<string, unknown>,
-    registry: ToolRegistry | null,
-    opts?: {
-      sessionId?: string | null
-      turnId?: string | null
-      workspaceRoot?: string | null
-      cwd?: string | null
-      taskIntent?: string | null
-      authorizationId?: string | null
-    },
-  ):
-    | Promise<{
-        allowed: boolean
-        requiresApproval: boolean
-        reason: string
-        risk?: string
-        rule?: string
-        trace?: Array<{ rule: string; outcome: string; detail: string }>
-        arguments?: Record<string, unknown> | null
-        toolName?: string
-      }>
-    | {
-        allowed: boolean
-        requiresApproval: boolean
-        reason: string
-        risk?: string
-        rule?: string
-        trace?: Array<{ rule: string; outcome: string; detail: string }>
-        arguments?: Record<string, unknown> | null
-        toolName?: string
-      }
-  assessPermissionBatch?(
-    calls: Array<{
-      id: string
-      name: string
-      arguments: Record<string, unknown>
-    }>,
-    registry: ToolRegistry | null,
-    opts?: {
-      sessionId?: string | null
-      turnId?: string | null
-      workspaceRoot?: string | null
-      cwd?: string | null
-      taskIntent?: string | null
-      authorizationId?: string | null
-    },
-  ): Promise<{
-    allowed: boolean
-    requiresApproval: boolean
-    reason: string
-    risk?: string
-    rule?: string
-    decisions: Array<{
-      allowed: boolean
-      requiresApproval: boolean
-      reason: string
-      risk?: string
-      rule?: string
-      trace?: Array<{ rule: string; outcome: string; detail: string }>
-      arguments?: Record<string, unknown> | null
-      toolName?: string
-    }>
-    operations: Array<{
-      callId: string
-      fingerprint: string
-      decision: unknown
-    }>
-    authorizationId?: string | null
-  }>
-  permissionApprovalResult(
-    decision: unknown,
-    opts?: { parentCallId?: string | null; sessionId?: string | null },
-  ): string
-  permissionBatchApprovalResult?(
-    decision: unknown,
-    opts?: {
-      parentCallId?: string | null
-      sessionId?: string | null
-      workspaceRoot?: string | null
-      cwd?: string | null
-    },
-  ): string
-  assessClarification(history: Msg[]): {
-    required: boolean
-    reason: string
-    questions: Array<Record<string, unknown>>
-    categories: string[]
-  }
-  assessPlanDecision?(userMessage: string): unknown
-  shouldEnforcePlanFinal(): boolean
-  createAsk(opts: {
-    questions: Array<Record<string, unknown>>
-    context?: string
-    meta?: Record<string, unknown> | null
-  }): Interaction
-  recordPlanDiscovery?(opts: Record<string, unknown>): unknown
-  recordPlanStepToolOutput?(opts: Record<string, unknown>): unknown
-  normalizePlanTodoUpdate?(
-    todos: Array<Record<string, unknown>>,
-  ): Array<Record<string, unknown>>
-  migrateLegacyPlanTodoMirrors?(): void
-  claimUnverifiedPlanSteps?(): {
-    planId: string
-    steps: Array<{ id: string; title: string }>
-  } | null
-  planMatchesCurrentScope?(record: PlanRecord): boolean
-  planIndependentVerificationFollowup?(opts?: {
-    dispatchAvailable?: boolean
-  }): Record<string, unknown> | null
-  recordIndependentVerificationToolResult?(opts: {
-    toolCallId: string
-    agentType: string
-    output: string
-  }): PlanRecord | null
-  independentVerificationDispatchGuard?(agentType: string): string | null
-  independentVerificationAskGuard?(): string | null
-  markIndependentVerificationDelivered?(): PlanRecord | null
-  planVerificationTarget?(command: string): Record<string, string> | null
-  recordPlanVerificationResult?(opts: {
-    planId: string
-    stepId: string
-    result: Record<string, unknown>
-  }): PlanRecord | null
-}
 
 interface RunnerPermissionDecision {
   allowed: boolean

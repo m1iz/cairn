@@ -29,7 +29,7 @@ import {
   HookOrchestrator,
   type HookOrchestratorEmitter,
 } from './orchestrator'
-import type { TokenTrackerLike } from '../agent/runner'
+import type { TokenTrackerLike } from '../agent/runner-contracts'
 import { writeJsonAtomic } from '../store/atomic-json'
 import { parseHooksConfig, serializeHooksConfig } from './schema'
 import type { ExecutionEnvironment } from '../environment/snapshot'
