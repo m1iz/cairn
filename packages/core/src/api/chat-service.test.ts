@@ -619,57 +619,68 @@ describe('MainlineTurnService (MIG-IPC-005)', () => {
     await api.close()
   })
 
-  it('keeps one independent visible queue slot for each session', async () => {
-    const root = tmp('cairn-mainline-single-queue-per-session-')
-    const provider = new ConcurrentBlockingProvider()
-    const api = await CoreApi.create({
-      root,
-      stateRoot: join(root, '.cairn'),
-      templatesDir: TEMPLATES_DIR,
-      modelRouter: fakeRouter(provider),
-    })
-    const firstSession = api.sessions.create({ title: 'First session' })
-    const secondSession = api.sessions.create({ title: 'Second session' })
-    const firstId = String(firstSession.id)
-    const secondId = String(secondSession.id)
+  it(
+    'keeps one independent visible queue slot for each session',
+    async () => {
+      const root = tmp('cairn-mainline-single-queue-per-session-')
+      const provider = new ConcurrentBlockingProvider()
+      const api = await CoreApi.create({
+        root,
+        stateRoot: join(root, '.cairn'),
+        templatesDir: TEMPLATES_DIR,
+        modelRouter: fakeRouter(provider),
+      })
+      const firstSession = api.sessions.create({ title: 'First session' })
+      const secondSession = api.sessions.create({ title: 'Second session' })
+      const firstId = String(firstSession.id)
+      const secondId = String(secondSession.id)
 
-    const firstOwner = api.chat.submit({
-      content: 'first owner',
-      turnId: 'turn_first_owner',
-      sessionId: firstId,
-    })
-    const secondOwner = api.chat.submit({
-      content: 'second owner',
-      turnId: 'turn_second_owner',
-      sessionId: secondId,
-    })
-    await provider.waitForCalls(2)
-    const firstQueued = api.chat.submit({
-      content: 'first session queued',
-      turnId: 'turn_first_session_queued',
-      clientMessageId: 'prompt_first_session_queued',
-      sessionId: firstId,
-    })
-    const secondQueued = api.chat.submit({
-      content: 'second session queued',
-      turnId: 'turn_second_session_queued',
-      clientMessageId: 'prompt_second_session_queued',
-      sessionId: secondId,
-    })
-    await new Promise((resolve) => setTimeout(resolve, 10))
+      const firstOwner = api.chat.submit({
+        content: 'first owner',
+        turnId: 'turn_first_owner',
+        sessionId: firstId,
+      })
+      const secondOwner = api.chat.submit({
+        content: 'second owner',
+        turnId: 'turn_second_owner',
+        sessionId: secondId,
+      })
+      await provider.waitForCalls(2)
+      const firstQueued = api.chat.submit({
+        content: 'first session queued',
+        turnId: 'turn_first_session_queued',
+        clientMessageId: 'prompt_first_session_queued',
+        sessionId: firstId,
+      })
+      const secondQueued = api.chat.submit({
+        content: 'second session queued',
+        turnId: 'turn_second_session_queued',
+        clientMessageId: 'prompt_second_session_queued',
+        sessionId: secondId,
+      })
+      await vi.waitFor(
+        () => {
+          expect(
+            api.chat.listQueuedPrompts({ sessionId: firstId }),
+          ).toHaveLength(1)
+          expect(
+            api.chat.listQueuedPrompts({ sessionId: secondId }),
+          ).toHaveLength(1)
+        },
+        { timeout: process.platform === 'win32' ? 10_000 : 2_000 },
+      )
 
-    expect(api.chat.listQueuedPrompts({ sessionId: firstId })).toHaveLength(1)
-    expect(api.chat.listQueuedPrompts({ sessionId: secondId })).toHaveLength(1)
-
-    provider.finish(0, response('first owner complete'))
-    provider.finish(1, response('second owner complete'))
-    await Promise.all([firstOwner, secondOwner])
-    await provider.waitForCalls(4)
-    provider.finish(2, response('first queue complete'))
-    provider.finish(3, response('second queue complete'))
-    await Promise.all([firstQueued, secondQueued])
-    await api.close()
-  })
+      provider.finish(0, response('first owner complete'))
+      provider.finish(1, response('second owner complete'))
+      await Promise.all([firstOwner, secondOwner])
+      await provider.waitForCalls(4)
+      provider.finish(2, response('first queue complete'))
+      provider.finish(3, response('second queue complete'))
+      await Promise.all([firstQueued, secondQueued])
+      await api.close()
+    },
+    process.platform === 'win32' ? 30_000 : 10_000,
+  )
 
   it('preserves and drains multiple legacy queued prompts in FIFO order', async () => {
     const root = tmp('cairn-mainline-legacy-multi-queue-')
@@ -1600,13 +1611,7 @@ describe('MainlineTurnService (MIG-IPC-005)', () => {
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(
       readFileSync(
-        join(
-          root,
-          '.cairn',
-          'sessions',
-          String(sessionA.id),
-          'history.jsonl',
-        ),
+        join(root, '.cairn', 'sessions', String(sessionA.id), 'history.jsonl'),
         'utf8',
       ),
     ).not.toContain('A late result')
@@ -1849,7 +1854,8 @@ class ConcurrentBlockingProvider extends LLMProvider {
   }
 
   async waitForCalls(count: number): Promise<void> {
-    const deadline = Date.now() + 2_000
+    const deadline =
+      Date.now() + (process.platform === 'win32' ? 10_000 : 2_000)
     while (this.calls.length < count) {
       if (Date.now() > deadline)
         throw new Error(`provider did not receive ${count} calls`)

@@ -141,60 +141,68 @@ describe('Goal mode deterministic E2E', () => {
     e2eTimeout(15_000),
   )
 
-  it('keeps background Goal control and runtime ownership on session A when the user switches to session B', async () => {
-    const root = temp('goal-e2e-session-switch-')
-    writeFileSync(join(root, 'README.md'), '# Goal Plan fixture\n', 'utf8')
-    const provider = new SwitchableGoalPlanProvider()
-    const api = await createApi(root, join(root, 'state'), provider)
-    const sessionA = api.sessions.create({
-      title: 'Goal owner',
-      mode: 'build',
-      project_path: root,
-    })
-    const sessionB = api.sessions.create({ title: 'Foreground chat' })
-    api.sessions.activate(String(sessionA.id))
-    const started = await api.goals.start({
-      outcome: 'Keep background ownership stable.',
-      sessionId: String(sessionA.id),
-    })
-    await within(provider.entered, 2_000, 'provider did not enter')
-    api.sessions.activate(String(sessionB.id))
-    provider.release()
-    await within(
-      settleGoal(api, started.goal.id),
-      3_000,
-      'Goal did not reach Plan awaiting state',
-    )
+  it(
+    'keeps background Goal control and runtime ownership on session A when the user switches to session B',
+    async () => {
+      const root = temp('goal-e2e-session-switch-')
+      writeFileSync(join(root, 'README.md'), '# Goal Plan fixture\n', 'utf8')
+      const provider = new SwitchableGoalPlanProvider()
+      const api = await createApi(root, join(root, 'state'), provider)
+      const sessionA = api.sessions.create({
+        title: 'Goal owner',
+        mode: 'build',
+        project_path: root,
+      })
+      const sessionB = api.sessions.create({ title: 'Foreground chat' })
+      api.sessions.activate(String(sessionA.id))
+      const started = await api.goals.start({
+        outcome: 'Keep background ownership stable.',
+        sessionId: String(sessionA.id),
+      })
+      await within(
+        provider.entered,
+        e2eTimeout(2_000),
+        'provider did not enter',
+      )
+      api.sessions.activate(String(sessionB.id))
+      provider.release()
+      await within(
+        settleGoal(api, started.goal.id),
+        e2eTimeout(3_000),
+        'Goal did not reach Plan awaiting state',
+      )
 
-    const pending = api.loop.controlManager.store.load().pending
-    expect(api.loop.activeSessionId).toBe(String(sessionB.id))
-    expect(
-      api.loop.sessionStore.get(String(sessionA.id))?.control_pending,
-    ).toMatchObject({ interaction_id: pending?.id })
-    expect(
-      api.loop.sessionStore.get(String(sessionB.id))?.control_pending ?? null,
-    ).toBeNull()
-    expect(await api.loop.goalStore.get(started.goal.id)).toMatchObject({
-      scope: { sessionId: String(sessionA.id) },
-      runtime: {
-        phase: 'awaiting_user',
-        pendingInteractionId: pending?.id,
-      },
-    })
+      const pending = api.loop.controlManager.store.load().pending
+      expect(api.loop.activeSessionId).toBe(String(sessionB.id))
+      expect(
+        api.loop.sessionStore.get(String(sessionA.id))?.control_pending,
+      ).toMatchObject({ interaction_id: pending?.id })
+      expect(
+        api.loop.sessionStore.get(String(sessionB.id))?.control_pending ?? null,
+      ).toBeNull()
+      expect(await api.loop.goalStore.get(started.goal.id)).toMatchObject({
+        scope: { sessionId: String(sessionA.id) },
+        runtime: {
+          phase: 'awaiting_user',
+          pendingInteractionId: pending?.id,
+        },
+      })
 
-    await within(
-      api.control.approvePlan(String(pending?.id), { uiHidden: true }),
-      3_000,
-      'Plan approval did not return',
-    )
-    await within(
-      settleGoal(api, started.goal.id),
-      3_000,
-      'resumed Goal did not settle',
-    )
-    expect(api.loop.activeSessionId).toBe(String(sessionB.id))
-    await api.close()
-  }, 15_000)
+      await within(
+        api.control.approvePlan(String(pending?.id), { uiHidden: true }),
+        e2eTimeout(3_000),
+        'Plan approval did not return',
+      )
+      await within(
+        settleGoal(api, started.goal.id),
+        e2eTimeout(3_000),
+        'resumed Goal did not settle',
+      )
+      expect(api.loop.activeSessionId).toBe(String(sessionB.id))
+      await api.close()
+    },
+    e2eTimeout(15_000),
+  )
 
   it(
     'automatically reaches manual verification and independent reviewer through production Control and runner paths',
