@@ -114,7 +114,7 @@ function roots(prefix: string): { root: string; stateRoot: string } {
   return { root, stateRoot: join(root, '.state') }
 }
 
-describe('AgentLoop hooks v2 lifecycle', () => {
+describe('AgentLoop hooks lifecycle', () => {
   it('runs SessionStart once and injects its context into the first model request', async () => {
     const paths = roots('hook-life-start-')
     writeHooks(paths.stateRoot, {

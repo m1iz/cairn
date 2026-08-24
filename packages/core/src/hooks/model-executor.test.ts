@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ToolCallRequest } from '../providers/base'
-import { defaultHooksConfigV2 } from './schema'
+import { defaultHooksConfig } from './schema'
 import {
   AgentHookExecutor,
   PromptHookExecutor,
@@ -86,10 +86,10 @@ function input(overrides: Dict = {}): Dict {
 }
 
 function context(cwd: string, eventName = 'Stop', overrides: Dict = {}): Dict {
-  return { eventName, cwd, policy: defaultHooksConfigV2().policy, ...overrides }
+  return { eventName, cwd, policy: defaultHooksConfig().policy, ...overrides }
 }
 
-describe('hooks v2 model executors', () => {
+describe('hooks model executors', () => {
   it('runs prompt hooks as one secondary no-tool request and parses a strict ok result', async () => {
     const gateway = new FakeGateway(
       modelResponse(
@@ -232,7 +232,7 @@ describe('hooks v2 model executors', () => {
 
   it('redacts and bounds model context and prevents recursive hook model calls', async () => {
     const gateway = new FakeGateway(modelResponse('{"ok":true,"output":{}}'))
-    const policy = defaultHooksConfigV2().policy
+    const policy = defaultHooksConfig().policy
     policy.maxContextBytes = 240
     const executor = new PromptHookExecutor(gateway)
     await executor.execute(

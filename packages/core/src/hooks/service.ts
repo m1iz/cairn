@@ -19,8 +19,9 @@ import type {
   HookEventName,
   HookExecutionResult,
   HookDiagnostic,
+  HookRuntimeRunOptions,
   HookSnapshot,
-  HooksConfigV2,
+  HooksConfig,
 } from './models'
 import {
   AsyncHookRegistry,
@@ -28,10 +29,9 @@ import {
   HookOrchestrator,
   type HookOrchestratorEmitter,
 } from './orchestrator'
-import type { HookRuntimeRunOptions } from './runtime'
 import type { TokenTrackerLike } from '../agent/runner'
 import { writeJsonAtomic } from '../store/atomic-json'
-import { parseHooksConfigV2, serializeHooksConfigV2 } from './schema'
+import { parseHooksConfig, serializeHooksConfig } from './schema'
 import type { ExecutionEnvironment } from '../environment/snapshot'
 import type { OwnedProcessRunner } from '../environment/process-runner'
 
@@ -281,12 +281,12 @@ export class HookService {
     } = {},
   ): Promise<{
     saved: boolean
-    config: HooksConfigV2
+    config: HooksConfig
     snapshot: HookSnapshot
     diagnostics: HookDiagnostic[]
     decision: HookAggregateDecision
   }> {
-    const parsed = parseHooksConfigV2(raw, { sourceKind: 'global' })
+    const parsed = parseHooksConfig(raw, { sourceKind: 'global' })
     const scope = {
       sessionId: opts.sessionId ?? '',
       projectRoot: opts.projectRoot ?? null,
@@ -297,7 +297,7 @@ export class HookService {
         `stale hooks revision: expected ${opts.expectedRevision}, current ${previous.revision}`,
       )
     }
-    const candidateRevision = hashValue(serializeHooksConfigV2(parsed.config))
+    const candidateRevision = hashValue(serializeHooksConfig(parsed.config))
     const decision = parsed.diagnostics.length
       ? emptyDecision('invalid hooks configuration')
       : await this.authorizeConfigChange({
@@ -323,7 +323,7 @@ export class HookService {
     }
     await writeJsonAtomic(
       this.resolver.globalConfigPath,
-      serializeHooksConfigV2(parsed.config),
+      serializeHooksConfig(parsed.config),
     )
     const candidate = await this.resolver.resolve(scope)
     this.snapshots.accept(candidate, scope)

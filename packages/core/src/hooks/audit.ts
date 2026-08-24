@@ -1,33 +1,16 @@
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { appendJsonl, readJsonl } from '../store/jsonl'
-import type { HookAuditRecord } from './models'
-import type { HookAuditRunRecordV2 } from './orchestrator'
+import type { HookAuditRunRecord } from './orchestrator'
 
 export class HookAuditStore {
-  readonly auditPath: string
   readonly auditDir: string
 
   constructor(stateRoot: string) {
-    this.auditPath = join(stateRoot, 'hooks', 'audit.jsonl')
     this.auditDir = join(stateRoot, 'hooks', 'audit')
   }
 
-  async append(record: HookAuditRecord): Promise<void> {
-    await appendJsonl(this.auditPath, record)
-  }
-
-  async replay(opts: { limit?: number } = {}): Promise<{
-    records: HookAuditRecord[]
-    badLines: { line: number; raw: string }[]
-  }> {
-    const replay = await readJsonl<HookAuditRecord>(this.auditPath)
-    const limit = Math.max(0, Math.trunc(opts.limit ?? 100))
-    const records = limit > 0 ? replay.records.slice(-limit) : []
-    return { records, badLines: replay.badLines }
-  }
-
-  async appendRun(record: HookAuditRunRecordV2): Promise<void> {
+  async appendRun(record: HookAuditRunRecord): Promise<void> {
     await appendJsonl(
       this.dailyPath(record.startedAt),
       sanitizeRunRecord(record),
@@ -35,7 +18,7 @@ export class HookAuditStore {
   }
 
   async replayRuns(opts: { limit?: number } = {}): Promise<{
-    records: HookAuditRunRecordV2[]
+    records: HookAuditRunRecord[]
     badLines: Array<{ path: string; line: number; raw: string }>
   }> {
     let names: string[] = []
@@ -46,11 +29,11 @@ export class HookAuditStore {
     } catch {
       return { records: [], badLines: [] }
     }
-    const records: HookAuditRunRecordV2[] = []
+    const records: HookAuditRunRecord[] = []
     const badLines: Array<{ path: string; line: number; raw: string }> = []
     for (const name of names) {
       const path = join(this.auditDir, name)
-      const replay = await readJsonl<HookAuditRunRecordV2>(path)
+      const replay = await readJsonl<HookAuditRunRecord>(path)
       records.push(...replay.records)
       badLines.push(...replay.badLines.map((line) => ({ path, ...line })))
     }
@@ -66,7 +49,7 @@ export class HookAuditStore {
   }
 }
 
-function sanitizeRunRecord(record: HookAuditRunRecordV2): HookAuditRunRecordV2 {
+function sanitizeRunRecord(record: HookAuditRunRecord): HookAuditRunRecord {
   return {
     ...record,
     source: {

@@ -212,7 +212,7 @@ async function runTool(opts: {
   return { tool, provider, history }
 }
 
-describe('AgentRunner hooks v2 tool pipeline', () => {
+describe('AgentRunner hooks tool pipeline', () => {
   it('never lets PermissionRequest hook allow bypass a core approval', async () => {
     const hook = hooks((event) =>
       event === 'PermissionRequest'

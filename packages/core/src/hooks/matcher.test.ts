@@ -53,7 +53,7 @@ function command(id: string): Dict {
   return { id, enabled: true, type: 'command', command: 'true' }
 }
 
-describe('hooks v2 matcher compiler', () => {
+describe('hooks matcher compiler', () => {
   it('uses tool_name for PermissionRequest and preserves stable plan order', async () => {
     const compile = await compiler()
     const plan = compile(

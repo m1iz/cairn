@@ -130,11 +130,11 @@ function writeConfig(
   )
 }
 
-describe('hooks v2 source resolution and trust', () => {
+describe('hooks source resolution and trust', () => {
   it('blocks project sources until their current digest is trusted', async () => {
     const api = await configApi()
-    const stateRoot = tmp('hooks-v2-state-')
-    const projectRoot = tmp('hooks-v2-project-')
+    const stateRoot = tmp('hooks-state-')
+    const projectRoot = tmp('hooks-project-')
     mkdirSync(join(projectRoot, '.cairn'), { recursive: true })
     writeConfig(
       join(stateRoot, 'hooks_config.json'),
@@ -172,8 +172,8 @@ describe('hooks v2 source resolution and trust', () => {
 
   it('uses global < project < project-local < session precedence for equal group ids', async () => {
     const api = await configApi()
-    const stateRoot = tmp('hooks-v2-precedence-state-')
-    const projectRoot = tmp('hooks-v2-precedence-project-')
+    const stateRoot = tmp('hooks-precedence-state-')
+    const projectRoot = tmp('hooks-precedence-project-')
     mkdirSync(join(projectRoot, '.cairn'), { recursive: true })
     writeConfig(
       join(stateRoot, 'hooks_config.json'),
@@ -232,8 +232,8 @@ describe('hooks v2 source resolution and trust', () => {
 
   it('invalidates project trust when either project hook file changes', async () => {
     const api = await configApi()
-    const stateRoot = tmp('hooks-v2-digest-state-')
-    const projectRoot = tmp('hooks-v2-digest-project-')
+    const stateRoot = tmp('hooks-digest-state-')
+    const projectRoot = tmp('hooks-digest-project-')
     mkdirSync(join(projectRoot, '.cairn'), { recursive: true })
     writeConfig(
       join(stateRoot, 'hooks_config.json'),
@@ -261,7 +261,7 @@ describe('hooks v2 source resolution and trust', () => {
 
   it('isolates and clears in-memory session sources', async () => {
     const api = await configApi()
-    const stateRoot = tmp('hooks-v2-session-state-')
+    const stateRoot = tmp('hooks-session-state-')
     writeConfig(join(stateRoot, 'hooks_config.json'), {})
     const sessions = api.sessions()
     sessions.register('a', {
@@ -282,7 +282,7 @@ describe('hooks v2 source resolution and trust', () => {
 
   it('returns immutable snapshots and changes revision only on accepted source changes', async () => {
     const api = await configApi()
-    const stateRoot = tmp('hooks-v2-snapshot-state-')
+    const stateRoot = tmp('hooks-snapshot-state-')
     const configPath = join(stateRoot, 'hooks_config.json')
     writeConfig(configPath, { Stop: [group('first', 'first-handler')] })
     const resolver = api.resolver(stateRoot)
@@ -299,7 +299,7 @@ describe('hooks v2 source resolution and trust', () => {
 
   it('keeps the previously accepted snapshot when candidate review rejects a change', async () => {
     const api = await configApi()
-    const stateRoot = tmp('hooks-v2-review-state-')
+    const stateRoot = tmp('hooks-review-state-')
     const configPath = join(stateRoot, 'hooks_config.json')
     writeConfig(configPath, { Stop: [group('accepted', 'accepted-handler')] })
     const resolver = api.resolver(stateRoot)
@@ -317,8 +317,8 @@ describe('hooks v2 source resolution and trust', () => {
 
   it('rejects stale trust mutations without changing the stored decision', async () => {
     const api = await configApi()
-    const stateRoot = tmp('hooks-v2-trust-race-state-')
-    const projectRoot = tmp('hooks-v2-trust-race-project-')
+    const stateRoot = tmp('hooks-trust-race-state-')
+    const projectRoot = tmp('hooks-trust-race-project-')
     mkdirSync(join(projectRoot, '.cairn'), { recursive: true })
     const shared = join(projectRoot, '.cairn/settings.json')
     writeConfig(shared, { Stop: [group('first', 'first-handler')] })

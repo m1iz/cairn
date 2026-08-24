@@ -3,13 +3,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { HookAuditStore } from './audit'
-import type { HookAuditRunRecordV2 } from './orchestrator'
+import type { HookAuditRunRecord } from './orchestrator'
 
 function record(
   id: string,
   startedAt: string,
   reason = 'ok',
-): HookAuditRunRecordV2 {
+): HookAuditRunRecord {
   return {
     hookRunId: id,
     eventName: 'PreToolUse',
@@ -40,9 +40,9 @@ function record(
   }
 }
 
-describe('HookAuditStore v2', () => {
+describe('HookAuditStore', () => {
   it('writes daily JSONL records with hashes and default reason redaction', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'hook-audit-v2-'))
+    const root = await mkdtemp(join(tmpdir(), 'hook-audit-'))
     try {
       const store = new HookAuditStore(root)
       await store.appendRun(
@@ -73,7 +73,7 @@ describe('HookAuditStore v2', () => {
   })
 
   it('replays newest daily records with corrupt-line isolation', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'hook-audit-v2-replay-'))
+    const root = await mkdtemp(join(tmpdir(), 'hook-audit-replay-'))
     try {
       const store = new HookAuditStore(root)
       await store.appendRun(record('run-1', '2026-07-09T23:59:00.000Z'))

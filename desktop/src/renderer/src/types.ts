@@ -4,7 +4,7 @@ import type {
   DiscardedItem as CoreDiscardedItem,
   InteractionKind as CoreInteractionKind,
   InteractionStatus as CoreInteractionStatus,
-  HooksConfigV2 as CoreHooksConfigV2,
+  HooksConfig as CoreHooksConfig,
   MemoryScope as CoreMemoryScope,
   RuntimeEvent as CoreRuntimeEvent,
 } from '@cairn/core'
@@ -129,7 +129,7 @@ export interface HookGroupPayload {
   handlers?: HookHandlerPayload[]
 }
 
-export type HooksConfigPayload = CoreHooksConfigV2
+export type HooksConfigPayload = CoreHooksConfig
 
 export interface EffectiveHookGroupPayload {
   eventName?: string

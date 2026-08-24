@@ -1,156 +1,25 @@
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { readFile, realpath } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { readJson, writeJsonAtomic } from '../store/atomic-json'
 import {
   HOOK_EVENT_NAMES,
-  type HookDefinition,
   type HookDiagnostic,
   type HookGroup,
   type HookSnapshot,
   type HookSource,
-  type HookSourceV2,
   type HooksConfig,
-  type HooksConfigV2,
   type ProjectHookTrustStatus,
   type ResolvedHookGroup,
 } from './models'
 import {
   defaultHooksConfig,
-  defaultHooksConfigV2,
   parseHooksConfig,
-  parseHooksConfigV2,
-  serializeHooksConfigV2,
+  serializeHooksConfig,
 } from './schema'
 
 export const HOOKS_CONFIG_FILE = 'hooks_config.json'
-
-export interface HookConfigSourceInfo extends HookSource {
-  enabled: boolean
-  diagnostics: HookDiagnostic[]
-}
-export interface HookConfigLoadResult {
-  config: HooksConfig
-  diagnostics: HookDiagnostic[]
-  sources: HookConfigSourceInfo[]
-}
-
-export class HookConfigLoader {
-  readonly stateRoot: string
-  readonly globalConfigPath: string
-
-  constructor(opts: { stateRoot: string }) {
-    this.stateRoot = resolve(opts.stateRoot)
-    this.globalConfigPath = join(this.stateRoot, HOOKS_CONFIG_FILE)
-  }
-
-  async load(
-    opts: { projectRoot?: string | null } = {},
-  ): Promise<HookConfigLoadResult> {
-    const diagnostics: HookDiagnostic[] = []
-    const globalSource: HookSource = {
-      kind: 'global',
-      path: this.globalConfigPath,
-      readonly: false,
-    }
-    const globalRaw = await readJson<unknown>(this.globalConfigPath, null, {
-      onCorrupt: (info) =>
-        diagnostics.push({
-          code: 'corrupt_config',
-          path: info.path,
-          message: `Corrupt hooks config preserved at ${info.backupPath}`,
-        }),
-    })
-    const globalParsed = parseHooksConfig(globalRaw, { source: globalSource })
-    diagnostics.push(...globalParsed.diagnostics)
-    const sources: HookConfigSourceInfo[] = [
-      {
-        ...globalSource,
-        enabled: globalParsed.config.enabled,
-        diagnostics: globalParsed.diagnostics,
-      },
-    ]
-
-    const config = cloneConfig(globalParsed.config)
-    const seen = new Set<string>()
-    recordSeenHooks(seen, this.stateRoot, config)
-
-    const projectRoot = opts.projectRoot ? resolve(opts.projectRoot) : null
-    if (projectRoot && config.projectHooks.enabled) {
-      const projectFiles = [
-        join(projectRoot, '.cairn', 'settings.json'),
-        join(projectRoot, '.cairn', 'settings.local.json'),
-      ]
-      for (const path of projectFiles) {
-        const loaded = await this.loadProjectFile(path)
-        if (!loaded) continue
-        sources.push(loaded.source)
-        diagnostics.push(...loaded.source.diagnostics)
-        if (!loaded.parsed.config.enabled) continue
-        mergeHooks(config, loaded.parsed.config, seen, projectRoot)
-      }
-    }
-
-    return { config, diagnostics, sources }
-  }
-
-  async saveGlobalConfig(input: unknown): Promise<HookConfigLoadResult> {
-    const parsed = parseHooksConfig(input, {
-      source: { kind: 'global', path: this.globalConfigPath, readonly: false },
-    })
-    if (parsed.diagnostics.length > 0) {
-      return {
-        config: parsed.config,
-        diagnostics: parsed.diagnostics,
-        sources: [
-          {
-            kind: 'global',
-            path: this.globalConfigPath,
-            readonly: false,
-            enabled: parsed.config.enabled,
-            diagnostics: parsed.diagnostics,
-          },
-        ],
-      }
-    }
-    await writeJsonAtomic(this.globalConfigPath, serializeConfig(parsed.config))
-    return this.load()
-  }
-
-  private async loadProjectFile(path: string): Promise<{
-    parsed: ReturnType<typeof parseHooksConfig>
-    source: HookConfigSourceInfo
-  } | null> {
-    if (!existsSync(path)) return null
-    const source: HookSource = { kind: 'project', path, readonly: true }
-    let raw: unknown
-    try {
-      raw = JSON.parse((await readFile(path, 'utf8')) || '{}')
-    } catch (error) {
-      const diagnostics = [
-        {
-          code: 'corrupt_project_config',
-          path,
-          message: error instanceof Error ? error.message : String(error),
-        },
-      ]
-      return {
-        parsed: { config: defaultHooksConfig(), diagnostics },
-        source: { ...source, enabled: false, diagnostics },
-      }
-    }
-    const parsed = parseHooksConfig(raw, { source })
-    return {
-      parsed,
-      source: {
-        ...source,
-        enabled: parsed.config.enabled,
-        diagnostics: parsed.diagnostics,
-      },
-    }
-  }
-}
 
 const PROJECT_TRUST_FILE = join('hooks', 'project-trust.json')
 const SOURCE_RANK: Record<
@@ -292,7 +161,7 @@ export class HookSourceResolver {
     opts: { projectRoot?: string | null; sessionId?: string | null } = {},
   ): Promise<HookSnapshot> {
     const diagnostics: HookDiagnostic[] = []
-    const sources: HookSourceV2[] = []
+    const sources: HookSource[] = []
     const effective = new Map<string, ResolvedHookGroup>()
 
     const globalRaw = await readJson<unknown>(this.globalConfigPath, null, {
@@ -303,13 +172,13 @@ export class HookSourceResolver {
           message: `Corrupt hooks config preserved at ${info.backupPath}`,
         }),
     })
-    const globalParsed = parseHooksConfigV2(globalRaw, { sourceKind: 'global' })
+    const globalParsed = parseHooksConfig(globalRaw, { sourceKind: 'global' })
     diagnostics.push(...globalParsed.diagnostics)
-    const globalSource = sourceV2({
+    const globalSource = createHookSource({
       id: 'global',
       kind: 'global',
       path: this.globalConfigPath,
-      revision: digestValue(serializeHooksConfigV2(globalParsed.config)),
+      revision: digestValue(serializeHooksConfig(globalParsed.config)),
       active: globalParsed.config.enabled,
       blockedReason: globalParsed.config.enabled ? null : 'hooks_disabled',
     })
@@ -342,10 +211,7 @@ export class HookSourceResolver {
         },
       ]
       for (const descriptor of projectFiles) {
-        const loaded = await readProjectConfigV2(
-          descriptor.path,
-          descriptor.kind,
-        )
+        const loaded = await readProjectConfig(descriptor.path, descriptor.kind)
         if (!loaded) continue
         diagnostics.push(...loaded.diagnostics)
         const trustBlocked =
@@ -356,7 +222,7 @@ export class HookSourceResolver {
               : 'project_untrusted'
         const active =
           globalSource.active && loaded.config.enabled && trustBlocked === null
-        const source = sourceV2({
+        const source = createHookSource({
           ...descriptor,
           revision: loaded.revision,
           active,
@@ -374,7 +240,7 @@ export class HookSourceResolver {
     const sessionSources = this.sessionRegistry.sources(opts.sessionId)
     for (let index = 0; index < sessionSources.length; index++) {
       const registered = sessionSources[index]!
-      const parsed = parseHooksConfigV2(registered.raw, {
+      const parsed = parseHooksConfig(registered.raw, {
         sourceKind: 'session',
       })
       diagnostics.push(
@@ -383,11 +249,11 @@ export class HookSourceResolver {
           path: `session.${registered.sourceId}.${item.path}`,
         })),
       )
-      const source = sourceV2({
+      const source = createHookSource({
         id: `session:${registered.sourceId}`,
         kind: 'session',
         path: `session://${String(opts.sessionId ?? '')}/${registered.sourceId}`,
-        revision: digestValue(serializeHooksConfigV2(parsed.config)),
+        revision: digestValue(serializeHooksConfig(parsed.config)),
         active: globalSource.active && parsed.config.enabled,
         blockedReason:
           globalSource.active && parsed.config.enabled
@@ -402,7 +268,7 @@ export class HookSourceResolver {
     const groups = orderedResolvedGroups(effective)
     const config = effectiveConfig(globalParsed.config, groups)
     const revision = digestValue({
-      config: serializeHooksConfigV2(config),
+      config: serializeHooksConfig(config),
       sources: sources.map((source) => ({
         id: source.id,
         revision: source.revision,
@@ -492,90 +358,6 @@ function snapshotKey(opts: {
   return `${resolve(opts.projectRoot ?? '')}\0${String(opts.sessionId ?? '')}`
 }
 
-function cloneConfig(config: HooksConfig): HooksConfig {
-  const hooks: HooksConfig['hooks'] = {}
-  for (const [eventName, entries] of Object.entries(config.hooks) as Array<
-    [keyof HooksConfig['hooks'], HookDefinition[] | undefined]
-  >) {
-    if (entries?.length)
-      hooks[eventName] = entries.map((entry) => ({
-        ...entry,
-        handler: { ...entry.handler },
-      }))
-  }
-  return {
-    version: 1,
-    enabled: config.enabled,
-    projectHooks: { enabled: config.projectHooks.enabled },
-    hooks,
-  }
-}
-
-function mergeHooks(
-  target: HooksConfig,
-  incoming: HooksConfig,
-  seen: Set<string>,
-  sourceRoot: string,
-): void {
-  for (const [eventName, entries] of Object.entries(incoming.hooks) as Array<
-    [keyof HooksConfig['hooks'], HookDefinition[] | undefined]
-  >) {
-    if (!entries?.length) continue
-    const existing = target.hooks[eventName] ?? []
-    for (const hook of entries) {
-      const key = dedupeKey(sourceRoot, hook)
-      if (seen.has(key)) continue
-      seen.add(key)
-      existing.push(hook)
-    }
-    if (existing.length > 0) target.hooks[eventName] = existing
-  }
-}
-
-function recordSeenHooks(
-  seen: Set<string>,
-  sourceRoot: string,
-  config: HooksConfig,
-): void {
-  for (const entries of Object.values(config.hooks)) {
-    for (const hook of entries ?? [])
-      seen.add(dedupeKey(sourceRootForHook(sourceRoot, hook), hook))
-  }
-}
-
-function sourceRootForHook(fallback: string, hook: HookDefinition): string {
-  return hook.source?.kind === 'global' ? dirname(hook.source.path) : fallback
-}
-
-function dedupeKey(sourceRoot: string, hook: HookDefinition): string {
-  return JSON.stringify({
-    sourceRoot: resolve(sourceRoot),
-    eventName: hook.eventName,
-    matcher: hook.matcher,
-    condition: hook.condition,
-    handler: hook.handler,
-  })
-}
-
-function serializeConfig(config: HooksConfig): Record<string, unknown> {
-  const hooks: Record<string, unknown[]> = {}
-  for (const [eventName, entries] of Object.entries(config.hooks)) {
-    hooks[eventName] = (entries ?? []).map((hook) => ({
-      id: hook.id,
-      enabled: hook.enabled,
-      matcher: hook.matcher,
-      if: hook.condition,
-      handler: hook.handler,
-    }))
-  }
-  return {
-    version: config.version,
-    enabled: config.enabled,
-    projectHooks: { enabled: config.projectHooks.enabled },
-    hooks,
-  }
-}
-
 async function canonicalProjectRoot(projectRoot: string): Promise<string> {
   const requested = resolve(projectRoot)
   try {
@@ -606,11 +388,11 @@ async function projectHooksDigest(canonicalRoot: string): Promise<string> {
   return hash.digest('hex')
 }
 
-async function readProjectConfigV2(
+async function readProjectConfig(
   path: string,
   sourceKind: 'project' | 'project-local',
 ): Promise<{
-  config: HooksConfigV2
+  config: HooksConfig
   diagnostics: HookDiagnostic[]
   revision: string
 } | null> {
@@ -620,7 +402,7 @@ async function readProjectConfigV2(
     text = await readFile(path, 'utf8')
   } catch (error) {
     return {
-      config: { ...defaultHooksConfigV2(), enabled: false },
+      config: { ...defaultHooksConfig(), enabled: false },
       diagnostics: [
         {
           code: 'project_config_read_failed',
@@ -636,7 +418,7 @@ async function readProjectConfigV2(
     raw = JSON.parse(text || '{}')
   } catch (error) {
     return {
-      config: { ...defaultHooksConfigV2(), enabled: false },
+      config: { ...defaultHooksConfig(), enabled: false },
       diagnostics: [
         {
           code: 'corrupt_project_config',
@@ -647,18 +429,18 @@ async function readProjectConfigV2(
       revision: digestText(text),
     }
   }
-  const parsed = parseHooksConfigV2(raw, { sourceKind })
+  const parsed = parseHooksConfig(raw, { sourceKind })
   return { ...parsed, revision: digestText(text) }
 }
 
-function sourceV2(opts: {
+function createHookSource(opts: {
   id: string
   kind: 'global' | 'project' | 'project-local' | 'session'
   path: string
   revision: string
   active: boolean
   blockedReason: string | null
-}): HookSourceV2 {
+}): HookSource {
   return {
     id: opts.id,
     kind: opts.kind,
@@ -673,8 +455,8 @@ function sourceV2(opts: {
 
 function mergeResolvedGroups(
   target: Map<string, ResolvedHookGroup>,
-  config: HooksConfigV2,
-  source: HookSourceV2,
+  config: HooksConfig,
+  source: HookSource,
 ): void {
   for (const eventName of HOOK_EVENT_NAMES) {
     for (const group of config.hooks[eventName] ?? []) {
@@ -683,7 +465,7 @@ function mergeResolvedGroups(
       if (target.has(key)) target.delete(key)
       target.set(key, {
         eventName,
-        group: cloneV2Group(group),
+        group: cloneHookGroup(group),
         source: { ...source },
       })
     }
@@ -700,13 +482,13 @@ function orderedResolvedGroups(
 }
 
 function effectiveConfig(
-  globalConfig: HooksConfigV2,
+  globalConfig: HooksConfig,
   groups: ResolvedHookGroup[],
-): HooksConfigV2 {
-  const hooks: HooksConfigV2['hooks'] = {}
+): HooksConfig {
+  const hooks: HooksConfig['hooks'] = {}
   for (const resolvedGroup of groups) {
     const eventGroups = hooks[resolvedGroup.eventName] ?? []
-    eventGroups.push(cloneV2Group(resolvedGroup.group))
+    eventGroups.push(cloneHookGroup(resolvedGroup.group))
     hooks[resolvedGroup.eventName] = eventGroups
   }
   return {
@@ -731,7 +513,7 @@ function effectiveConfig(
   }
 }
 
-function cloneV2Group(group: HookGroup): HookGroup {
+function cloneHookGroup(group: HookGroup): HookGroup {
   return {
     ...group,
     handlers: group.handlers.map((handler) => {

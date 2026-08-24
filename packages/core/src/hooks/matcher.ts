@@ -1,14 +1,12 @@
 import {
   HOOK_EVENT_SPECS,
-  type HookDefinition,
   type HookDiagnostic,
   type HookEventName,
   type HookGroup,
-  type HookHandlerV2,
+  type HookHandler,
   type HookInput,
   type HookSnapshot,
-  type HookSourceV2,
-  type HooksConfig,
+  type HookSource,
 } from './models'
 
 export interface BuildHookInputOptions {
@@ -60,55 +58,14 @@ export function buildHookInput(
   return input
 }
 
-export function findMatchingHooks(
-  config: HooksConfig,
-  input: HookInput,
-): HookDefinition[] {
-  if (!config.enabled) return []
-  const hooks = config.hooks[input.hook_event_name] ?? []
-  return hooks.filter(
-    (hook) =>
-      hook.enabled &&
-      matcherMatches(hook.matcher, input) &&
-      conditionMatches(hook.condition, input),
-  )
-}
-
-export function matcherMatches(matcher: string, input: HookInput): boolean {
-  const text = matcher.trim()
-  if (!text || text === '*') return true
-  const target = matchTarget(input)
-  if (!target) return false
-  if (text.includes('|'))
-    return text
-      .split('|')
-      .map((part) => part.trim())
-      .some((part) => matcherMatches(part, input))
-  const regex = parseRegexMatcher(text)
-  if (regex) return regex.test(target)
-  return text === target
-}
-
-export function conditionMatches(condition: string, input: HookInput): boolean {
-  const text = condition.trim()
-  if (!text) return true
-  const tool = /^Tool\(([^)]+)\)$/.exec(text)
-  if (tool) return matchPattern(String(input.tool_name ?? ''), tool[1] ?? '')
-  if (text.startsWith('path:')) {
-    const path = pathFromInput(input)
-    return path ? matchGlob(path, text.slice('path:'.length).trim()) : false
-  }
-  return false
-}
-
 export interface CompiledHookPlanItem {
   index: number
   eventName: HookEventName
   groupId: string
   handlerId: string
   group: HookGroup
-  handler: HookHandlerV2
-  source: HookSourceV2
+  handler: HookHandler
+  source: HookSource
 }
 
 export interface CompiledHookPlan {
@@ -189,11 +146,6 @@ export function compileHookPlan(
   return { snapshotRevision: snapshot.revision, items, diagnostics }
 }
 
-function matchTarget(input: HookInput): string {
-  const field = HOOK_EVENT_SPECS[input.hook_event_name].matcherField
-  return field ? String(input[field] ?? '') : '*'
-}
-
 function matcherResult(
   matcher: string,
   target: string,
@@ -264,30 +216,10 @@ function pathFromRecord(input: Record<string, unknown>): string {
   return typeof value === 'string' ? value : ''
 }
 
-function parseRegexMatcher(text: string): RegExp | null {
-  if (!text.startsWith('/') || text.length < 2) return null
-  const lastSlash = text.lastIndexOf('/')
-  if (lastSlash <= 0) return null
-  try {
-    return new RegExp(text.slice(1, lastSlash), text.slice(lastSlash + 1))
-  } catch {
-    return null
-  }
-}
-
 function matchPattern(value: string, pattern: string): boolean {
   if (!pattern || pattern === '*') return true
   if (pattern.endsWith('*')) return value.startsWith(pattern.slice(0, -1))
   return value === pattern
-}
-
-function pathFromInput(input: HookInput): string {
-  const toolInput = input.tool_input
-  if (!toolInput || typeof toolInput !== 'object' || Array.isArray(toolInput))
-    return ''
-  const data = toolInput as Record<string, unknown>
-  const value = data.path ?? data.file_path
-  return typeof value === 'string' ? value : ''
 }
 
 function matchGlob(value: string, glob: string): boolean {

@@ -5,16 +5,10 @@ import { request as httpsRequest } from 'node:https'
 import { isIP } from 'node:net'
 import type {
   HookCommandHandler,
-  HookCommandHandlerV2,
-  HookDecision,
-  HookDefinition,
   HookEventName,
-  HookExecutionResult,
   HookHandlerType,
-  HookHandlerV2,
+  HookHandler,
   HookHttpHandler,
-  HookHttpHandlerV2,
-  HookInput,
   HookPolicy,
 } from './models'
 import { parseHookOutput } from './schema'
@@ -28,9 +22,6 @@ import {
   analyzeShellCommandFailClosed,
   type ShellCommandAnalyzer,
 } from '../permissions/shell-ast'
-
-const MAX_OUTPUT_CHARS = 64_000
-const legacyHookProcessRunner = new NodeOwnedProcessRunner()
 
 export type HookExecutorOutcome =
   'completed' | 'failed' | 'timeout' | 'cancelled'
@@ -46,7 +37,7 @@ export interface HookExecutorContext {
   executionEnvironment?: ExecutionEnvironment | null
 }
 
-export interface HookExecutorResultV2 {
+export interface HookExecutorResult {
   outcome: HookExecutorOutcome
   output: Record<string, unknown> | null
   reason: string
@@ -59,13 +50,13 @@ export interface HookExecutorResultV2 {
   stderrTruncated: boolean
 }
 
-export interface HookHandlerExecutor<T extends HookHandlerV2 = HookHandlerV2> {
+export interface HookHandlerExecutor<T extends HookHandler = HookHandler> {
   readonly type: T['type']
   execute(
     handler: T,
     input: Record<string, unknown>,
     context: HookExecutorContext,
-  ): Promise<HookExecutorResultV2>
+  ): Promise<HookExecutorResult>
 }
 
 export class HookExecutorRegistry {
@@ -78,10 +69,10 @@ export class HookExecutorRegistry {
   }
 
   async execute(
-    handler: HookHandlerV2,
+    handler: HookHandler,
     input: Record<string, unknown>,
     context: HookExecutorContext,
-  ): Promise<HookExecutorResultV2> {
+  ): Promise<HookExecutorResult> {
     const executor = this.executors.get(handler.type)
     if (!executor)
       return emptyExecutorResult(
@@ -92,7 +83,7 @@ export class HookExecutorRegistry {
   }
 }
 
-export class CommandHookExecutor implements HookHandlerExecutor<HookCommandHandlerV2> {
+export class CommandHookExecutor implements HookHandlerExecutor<HookCommandHandler> {
   readonly type = 'command' as const
 
   constructor(
@@ -101,10 +92,10 @@ export class CommandHookExecutor implements HookHandlerExecutor<HookCommandHandl
   ) {}
 
   async execute(
-    handler: HookCommandHandlerV2,
+    handler: HookCommandHandler,
     input: Record<string, unknown>,
     context: HookExecutorContext,
-  ): Promise<HookExecutorResultV2> {
+  ): Promise<HookExecutorResult> {
     const started = Date.now()
     if (context.signal?.aborted)
       return emptyExecutorResult(
@@ -183,7 +174,7 @@ export class CommandHookExecutor implements HookHandlerExecutor<HookCommandHandl
     })
     stdout.append(result.stdout)
     stderr.append(result.stderr)
-    let mapped: HookExecutorResultV2
+    let mapped: HookExecutorResult
     if (result.status === 'cancelled')
       mapped = commandResult({
         outcome: 'cancelled',
@@ -233,7 +224,7 @@ export class CommandHookExecutor implements HookHandlerExecutor<HookCommandHandl
 type HookDnsLookup = (hostname: string) => Promise<string[]>
 type HookHttpPolicy = HookPolicy['http']
 
-export class HttpHookExecutor implements HookHandlerExecutor<HookHttpHandlerV2> {
+export class HttpHookExecutor implements HookHandlerExecutor<HookHttpHandler> {
   readonly type = 'http' as const
   private readonly lookup: HookDnsLookup
 
@@ -242,10 +233,10 @@ export class HttpHookExecutor implements HookHandlerExecutor<HookHttpHandlerV2> 
   }
 
   async execute(
-    handler: HookHttpHandlerV2,
+    handler: HookHttpHandler,
     input: Record<string, unknown>,
     context: HookExecutorContext,
-  ): Promise<HookExecutorResultV2> {
+  ): Promise<HookExecutorResult> {
     const started = Date.now()
     if (context.signal?.aborted)
       return emptyExecutorResult(
@@ -332,7 +323,7 @@ export class HttpHookExecutor implements HookHandlerExecutor<HookHttpHandlerV2> 
       Math.max(1, policy.maxResponseBytes),
     )
 
-    return await new Promise<HookExecutorResultV2>((resolveResult) => {
+    return await new Promise<HookExecutorResult>((resolveResult) => {
       let settled = false
       let timedOut = false
       let cancelled = false
@@ -391,7 +382,7 @@ export class HttpHookExecutor implements HookHandlerExecutor<HookHttpHandlerV2> 
           })
         },
       )
-      const settle = (result: HookExecutorResultV2): void => {
+      const settle = (result: HookExecutorResult): void => {
         if (settled) return
         settled = true
         clearTimeout(timer)
@@ -530,7 +521,7 @@ function blockedIpv6Reason(
 }
 
 function hookHttpHeaders(
-  handler: HookHttpHandlerV2,
+  handler: HookHttpHandler,
   policyAllowedEnv: string[],
   executionEnvironment: ExecutionEnvironment | null,
 ): Record<string, string> {
@@ -566,7 +557,7 @@ function resultFromHttpBody(
   eventName: HookEventName,
   started: number,
   body: ByteTailBuffer,
-): HookExecutorResultV2 {
+): HookExecutorResult {
   const raw = body.text().trim()
   let value: unknown = {}
   if (raw) {
@@ -608,7 +599,7 @@ function httpExecutorResult(opts: {
   reason: string
   started: number
   body: ByteTailBuffer
-}): HookExecutorResultV2 {
+}): HookExecutorResult {
   return {
     outcome: opts.outcome,
     output: opts.output ?? null,
@@ -653,7 +644,7 @@ class ByteTailBuffer {
   }
 }
 
-function commandInvocation(handler: HookCommandHandlerV2): {
+function commandInvocation(handler: HookCommandHandler): {
   command: string
   args: string[]
 } {
@@ -671,7 +662,7 @@ function commandInvocation(handler: HookCommandHandlerV2): {
 }
 
 function commandEnvironment(
-  handler: HookCommandHandlerV2,
+  handler: HookCommandHandler,
   policy: HookPolicy,
   executionEnvironment: ExecutionEnvironment | null,
 ): NodeJS.ProcessEnv {
@@ -709,7 +700,7 @@ function resultFromCommandExit(
   started: number,
   stdout: ByteTailBuffer,
   stderr: ByteTailBuffer,
-): HookExecutorResultV2 {
+): HookExecutorResult {
   if (code === 2) {
     const reason = stderr.text().trim() || 'Hook denied'
     const parsed = parseHookOutput(eventName, { decision: 'deny', reason })
@@ -786,7 +777,7 @@ function commandResult(opts: {
   started: number
   stdout: ByteTailBuffer
   stderr: ByteTailBuffer
-}): HookExecutorResultV2 {
+}): HookExecutorResult {
   return {
     outcome: opts.outcome,
     output: opts.output ?? null,
@@ -805,7 +796,7 @@ function emptyExecutorResult(
   outcome: HookExecutorOutcome,
   reason: string,
   started = Date.now(),
-): HookExecutorResultV2 {
+): HookExecutorResult {
   return {
     outcome,
     output: null,
@@ -818,255 +809,4 @@ function emptyExecutorResult(
     stdoutTruncated: false,
     stderrTruncated: false,
   }
-}
-
-export async function executeHook(
-  hook: HookDefinition,
-  input: HookInput,
-): Promise<HookExecutionResult> {
-  const started = Date.now()
-  if (hook.handler.async) {
-    void executeHookSync(hook, input).catch(() => {})
-    return {
-      hookId: hook.id,
-      status: 'skipped',
-      decision: 'passthrough',
-      reason: 'async hook accepted',
-      durationMs: Date.now() - started,
-    }
-  }
-  return executeHookSync(hook, input)
-}
-
-async function executeHookSync(
-  hook: HookDefinition,
-  input: HookInput,
-): Promise<HookExecutionResult> {
-  const started = Date.now()
-  if (hook.handler.type === 'command') {
-    return executeCommandHook(hook.id, hook.handler, input, started)
-  }
-  return executeHttpHook(hook.id, hook.handler, input, started)
-}
-
-async function executeCommandHook(
-  hookId: string,
-  handler: HookCommandHandler,
-  input: HookInput,
-  started: number,
-): Promise<HookExecutionResult> {
-  const cwd = typeof input.cwd === 'string' ? input.cwd : process.cwd()
-  const result = await legacyHookProcessRunner.run({
-    executable: handler.command,
-    args: handler.args,
-    cwd,
-    env: allowedEnv(handler.allowedEnv) as Record<string, string>,
-    stdin: `${JSON.stringify(input)}\n`,
-    timeoutMs: handler.timeoutMs,
-    maxOutputBytes: MAX_OUTPUT_CHARS,
-    outputPolicy: 'truncate_tail',
-    outputQuotaScope: 'per_stream',
-    owner: { kind: 'hook', id: hookId, sessionId: null },
-    containment: {
-      mode: 'preferred',
-      workspaceRoot: cwd,
-      stateRoot: null,
-      tempRoot: cwd,
-      readOnlyRoots: [],
-      network: 'allow',
-    },
-  })
-  const stdout = capOutput(result.stdout)
-  const stderr = capOutput(result.stderr)
-  if (result.status === 'timeout')
-    return {
-      hookId,
-      status: 'timeout',
-      decision: 'passthrough',
-      reason: `Hook timed out after ${handler.timeoutMs}ms`,
-      durationMs: Date.now() - started,
-      stdout,
-      stderr,
-    }
-  if (result.status !== 'completed')
-    return {
-      hookId,
-      status: 'failed',
-      decision: 'passthrough',
-      reason: result.error || `Hook process failed: ${result.status}`,
-      durationMs: Date.now() - started,
-      stdout,
-      stderr,
-    }
-  return resultFromProcessExit(
-    hookId,
-    result.exitCode ?? 0,
-    stdout,
-    stderr,
-    Date.now() - started,
-  )
-}
-
-async function executeHttpHook(
-  hookId: string,
-  handler: HookHttpHandler,
-  input: HookInput,
-  started: number,
-): Promise<HookExecutionResult> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), handler.timeoutMs)
-  try {
-    const response = await fetch(handler.url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', ...handler.headers },
-      body: JSON.stringify(input),
-      signal: controller.signal,
-    })
-    const text = capOutput(await response.text())
-    if (!response.ok) {
-      return {
-        hookId,
-        status: 'failed',
-        decision: 'passthrough',
-        reason: `HTTP ${response.status}`,
-        durationMs: Date.now() - started,
-        stdout: text,
-      }
-    }
-    return resultFromJson(hookId, text, Date.now() - started, {
-      status: 'completed',
-      fallbackReason: response.statusText || 'ok',
-    })
-  } catch (error) {
-    const aborted = error instanceof Error && error.name === 'AbortError'
-    return {
-      hookId,
-      status: aborted ? 'timeout' : 'failed',
-      decision: 'passthrough',
-      reason: aborted
-        ? `Hook timed out after ${handler.timeoutMs}ms`
-        : error instanceof Error
-          ? error.message
-          : String(error),
-      durationMs: Date.now() - started,
-    }
-  } finally {
-    clearTimeout(timer)
-  }
-}
-
-function resultFromProcessExit(
-  hookId: string,
-  code: number,
-  stdout: string,
-  stderr: string,
-  durationMs: number,
-): HookExecutionResult {
-  if (code === 2) {
-    return {
-      hookId,
-      status: 'failed',
-      decision: 'deny',
-      reason: stderr.trim() || 'Hook denied',
-      durationMs,
-      stdout,
-      stderr,
-    }
-  }
-  if (code !== 0) {
-    return {
-      hookId,
-      status: 'failed',
-      decision: 'passthrough',
-      reason: stderr.trim() || `Hook exited with code ${code}`,
-      durationMs,
-      stdout,
-      stderr,
-    }
-  }
-  return resultFromJson(hookId, stdout, durationMs, {
-    status: 'completed',
-    fallbackReason: 'ok',
-    stderr,
-  })
-}
-
-function resultFromJson(
-  hookId: string,
-  raw: string,
-  durationMs: number,
-  opts: {
-    status: HookExecutionResult['status']
-    fallbackReason: string
-    stderr?: string
-  },
-): HookExecutionResult {
-  const trimmed = raw.trim()
-  if (!trimmed) {
-    return {
-      hookId,
-      status: opts.status,
-      decision: 'passthrough',
-      reason: opts.fallbackReason,
-      durationMs,
-      stdout: raw,
-      stderr: opts.stderr,
-    }
-  }
-  try {
-    const parsed = JSON.parse(trimmed) as Record<string, unknown>
-    const decision = parseDecision(parsed.decision)
-    const result: HookExecutionResult = {
-      hookId,
-      status: opts.status,
-      decision,
-      reason:
-        typeof parsed.reason === 'string' ? parsed.reason : opts.fallbackReason,
-      durationMs,
-      stdout: raw,
-      stderr: opts.stderr,
-    }
-    if (typeof parsed.additionalContext === 'string')
-      result.additionalContext = parsed.additionalContext
-    if (isRecord(parsed.updatedInput)) result.updatedInput = parsed.updatedInput
-    return result
-  } catch {
-    return {
-      hookId,
-      status: opts.status,
-      decision: 'passthrough',
-      reason: opts.fallbackReason,
-      durationMs,
-      stdout: raw,
-      stderr: opts.stderr,
-    }
-  }
-}
-
-function parseDecision(value: unknown): HookDecision {
-  return value === 'deny' ||
-    value === 'ask' ||
-    value === 'allow' ||
-    value === 'passthrough'
-    ? value
-    : 'passthrough'
-}
-
-function allowedEnv(names: string[]): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {}
-  for (const name of names) {
-    const value = process.env[name]
-    if (value !== undefined) env[name] = value
-  }
-  return env
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
-
-function capOutput(value: string): string {
-  return value.length > MAX_OUTPUT_CHARS
-    ? value.slice(0, MAX_OUTPUT_CHARS)
-    : value
 }

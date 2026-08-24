@@ -41,4 +41,17 @@ describe('source architecture boundaries', () => {
 
     expect(violations).toEqual([])
   })
+
+  it('keeps hooks on the single HookService architecture', async () => {
+    const violations: string[] = []
+    const obsoleteHooks =
+      /\b(?:HookConfigLoader|HookRuntime|HookDefinition|aggregateHookResults|findMatchingHooks|executeHook)\b/
+    for (const file of await sourceFiles(SOURCE_ROOT)) {
+      const source = await readFile(file, 'utf8')
+      if (obsoleteHooks.test(source))
+        violations.push(path.relative(SOURCE_ROOT, file))
+    }
+
+    expect(violations).toEqual([])
+  })
 })

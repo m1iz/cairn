@@ -20,14 +20,14 @@ import type { ToolParamsSchema } from '../tools/schema'
 import type {
   HookExecutorContext,
   HookExecutorOutcome,
-  HookExecutorResultV2,
+  HookExecutorResult,
   HookHandlerExecutor,
 } from './executor'
 import {
   HOOK_EVENT_SPECS,
-  type HookAgentHandlerV2,
+  type HookAgentHandler,
   type HookEventName,
-  type HookPromptHandlerV2,
+  type HookPromptHandler,
 } from './models'
 import { parseHookOutput } from './schema'
 
@@ -114,16 +114,16 @@ export class RoutedHookModelGateway implements HookModelGateway {
   }
 }
 
-export class PromptHookExecutor implements HookHandlerExecutor<HookPromptHandlerV2> {
+export class PromptHookExecutor implements HookHandlerExecutor<HookPromptHandler> {
   readonly type = 'prompt' as const
 
   constructor(private readonly gateway: HookModelGateway) {}
 
   async execute(
-    handler: HookPromptHandlerV2,
+    handler: HookPromptHandler,
     input: Record<string, unknown>,
     context: HookExecutorContext,
-  ): Promise<HookExecutorResultV2> {
+  ): Promise<HookExecutorResult> {
     const started = Date.now()
     const preflight = modelPreflight('prompt', input, context, started)
     if (preflight) return preflight
@@ -158,16 +158,16 @@ export class PromptHookExecutor implements HookHandlerExecutor<HookPromptHandler
   }
 }
 
-export class AgentHookExecutor implements HookHandlerExecutor<HookAgentHandlerV2> {
+export class AgentHookExecutor implements HookHandlerExecutor<HookAgentHandler> {
   readonly type = 'agent' as const
 
   constructor(private readonly gateway: HookModelGateway) {}
 
   async execute(
-    handler: HookAgentHandlerV2,
+    handler: HookAgentHandler,
     input: Record<string, unknown>,
     context: HookExecutorContext,
-  ): Promise<HookExecutorResultV2> {
+  ): Promise<HookExecutorResult> {
     const started = Date.now()
     const preflight = modelPreflight('agent', input, context, started)
     if (preflight) return preflight
@@ -312,7 +312,7 @@ function modelPreflight(
   input: Record<string, unknown>,
   context: HookExecutorContext,
   started: number,
-): HookExecutorResultV2 | null {
+): HookExecutorResult | null {
   if (context.signal?.aborted)
     return modelResult(
       'cancelled',
@@ -529,7 +529,7 @@ function modelScopeFailure(
   scope: ModelExecutionScope,
   error: unknown,
   started: number,
-): HookExecutorResultV2 {
+): HookExecutorResult {
   const outcome = scope.outcome()
   if (outcome === 'timeout')
     return modelResult('timeout', 'Hook model execution timed out', started)
@@ -547,7 +547,7 @@ function modelResult(
   reason: string,
   started: number,
   output: Record<string, unknown> | null = null,
-): HookExecutorResultV2 {
+): HookExecutorResult {
   return {
     outcome,
     output,

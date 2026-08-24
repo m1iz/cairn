@@ -7,10 +7,10 @@ import {
   HookService,
   buildHookInput,
   compileHookPlan,
-  defaultHooksConfigV2,
+  defaultHooksConfig,
   isHookEventName,
-  parseHooksConfigV2,
-  serializeHooksConfigV2,
+  parseHooksConfig,
+  serializeHooksConfig,
   type HookEventName,
   type HookRuntimeRunOptions,
   type HookSnapshot,
@@ -18,12 +18,12 @@ import {
   type HookDiagnostic,
   type HookEventMode,
   type HookHandlerType,
-  type HookSourceV2,
-  type HooksConfigV2,
+  type HookSource,
+  type HooksConfig,
   type ProjectHookTrustStatus,
   type ResolvedHookGroup,
 } from '../../hooks'
-import type { HookAuditRunRecordV2 } from '../../hooks/orchestrator'
+import type { HookAuditRunRecord } from '../../hooks/orchestrator'
 
 type Dict = Record<string, unknown>
 
@@ -43,10 +43,10 @@ export interface CoreHooksSummaryPayload {
 
 export interface CoreHooksConfigPayload {
   revision: string
-  config: HooksConfigV2
-  globalConfig: HooksConfigV2
+  config: HooksConfig
+  globalConfig: HooksConfig
   effectiveGroups: ResolvedHookGroup[]
-  sources: HookSourceV2[]
+  sources: HookSource[]
   projectTrust: ProjectHookTrustStatus | null
   diagnostics: HookDiagnostic[]
   summary: CoreHooksSummaryPayload
@@ -58,7 +58,7 @@ export interface CoreHooksSavePayload extends CoreHooksConfigPayload {
 }
 
 export interface CoreHooksAuditPayload {
-  records: HookAuditRunRecordV2[]
+  records: HookAuditRunRecord[]
   badLines: Array<{ path: string; line: number; raw: string }>
   cursor: string
   nextCursor: string | null
@@ -91,7 +91,7 @@ export interface CoreHookMatchItemPayload {
   groupId: string
   handlerId: string
   handlerType: HookHandlerType
-  source: HookSourceV2
+  source: HookSource
   failureMode: string
 }
 
@@ -207,7 +207,7 @@ export class CoreHooksService {
   }
 
   getMetadata(): CoreHooksMetadataPayload {
-    const defaults = defaultHooksConfigV2()
+    const defaults = defaultHooksConfig()
     return {
       version: 2,
       events: HOOK_EVENT_NAMES.map((eventName) => ({
@@ -244,10 +244,10 @@ export class CoreHooksService {
 
   validateConfig(input: Dict): CoreHooksValidationPayload {
     const sourceKind = String(input.sourceKind ?? input.source_kind ?? 'global')
-    const parsed = parseHooksConfigV2(input.config, { sourceKind })
+    const parsed = parseHooksConfig(input.config, { sourceKind })
     return {
       valid: parsed.diagnostics.length === 0,
-      config: serializeHooksConfigV2(parsed.config),
+      config: serializeHooksConfig(parsed.config),
       diagnostics: parsed.diagnostics,
     }
   }
@@ -394,7 +394,7 @@ export class CoreHooksService {
 
 function configPayload(
   snapshot: HookSnapshot,
-  globalConfig: HooksConfigV2,
+  globalConfig: HooksConfig,
 ): CoreHooksConfigPayload {
   const effectiveGroups = snapshot.groups.map((resolved) => ({
     eventName: resolved.eventName,

@@ -1,25 +1,25 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { TextDecoder } from 'node:util'
-import type { HookExecutorContext, HookExecutorResultV2 } from './executor'
+import type { HookExecutorContext, HookExecutorResult } from './executor'
 import type { CompiledHookPlan, CompiledHookPlanItem } from './matcher'
 import type {
   HookDecision,
   HookEventName,
-  HookHandlerV2,
-  HookSourceV2,
+  HookHandler,
+  HookSource,
 } from './models'
 import { parseHookOutput } from './schema'
 
 export interface HookExecutorHost {
   execute(
-    handler: HookHandlerV2,
+    handler: HookHandler,
     input: Record<string, unknown>,
     context: HookExecutorContext,
-  ): Promise<HookExecutorResultV2>
+  ): Promise<HookExecutorResult>
 }
 
 export type HookOrchestratorStatus =
-  HookExecutorResultV2['outcome'] | 'accepted' | 'skipped'
+  HookExecutorResult['outcome'] | 'accepted' | 'skipped'
 
 export interface HookOrchestratorRunResult {
   hookRunId: string
@@ -27,8 +27,8 @@ export interface HookOrchestratorRunResult {
   eventName: HookEventName
   groupId: string
   handlerId: string
-  handlerType: HookHandlerV2['type']
-  source: HookSourceV2
+  handlerType: HookHandler['type']
+  source: HookSource
   status: HookOrchestratorStatus
   output: Record<string, unknown> | null
   reason: string
@@ -51,13 +51,13 @@ export interface HookOrchestrationResult {
   systemMessage?: string
 }
 
-export interface HookAuditRunRecordV2 {
+export interface HookAuditRunRecord {
   hookRunId: string
   eventName: HookEventName
   groupId: string
   handlerId: string
-  handlerType: HookHandlerV2['type']
-  source: HookSourceV2
+  handlerType: HookHandler['type']
+  source: HookSource
   snapshotRevision: string
   sessionId: string
   toolUseId: string | null
@@ -71,8 +71,8 @@ export interface HookAuditRunRecordV2 {
   asyncRewakeEligible: boolean
 }
 
-export interface HookAuditSinkV2 {
-  appendRun(record: HookAuditRunRecordV2): Promise<void> | void
+export interface HookAuditSink {
+  appendRun(record: HookAuditRunRecord): Promise<void> | void
 }
 
 export type HookOrchestratorEmitter = (
@@ -231,14 +231,14 @@ export class AsyncHookRegistry {
 
 export class HookOrchestrator {
   private readonly executor: HookExecutorHost
-  private readonly audit: HookAuditSinkV2 | null
+  private readonly audit: HookAuditSink | null
   private readonly emit: HookOrchestratorEmitter | null
   private readonly once: HookOnceRegistry
   private readonly background: AsyncHookRegistry
 
   constructor(opts: {
     executor: HookExecutorHost
-    audit?: HookAuditSinkV2 | null
+    audit?: HookAuditSink | null
     emit?: HookOrchestratorEmitter | null
     once?: HookOnceRegistry
     background?: AsyncHookRegistry
@@ -458,7 +458,7 @@ export class HookOrchestrator {
     started: number,
   ): Promise<void> {
     if (!this.audit) return
-    const record: HookAuditRunRecordV2 = {
+    const record: HookAuditRunRecord = {
       hookRunId: result.hookRunId,
       eventName: result.eventName,
       groupId: result.groupId,
@@ -502,7 +502,7 @@ const DECISION_PRIORITY: Record<HookDecision, number> = {
 function normalizedExecutionResult(
   item: CompiledHookPlanItem,
   hookRunId: string,
-  execution: HookExecutorResultV2,
+  execution: HookExecutorResult,
   started: number,
   asyncRewakeEligible = false,
 ): HookOrchestratorRunResult {

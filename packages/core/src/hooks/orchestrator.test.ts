@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { defaultHooksConfigV2 } from './schema'
-import type { HookExecutorContext, HookExecutorResultV2 } from './executor'
+import { defaultHooksConfig } from './schema'
+import type { HookExecutorContext, HookExecutorResult } from './executor'
 import type { CompiledHookPlan, CompiledHookPlanItem } from './matcher'
-import type { HookCommandHandlerV2, HookEventName } from './models'
+import type { HookCommandHandler, HookEventName } from './models'
 import {
   AsyncHookRegistry,
   HookOnceRegistry,
@@ -20,11 +20,11 @@ class FakeExecutor implements HookExecutorHost {
   constructor(
     private readonly responses: Record<
       string,
-      { delay?: number; result: HookExecutorResultV2 }
+      { delay?: number; result: HookExecutorResult }
     >,
   ) {}
 
-  async execute(handler: HookCommandHandlerV2): Promise<HookExecutorResultV2> {
+  async execute(handler: HookCommandHandler): Promise<HookExecutorResult> {
     this.calls.push(handler.id)
     this.active += 1
     this.maxActive = Math.max(this.maxActive, this.active)
@@ -38,8 +38,8 @@ class FakeExecutor implements HookExecutorHost {
 
 function executorResult(
   output: Dict | null,
-  overrides: Partial<HookExecutorResultV2> = {},
-): HookExecutorResultV2 {
+  overrides: Partial<HookExecutorResult> = {},
+): HookExecutorResult {
   return {
     outcome: 'completed',
     output,
@@ -57,8 +57,8 @@ function executorResult(
 
 function handler(
   id: string,
-  overrides: Partial<HookCommandHandlerV2> = {},
-): HookCommandHandlerV2 {
+  overrides: Partial<HookCommandHandler> = {},
+): HookCommandHandler {
   return {
     id,
     type: 'command',
@@ -78,7 +78,7 @@ function handler(
 
 function plan(
   eventName: HookEventName,
-  handlers: HookCommandHandlerV2[],
+  handlers: HookCommandHandler[],
   failureMode: 'open' | 'closed' = 'open',
 ): CompiledHookPlan {
   const source = {
@@ -117,7 +117,7 @@ function context(
   return {
     eventName,
     cwd: '/repo',
-    policy: defaultHooksConfigV2().policy,
+    policy: defaultHooksConfig().policy,
     ...overrides,
   }
 }
@@ -152,7 +152,7 @@ describe('HookOrchestrator', () => {
         result: executorResult({ decision: 'allow', reason: 'd' }),
       },
     })
-    const policy = defaultHooksConfigV2().policy
+    const policy = defaultHooksConfig().policy
     policy.maxConcurrency = 2
     const result = await new HookOrchestrator({ executor }).run(
       plan(
@@ -185,7 +185,7 @@ describe('HookOrchestrator', () => {
         ]),
       ),
     )
-    const policy = defaultHooksConfigV2().policy
+    const policy = defaultHooksConfig().policy
     policy.maxConcurrency = 4
 
     const result = await new HookOrchestrator({ executor }).run(
@@ -278,7 +278,7 @@ describe('HookOrchestrator', () => {
   })
 
   it('aggregates context in plan order with a UTF-8 byte cap', async () => {
-    const policy = defaultHooksConfigV2().policy
+    const policy = defaultHooksConfig().policy
     policy.maxContextBytes = 24
     const executor = new FakeExecutor({
       a: {

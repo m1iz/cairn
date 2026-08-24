@@ -125,35 +125,10 @@ export const HOOK_EVENT_SPECS = {
   },
 } as const satisfies Record<HookEventName, HookEventSpec>
 
-export interface HookSource {
-  kind: 'global' | 'project' | 'project-local' | 'session' | 'test'
-  path: string
-  readonly: boolean
-}
+export type HookSourceKind =
+  'global' | 'project' | 'project-local' | 'session' | 'test'
 
-export interface HookCommandHandler {
-  type: 'command'
-  command: string
-  args: string[]
-  timeoutMs: number
-  async: boolean
-  allowedEnv: string[]
-}
-
-export interface HookHttpHandler {
-  type: 'http'
-  url: string
-  timeoutMs: number
-  headers: Record<string, string>
-  async: boolean
-  allowedEnv: string[]
-}
-
-export type HookHandler = HookCommandHandler | HookHttpHandler
-
-export type HookSourceKind = HookSource['kind']
-
-export interface HookHandlerBaseV2 {
+export interface HookHandlerBase {
   id: string
   enabled: boolean
   timeoutMs: number
@@ -161,7 +136,7 @@ export interface HookHandlerBaseV2 {
   once: boolean
 }
 
-export interface HookCommandHandlerV2 extends HookHandlerBaseV2 {
+export interface HookCommandHandler extends HookHandlerBase {
   type: 'command'
   command: string
   args: string[]
@@ -171,31 +146,28 @@ export interface HookCommandHandlerV2 extends HookHandlerBaseV2 {
   asyncRewake: boolean
 }
 
-export interface HookHttpHandlerV2 extends HookHandlerBaseV2 {
+export interface HookHttpHandler extends HookHandlerBase {
   type: 'http'
   url: string
   headers: Record<string, string>
   allowedEnv: string[]
 }
 
-export interface HookPromptHandlerV2 extends HookHandlerBaseV2 {
+export interface HookPromptHandler extends HookHandlerBase {
   type: 'prompt'
   prompt: string
   modelRole: 'secondary' | 'main'
 }
 
-export interface HookAgentHandlerV2 extends HookHandlerBaseV2 {
+export interface HookAgentHandler extends HookHandlerBase {
   type: 'agent'
   prompt: string
   modelRole: 'secondary' | 'main'
   maxTurns: number
 }
 
-export type HookHandlerV2 =
-  | HookCommandHandlerV2
-  | HookHttpHandlerV2
-  | HookPromptHandlerV2
-  | HookAgentHandlerV2
+export type HookHandler =
+  HookCommandHandler | HookHttpHandler | HookPromptHandler | HookAgentHandler
 
 export interface HookGroup {
   id: string
@@ -203,7 +175,7 @@ export interface HookGroup {
   matcher: string
   if: string
   failureMode: HookFailureMode
-  handlers: HookHandlerV2[]
+  handlers: HookHandler[]
 }
 
 export interface HookPolicy {
@@ -236,7 +208,7 @@ export interface HookPolicy {
   }
 }
 
-export interface HooksConfigV2 {
+export interface HooksConfig {
   version: 2
   enabled: boolean
   projectHooks: { enabled: boolean }
@@ -244,7 +216,7 @@ export interface HooksConfigV2 {
   hooks: Partial<Record<HookEventName, HookGroup[]>>
 }
 
-export interface HookSourceV2 {
+export interface HookSource {
   id: string
   kind: HookSourceKind
   rank: number
@@ -258,7 +230,7 @@ export interface HookSourceV2 {
 export interface ResolvedHookGroup {
   eventName: HookEventName
   group: HookGroup
-  source: HookSourceV2
+  source: HookSource
 }
 
 export interface ProjectHookTrustStatus {
@@ -269,19 +241,19 @@ export interface ProjectHookTrustStatus {
 
 export interface HookSnapshot {
   revision: string
-  config: HooksConfigV2
+  config: HooksConfig
   groups: ResolvedHookGroup[]
-  sources: HookSourceV2[]
+  sources: HookSource[]
   diagnostics: HookDiagnostic[]
   projectTrust: ProjectHookTrustStatus | null
 }
 
-export interface ParseHooksConfigV2Result {
-  config: HooksConfigV2
+export interface ParseHooksConfigResult {
+  config: HooksConfig
   diagnostics: HookDiagnostic[]
 }
 
-export interface HookCommonInputV2 {
+export interface HookCommonInput {
   hook_event_name: HookEventName
   session_id: string
   cwd: string
@@ -290,87 +262,10 @@ export interface HookCommonInputV2 {
   project_id?: string
   agent_id?: string
   agent_type?: string
+  [key: string]: unknown
 }
 
-export type HookInputByEvent = {
-  SessionStart: { source: string }
-  SessionEnd: { reason: string }
-  UserPromptSubmit: { prompt: string }
-  PreToolUse: {
-    tool_name: string
-    tool_input: Record<string, unknown>
-    tool_use_id: string
-  }
-  PostToolUse: {
-    tool_name: string
-    tool_input: Record<string, unknown>
-    tool_use_id: string
-    tool_result: unknown
-  }
-  PostToolUseFailure: {
-    tool_name: string
-    tool_input: Record<string, unknown>
-    tool_use_id: string
-    error: string
-  }
-  PermissionRequest: {
-    tool_name: string
-    tool_input: Record<string, unknown>
-    tool_use_id: string
-    permission: Record<string, unknown>
-  }
-  PermissionDenied: {
-    tool_name: string
-    tool_input: Record<string, unknown>
-    tool_use_id: string
-    permission: Record<string, unknown>
-  }
-  Stop: { last_assistant_message: string; stop_hook_active: boolean }
-  StopFailure: { error_kind: string; error: string }
-  SubagentStart: { agent_id: string; agent_type: string }
-  SubagentStop: {
-    agent_id: string
-    agent_type: string
-    last_assistant_message: string
-    stop_hook_active: boolean
-  }
-  PreCompact: { trigger: 'manual' | 'auto' | 'emergency' }
-  PostCompact: {
-    trigger: 'manual' | 'auto' | 'emergency'
-    result: Record<string, unknown>
-  }
-  ConfigChange: { source: string; candidate_revision: string }
-  TaskCreated: { task_kind: string; task: Record<string, unknown> }
-  TaskCompleted: { task_kind: string; task: Record<string, unknown> }
-  TeammateIdle: {
-    agent_id: string
-    agent_type: string
-    teammate_name: string
-    stop_hook_active: boolean
-  }
-}
-
-export type HookInputV2<E extends HookEventName = HookEventName> =
-  HookCommonInputV2 & { hook_event_name: E } & HookInputByEvent[E]
-
-export interface HookDefinition {
-  id: string
-  eventName: HookEventName
-  enabled: boolean
-  matcher: string
-  condition: string
-  handler: HookHandler
-  source: HookSource | null
-}
-
-export interface HooksConfig {
-  version: 1
-  enabled: boolean
-  projectHooks: {
-    enabled: boolean
-  }
-  hooks: Partial<Record<HookEventName, HookDefinition[]>>
-}
+export type HookInput = HookCommonInput
 
 export interface HookDiagnostic {
   code: string
@@ -378,27 +273,9 @@ export interface HookDiagnostic {
   message: string
 }
 
-export interface ParseHooksConfigResult {
-  config: HooksConfig
-  diagnostics: HookDiagnostic[]
-}
-
 export type HookDecision = 'deny' | 'ask' | 'allow' | 'passthrough'
 
 export type HookRunStatus = 'completed' | 'failed' | 'timeout' | 'skipped'
-
-export interface HookAuditRecord {
-  id: string
-  hookId: string
-  eventName: HookEventName
-  handlerType: HookHandlerType
-  source: HookSource
-  startedAt: string
-  durationMs: number
-  status: HookRunStatus
-  decision: HookDecision
-  reason: string
-}
 
 export interface HookExecutionResult {
   hookId: string
@@ -406,7 +283,7 @@ export interface HookExecutionResult {
   groupId?: string
   handlerId?: string
   handlerType?: HookHandlerType
-  source?: HookSourceV2
+  source?: HookSource
   status: HookRunStatus
   decision: HookDecision
   reason: string
@@ -432,9 +309,17 @@ export interface HookAggregateDecision {
   systemMessage?: string
 }
 
-export type HookInput = Record<string, unknown> & {
-  hook_event_name: HookEventName
-  session_id: string
+export interface HookRuntimeRunOptions {
+  sessionId: string
   cwd: string
-  state_root: string
+  projectRoot?: string | null
+  stateRoot?: string | null
+  source?: string | null
+  toolName?: string | null
+  toolInput?: Record<string, unknown> | null
+  toolResult?: unknown
+  permission?: Record<string, unknown> | null
+  prompt?: string | null
+  signal?: AbortSignal | null
+  [key: string]: unknown
 }

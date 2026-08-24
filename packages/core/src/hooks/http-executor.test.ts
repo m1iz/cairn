@@ -4,7 +4,7 @@ import {
   type ServerResponse,
 } from 'node:http'
 import { describe, expect, it } from 'vitest'
-import { defaultHooksConfigV2 } from './schema'
+import { defaultHooksConfig } from './schema'
 import { ExecutionEnvironment } from '../environment/snapshot'
 
 type Dict = Record<string, unknown>
@@ -62,7 +62,7 @@ function context(overrides: Dict = {}): Dict {
   return {
     eventName: 'PreToolUse',
     cwd: '/repo',
-    policy: defaultHooksConfigV2().policy,
+    policy: defaultHooksConfig().policy,
     ...overrides,
   }
 }
@@ -84,7 +84,7 @@ async function server(
   }
 }
 
-describe('hooks v2 HTTP executor', () => {
+describe('hooks HTTP executor', () => {
   it('disables HTTP when the global URL allowlist is empty', async () => {
     const executor = await httpExecutor()
     const result = await executor.execute(
@@ -116,7 +116,7 @@ describe('hooks v2 HTTP executor', () => {
     })
     try {
       const url = `http://hooks.example.test:${local.port}/run`
-      const policy = defaultHooksConfigV2().policy
+      const policy = defaultHooksConfig().policy
       policy.http.allowedUrlPatterns = ['http://hooks.example.test:*/run']
       policy.http.allowLoopback = true
       const executor = await httpExecutor(async () => ['127.0.0.1'])
@@ -139,7 +139,7 @@ describe('hooks v2 HTTP executor', () => {
   })
 
   it('requires explicit loopback policy even when the URL pattern matches', async () => {
-    const policy = defaultHooksConfigV2().policy
+    const policy = defaultHooksConfig().policy
     policy.http.allowedUrlPatterns = ['http://127.0.0.1:*/*']
     const executor = await httpExecutor()
     const denied = await executor.execute(
@@ -159,7 +159,7 @@ describe('hooks v2 HTTP executor', () => {
   })
 
   it('rejects private and mixed DNS answers before opening a socket', async () => {
-    const policy = defaultHooksConfigV2().policy
+    const policy = defaultHooksConfig().policy
     policy.http.allowedUrlPatterns = ['http://hooks.example.test/*']
     const privateExecutor = await httpExecutor(async () => ['10.1.2.3'])
     const mixedExecutor = await httpExecutor(async () => [
@@ -195,7 +195,7 @@ describe('hooks v2 HTTP executor', () => {
       res.end()
     })
     try {
-      const policy = defaultHooksConfigV2().policy
+      const policy = defaultHooksConfig().policy
       policy.http.allowedUrlPatterns = ['http://127.0.0.1:*/*']
       policy.http.allowLoopback = true
       const executor = await httpExecutor()
@@ -238,7 +238,7 @@ describe('hooks v2 HTTP executor', () => {
       )
     })
     try {
-      const policy = defaultHooksConfigV2().policy
+      const policy = defaultHooksConfig().policy
       policy.http.allowedUrlPatterns = ['http://127.0.0.1:*/*']
       policy.http.allowedEnv = ['HOOK_HTTP_SECRET']
       policy.http.allowLoopback = true
@@ -281,7 +281,7 @@ describe('hooks v2 HTTP executor', () => {
       res.end('{"decision":"allow"}')
     })
     try {
-      const policy = defaultHooksConfigV2().policy
+      const policy = defaultHooksConfig().policy
       policy.http.allowedUrlPatterns = ['http://127.0.0.1:*/*']
       policy.http.allowLoopback = true
       policy.http.maxResponseBytes = 64
@@ -318,7 +318,7 @@ describe('hooks v2 HTTP executor', () => {
   it('distinguishes HTTP timeout from parent cancellation', async () => {
     const local = await server(() => {})
     try {
-      const policy = defaultHooksConfigV2().policy
+      const policy = defaultHooksConfig().policy
       policy.http.allowedUrlPatterns = ['http://127.0.0.1:*/*']
       policy.http.allowLoopback = true
       const executor = await httpExecutor()

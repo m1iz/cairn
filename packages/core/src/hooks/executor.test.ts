@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { describe, expect, it } from 'vitest'
-import { defaultHooksConfigV2 } from './schema'
+import { defaultHooksConfig } from './schema'
 import { ExecutionEnvironment } from '../environment/snapshot'
 
 type Dict = Record<string, unknown>
@@ -76,7 +76,7 @@ function context(overrides: Dict = {}): Dict {
   return {
     eventName: 'PreToolUse',
     cwd: process.cwd(),
-    policy: defaultHooksConfigV2().policy,
+    policy: defaultHooksConfig().policy,
     ...overrides,
   }
 }
@@ -88,7 +88,7 @@ async function registry(): Promise<Registry> {
   return registry
 }
 
-describe('hooks v2 command executor', () => {
+describe('hooks command executor', () => {
   it('routes by handler type and parses event JSON from stdout', async () => {
     const run = await registry()
     const result = await run.execute(
@@ -128,7 +128,7 @@ describe('hooks v2 command executor', () => {
         throw new Error('private parser service detail')
       }),
     )
-    const policy = defaultHooksConfigV2().policy
+    const policy = defaultHooksConfig().policy
     policy.command.allowShell = true
 
     const result = await run.execute(
@@ -160,7 +160,7 @@ describe('hooks v2 command executor', () => {
     process.env.HOOK_EXECUTOR_SECRET = 'changed-after-snapshot'
     try {
       const run = await registry()
-      const policy = defaultHooksConfigV2().policy
+      const policy = defaultHooksConfig().policy
       policy.command.allowedEnv = ['HOOK_EXECUTOR_SECRET']
       const visible = await run.execute(
         command({
@@ -260,7 +260,7 @@ describe('hooks v2 command executor', () => {
 
   it('uses byte-counted tail buffers and reports truncation', async () => {
     const run = await registry()
-    const policy = defaultHooksConfigV2().policy
+    const policy = defaultHooksConfig().policy
     policy.command.maxOutputBytes = 32
     const result = await run.execute(
       command({

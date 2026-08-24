@@ -2,24 +2,24 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { HookCommandHandlerV2 } from './models'
+import type { HookCommandHandler } from './models'
 import {
   HookExecutorRegistry,
   type HookExecutorContext,
-  type HookExecutorResultV2,
+  type HookExecutorResult,
   type HookHandlerExecutor,
 } from './executor'
 import { HookService } from './service'
 import { ExecutionEnvironment } from '../environment/snapshot'
 
-class FakeCommandExecutor implements HookHandlerExecutor<HookCommandHandlerV2> {
+class FakeCommandExecutor implements HookHandlerExecutor<HookCommandHandler> {
   readonly type = 'command' as const
   readonly contexts: HookExecutorContext[] = []
   async execute(
-    handler: HookCommandHandlerV2,
+    handler: HookCommandHandler,
     _input: Record<string, unknown>,
     context: HookExecutorContext,
-  ): Promise<HookExecutorResultV2> {
+  ): Promise<HookExecutorResult> {
     this.contexts.push(context)
     const [decision, reason] = handler.args
     return {

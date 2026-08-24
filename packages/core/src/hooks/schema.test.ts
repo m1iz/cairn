@@ -23,20 +23,20 @@ async function v2Api(): Promise<{
     string,
     unknown
   >
-  expect(module.parseHooksConfigV2).toBeTypeOf('function')
-  expect(module.serializeHooksConfigV2).toBeTypeOf('function')
+  expect(module.parseHooksConfig).toBeTypeOf('function')
+  expect(module.serializeHooksConfig).toBeTypeOf('function')
   expect(module.parseHookOutput).toBeTypeOf('function')
-  expect(module.defaultHooksConfigV2).toBeTypeOf('function')
+  expect(module.defaultHooksConfig).toBeTypeOf('function')
   return {
-    parse: module.parseHooksConfigV2 as ParseV2,
-    serialize: module.serializeHooksConfigV2 as SerializeV2,
+    parse: module.parseHooksConfig as ParseV2,
+    serialize: module.serializeHooksConfig as SerializeV2,
     parseOutput: module.parseHookOutput as ParseOutput,
-    defaultConfig: module.defaultHooksConfigV2 as () => Dict,
+    defaultConfig: module.defaultHooksConfig as () => Dict,
   }
 }
 
-describe('hooks v2 foundation contracts', () => {
-  it('exports only the 18 Cairn events that have real v2 hosts', () => {
+describe('hooks foundation contracts', () => {
+  it('exports only the 18 Cairn events that have real hosts', () => {
     expect(HOOK_EVENT_NAMES).toEqual([
       'SessionStart',
       'SessionEnd',
@@ -175,7 +175,7 @@ describe('hooks v2 foundation contracts', () => {
     })
   })
 
-  it('migrates v1 flat entries into deterministic one-handler v2 groups', async () => {
+  it('migrates legacy flat entries into deterministic one-handler groups', async () => {
     const { parse } = await v2Api()
     const first = parse({
       version: 1,
@@ -306,7 +306,7 @@ describe('hooks v2 foundation contracts', () => {
     )
   })
 
-  it('serializes normalized v2 config deterministically and round-trips it', async () => {
+  it('serializes normalized config deterministically and round-trips it', async () => {
     const { parse, serialize } = await v2Api()
     const parsed = parse({
       version: 2,

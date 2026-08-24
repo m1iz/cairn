@@ -18,7 +18,7 @@ function host(run: TaskHookHost['run']): TaskHookHost {
 }
 
 function root(): string {
-  return mkdtempSync(join(tmpdir(), 'task-hooks-v2-'))
+  return mkdtempSync(join(tmpdir(), 'task-hooks-'))
 }
 
 describe('TaskManager hook transitions', () => {
