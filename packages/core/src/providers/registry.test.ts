@@ -36,7 +36,6 @@ describe('provider registry', () => {
       protocols: ['anthropic'],
       defaultProtocol: 'anthropic',
       apiBases: { anthropic: 'https://api.anthropic.com' },
-      defaultApiBase: 'https://api.anthropic.com',
     })
     expect(findByName('openai')).toMatchObject({
       protocols: ['openai'],

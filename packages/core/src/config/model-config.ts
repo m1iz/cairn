@@ -172,20 +172,12 @@ function canonicalProviderName(value: unknown): string | null {
   return findByName(name)?.name ?? null
 }
 
-function providerSpec(name: string): RawRecord | undefined {
-  const canonical = canonicalProviderName(name)
-  return canonical
-    ? (findByName(canonical) as unknown as RawRecord | undefined)
-    : undefined
-}
-
 function defaultApiBase(provider: string, protocol: ModelProtocol): string {
-  const spec = providerSpec(provider)
-  const apiBases = optionalRecord(spec?.apiBases)
-  const protocolBase = optionalString(apiBases?.[protocol])
+  const canonical = canonicalProviderName(provider)
+  const protocolBase = canonical
+    ? findByName(canonical)?.apiBases[protocol]
+    : undefined
   if (protocolBase) return protocolBase
-  const legacyBase = optionalString(spec?.defaultApiBase)
-  if (legacyBase) return legacyBase
   return protocol === 'anthropic'
     ? 'https://api.anthropic.com'
     : 'https://api.openai.com/v1'
