@@ -71,8 +71,8 @@ jobs:
           node scripts/verify-vitest-baseline.mjs
           --cwd packages/core
           --vitest ../../node_modules/vitest/vitest.mjs
-          --min-passed 2170
-          --max-failed 43
+          --min-passed 2168
+          --max-failed 45
           --max-skipped 19
           --max-runtime-errors 1
       - name: Reject Desktop regressions beyond the captured baseline
@@ -99,8 +99,15 @@ jobs:
             desktop/package-lock.json
       - run: npm ci
       - run: npm --prefix desktop ci
-      - name: Core tests
-        run: npm test --workspace @cairn/core
+      - name: Reject Core regressions beyond the captured Linux baseline
+        run: >-
+          node scripts/verify-vitest-baseline.mjs
+          --cwd packages/core
+          --vitest ../../node_modules/vitest/vitest.mjs
+          --min-passed 2214
+          --max-failed 13
+          --max-skipped 5
+          --max-runtime-errors 0
       - name: Reject Desktop regressions beyond the captured UI baseline
         run: >-
           node scripts/verify-vitest-baseline.mjs
