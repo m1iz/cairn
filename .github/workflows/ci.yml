@@ -79,9 +79,9 @@ jobs:
         run: >-
           node scripts/verify-vitest-baseline.mjs
           --cwd desktop
-          --vitest ../node_modules/vitest/vitest.mjs
-          --min-passed 509
-          --max-failed 4
+          --vitest node_modules/vitest/vitest.mjs
+          --min-passed 551
+          --max-failed 0
           --max-skipped 0
           --max-runtime-errors 0
 
@@ -112,8 +112,8 @@ jobs:
         run: >-
           node scripts/verify-vitest-baseline.mjs
           --cwd desktop
-          --vitest ../node_modules/vitest/vitest.mjs
-          --min-passed 509
-          --max-failed 4
+          --vitest node_modules/vitest/vitest.mjs
+          --min-passed 551
+          --max-failed 0
           --max-skipped 0
           --max-runtime-errors 0

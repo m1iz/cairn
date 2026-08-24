@@ -12,6 +12,12 @@
   --accent: 99 153 255;
   --accent-fg: 8 10 16;
   --brand: 203 158 72;
+  --desktop-chrome-bg: 29 33 38;
+  --desktop-chrome-fg: 170 177 188;
+  --desktop-chrome-fg-strong: 237 240 244;
+  --desktop-chrome-popover-bg: 37 42 49;
+  --desktop-chrome-popover-fg: 201 206 215;
+  --desktop-chrome-popover-fg-strong: 244 246 248;
   --radius: 8px;
   --radius-sm: 5px;
 }
@@ -4183,8 +4189,8 @@ select:focus-visible {
   gap: 3px;
   padding: 0 150px 0 12px;
   border-bottom: 1px solid rgb(255 255 255 / 0.05);
-  background: #1d2126;
-  color: #aab1bc;
+  background: rgb(var(--desktop-chrome-bg));
+  color: rgb(var(--desktop-chrome-fg));
   -webkit-app-region: drag;
   user-select: none;
 }
@@ -4203,7 +4209,7 @@ select:focus-visible {
   align-items: center;
   justify-content: center;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: inherit;
   background: transparent;
   transition:
@@ -4219,7 +4225,7 @@ select:focus-visible {
 .desktop-chrome-icon-button:hover,
 .desktop-chrome-menu-button:hover,
 .desktop-chrome-menu-button[aria-expanded='true'] {
-  color: #edf0f4;
+  color: rgb(var(--desktop-chrome-fg-strong));
   background: rgb(255 255 255 / 0.08);
 }
 
@@ -4234,7 +4240,7 @@ select:focus-visible {
 .desktop-chrome-menu-button {
   min-height: 24px;
   padding: 0 8px;
-  font-size: 13px;
+  font-size: var(--font-size-md);
   font-weight: 600;
 }
 
@@ -4248,24 +4254,24 @@ select:focus-visible {
   gap: 2px;
   padding: 5px;
   border: 1px solid rgb(255 255 255 / 0.08);
-  border-radius: 8px;
-  background: #252a31;
-  box-shadow: 0 14px 34px rgb(0 0 0 / 0.32);
+  border-radius: var(--radius-md);
+  background: rgb(var(--desktop-chrome-popover-bg));
+  box-shadow: 0 14px 34px rgb(var(--shadow-color) / 0.32);
 }
 
 .desktop-chrome-menu-popover button {
   min-height: 30px;
   padding: 0 10px;
   border: 0;
-  border-radius: 5px;
-  color: #c9ced7;
+  border-radius: var(--radius-sm);
+  color: rgb(var(--desktop-chrome-popover-fg));
   background: transparent;
-  font-size: 13px;
+  font-size: var(--font-size-md);
   text-align: left;
 }
 
 .desktop-chrome-menu-popover button:hover {
-  color: #f4f6f8;
+  color: rgb(var(--desktop-chrome-popover-fg-strong));
   background: rgb(255 255 255 / 0.08);
 }
 
