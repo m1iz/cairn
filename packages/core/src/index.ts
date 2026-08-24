@@ -196,6 +196,7 @@ export * from './watchlist/service'
 // in-process API / IPC boundary (W15)
 export * from './api/core-api'
 export * from './api/operations'
+export * from './api/route-operations'
 export * from './api/mutation-guard'
 export * from './api/chat-service'
 export * from './api/core-operation-dispatcher'

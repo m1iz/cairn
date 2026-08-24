@@ -1,7 +1,8 @@
 import { describe, expect, expectTypeOf, it, vi } from 'vitest'
 import type { SessionEntry } from '../sessions/store'
 import { CoreUnavailableError } from '../runtime/lifecycle'
-import { CORE_API_ROUTE_OPERATIONS, type CoreApi } from './core-api'
+import type { CoreApi } from './core-api'
+import { CORE_API_ROUTE_OPERATIONS } from './route-operations'
 import {
   CORE_OPERATION_REGISTRY,
   coreOperationKeys,

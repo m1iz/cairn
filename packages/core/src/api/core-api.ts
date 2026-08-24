@@ -112,11 +112,6 @@ export interface CoreApiCreateOptions extends AgentLoopCreateOptions {
   terminalEventSink?: ((event: TerminalEvent) => void) | null
 }
 
-export {
-  CORE_API_ROUTE_OPERATIONS,
-  type RouteOperation,
-} from './route-operations'
-
 export interface CoreRuntimeEventPayload {
   event: string
   [key: string]: unknown

@@ -25,7 +25,8 @@ import {
   SchedulerRunTrigger,
   SchedulerSchedule,
 } from '../scheduler/models'
-import { CoreApi, CORE_API_ROUTE_OPERATIONS } from './core-api'
+import { CoreApi } from './core-api'
+import { CORE_API_ROUTE_OPERATIONS } from './route-operations'
 import { CoreMutationGuardError } from './mutation-guard'
 import { CoreSkillService } from './services/skill-service'
 import { CoreEnvironmentService } from './services/environment-service'
