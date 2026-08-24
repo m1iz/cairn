@@ -64,7 +64,7 @@ export interface CoreModelServiceDeps {
   createModelPort?: (snapshot: ProviderSnapshot) => ModelPort
 }
 
-export type ModelEntrySaveInput = Omit<ModelEntryUpdate, 'legacy'>
+export type ModelEntrySaveInput = Omit<ModelEntryUpdate, 'requestOptions'>
 
 export interface ModelProfilePreviewInput {
   provider: string
@@ -77,7 +77,7 @@ export interface ModelProfilePreviewInput {
 
 export interface ModelEntryPayload extends Omit<
   ModelEntry,
-  'apiKey' | 'legacy'
+  'apiKey' | 'requestOptions'
 > {
   apiKey: string
   effectiveDisplayName: string
@@ -421,7 +421,7 @@ function resolvedProfile(entry: ModelEntry): ResolvedModelProfile {
 }
 
 function modelEntryPayload(entry: ModelEntry): ModelEntryPayload {
-  const { legacy: _legacy, ...safe } = entry
+  const { requestOptions: _requestOptions, ...safe } = entry
   return {
     ...safe,
     apiKey: maskSecret(entry.apiKey),
@@ -493,7 +493,7 @@ function discoveryExtraHeaders(
   const resolved =
     recordValue(input) ||
     (input !== null && canReuseEntryCredentials
-      ? recordValue(entry?.legacy?.extraHeaders)
+      ? recordValue(entry?.requestOptions?.extraHeaders)
       : null) ||
     {}
   return Object.fromEntries(

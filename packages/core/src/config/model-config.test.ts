@@ -232,8 +232,21 @@ describe('typed entry mutation', () => {
     await saveModelConfig(dir, {
       schemaVersion: 2,
       activeModelId: 'entry-openai',
-      models: [entry({ legacy: { temperature: 0.2, extraBody: { seed: 7 } } })],
+      models: [
+        {
+          ...entry(),
+          legacy: { temperature: 0.2, extraBody: { seed: 7 } },
+        } as unknown as ModelConfig['models'][number],
+      ],
     })
+    const normalizedDiskEntry = JSON.parse(
+      await readFile(join(dir, 'model_config.json'), 'utf8'),
+    ).models[0]
+    expect(normalizedDiskEntry.requestOptions).toEqual({
+      temperature: 0.2,
+      extraBody: { seed: 7 },
+    })
+    expect(normalizedDiskEntry).not.toHaveProperty('legacy')
 
     await saveModelConfig(dir, {
       schemaVersion: 2,
@@ -242,7 +255,7 @@ describe('typed entry mutation', () => {
         entry({
           apiKey: '***cret',
           displayName: 'Masked round trip',
-          legacy: { temperature: 0.2, extraBody: { seed: 7 } },
+          requestOptions: { temperature: 0.2, extraBody: { seed: 7 } },
         }),
       ],
     })
@@ -255,7 +268,7 @@ describe('typed entry mutation', () => {
     expect((await loadModelConfig(dir)).models[0]).toMatchObject({
       apiKey: 'sk-secret',
       displayName: 'Renamed',
-      legacy: { temperature: 0.2, extraBody: { seed: 7 } },
+      requestOptions: { temperature: 0.2, extraBody: { seed: 7 } },
     })
 
     await saveModelEntry(dir, { entryId: 'entry-openai', apiKey: 'sk-***cret' })
@@ -383,7 +396,7 @@ describe('v1 migration', () => {
       contextWindowTokens: 64_000,
       maxTokens: 16_384,
       reasoningEffort: 'low',
-      legacy: {
+      requestOptions: {
         temperature: 0.15,
         extraHeaders: { 'X-Tenant': 'local' },
         extraBody: { seed: 9 },
@@ -497,7 +510,7 @@ describe('v1 migration', () => {
       maxTokens: 12_000,
       contextWindowTokens: 96_000,
       reasoningEffort: 'high',
-      legacy: {
+      requestOptions: {
         temperature: 0.25,
         extraHeaders: { 'X-Tenant': 'local' },
       },

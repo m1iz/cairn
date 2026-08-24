@@ -158,8 +158,8 @@ export function buildProviderSnapshot(
   const modelId = entry.modelId
   const apiKey = entry.apiKey
   const apiBase = entry.apiBase
-  const extraHeaders = entry.legacy?.extraHeaders ?? null
-  const extraBody = entry.legacy?.extraBody ?? null
+  const extraHeaders = entry.requestOptions?.extraHeaders ?? null
+  const extraBody = entry.requestOptions?.extraBody ?? null
 
   const protocol = snapshotProtocol(entry, spec)
   const resolvedApiBase = snapshotApiBase(apiBase, spec, protocol)
@@ -173,7 +173,7 @@ export function buildProviderSnapshot(
   })
   const generation: GenerationSettings = {
     maxTokens: profile.maxTokens,
-    temperature: entry.legacy?.temperature ?? 0.1,
+    temperature: entry.requestOptions?.temperature ?? 0.1,
     reasoningEffort: entry.reasoningEffort,
   }
 

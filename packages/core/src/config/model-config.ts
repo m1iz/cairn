@@ -24,7 +24,7 @@ export interface ModelCapabilityOverrides {
   reasoning?: boolean
 }
 
-export interface ModelEntryLegacyData {
+export interface ModelRequestOptions {
   temperature?: number | null
   extraHeaders?: Record<string, string> | null
   extraBody?: Record<string, unknown> | null
@@ -66,7 +66,7 @@ export interface ModelEntry {
   maxTokens: number
   reasoningEffort: string | null
   pricing?: ModelPricing
-  legacy?: ModelEntryLegacyData
+  requestOptions?: ModelRequestOptions
 }
 
 export interface ModelConfig {
@@ -199,10 +199,12 @@ function normalizeCapabilityOverrides(
   return Object.keys(result).length ? result : undefined
 }
 
-function normalizeLegacy(value: unknown): ModelEntryLegacyData | undefined {
+function normalizeRequestOptions(
+  value: unknown,
+): ModelRequestOptions | undefined {
   if (value === undefined) return undefined
-  if (!isRecord(value)) throw new ValidationError('legacy 必须是对象')
-  const result: ModelEntryLegacyData = {}
+  if (!isRecord(value)) throw new ValidationError('requestOptions 必须是对象')
+  const result: ModelRequestOptions = {}
   if ('temperature' in value)
     result.temperature = optionalNumber(value.temperature) ?? null
   if ('extraHeaders' in value) {
@@ -214,13 +216,14 @@ function normalizeLegacy(value: unknown): ModelEntryLegacyData | undefined {
           String(item),
         ]),
       )
-    } else throw new ValidationError('legacy.extraHeaders 必须是对象或 null')
+    } else
+      throw new ValidationError('requestOptions.extraHeaders 必须是对象或 null')
   }
   if ('extraBody' in value) {
     if (value.extraBody === null) result.extraBody = null
     else if (isRecord(value.extraBody))
       result.extraBody = structuredClone(value.extraBody)
-    else throw new ValidationError('legacy.extraBody 必须是对象或 null')
+    else throw new ValidationError('requestOptions.extraBody 必须是对象或 null')
   }
   return Object.keys(result).length ? result : undefined
 }
@@ -282,7 +285,9 @@ function normalizeEntry(
   const capabilityOverrides = normalizeCapabilityOverrides(
     input.capabilityOverrides,
   )
-  const legacy = normalizeLegacy(input.legacy)
+  const requestOptions = normalizeRequestOptions(
+    input.requestOptions ?? input.legacy,
+  )
   const pricing = normalizePricing(input.pricing)
   const result: ModelEntry = {
     entryId: entryId ?? newEntryId(),
@@ -301,7 +306,7 @@ function normalizeEntry(
   if (displayName) result.displayName = displayName
   if (capabilityOverrides) result.capabilityOverrides = capabilityOverrides
   if (pricing) result.pricing = pricing
-  if (legacy) result.legacy = legacy
+  if (requestOptions) result.requestOptions = requestOptions
   return result
 }
 
@@ -523,7 +528,7 @@ function migrateV1(raw: RawRecord): ModelConfig {
     const extraBody = firstLegacyRecord(
       legacyCandidates(legacyEntry, providerBlock, defaults, 'extraBody'),
     )
-    const legacy: ModelEntryLegacyData = {
+    const requestOptions: ModelRequestOptions = {
       temperature: temperature ?? null,
       extraHeaders: extraHeaders
         ? Object.fromEntries(
@@ -553,7 +558,7 @@ function migrateV1(raw: RawRecord): ModelConfig {
         contextWindowTokens,
         maxTokens,
         reasoningEffort,
-        legacy: structuredClone(legacy),
+        requestOptions: structuredClone(requestOptions),
       }
       if (customName)
         migrated.displayName =
@@ -834,10 +839,13 @@ export function upsertModelEntryConfig(
   )
     merged.apiKey = existing.apiKey
   else if (!existing && isMaskedSecret(update.apiKey)) merged.apiKey = null
-  if (existing && update.legacy === undefined)
-    merged.legacy = structuredClone(existing.legacy)
-  else if (existing && isRecord(update.legacy))
-    merged.legacy = mergeDefined(existing.legacy ?? {}, update.legacy)
+  if (existing && update.requestOptions === undefined)
+    merged.requestOptions = structuredClone(existing.requestOptions)
+  else if (existing && isRecord(update.requestOptions))
+    merged.requestOptions = mergeDefined(
+      existing.requestOptions ?? {},
+      update.requestOptions,
+    )
   if (existing && update.capabilityOverrides === undefined)
     merged.capabilityOverrides = structuredClone(existing.capabilityOverrides)
   else if (existing && isRecord(update.capabilityOverrides))

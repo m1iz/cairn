@@ -70,9 +70,9 @@ describe('CoreModelService schema', () => {
     writeConfig(root, [
       entry({
         capabilityOverrides: { vision: false },
-        legacy: {
+        requestOptions: {
           temperature: 0.2,
-          extraHeaders: { 'x-legacy': 'keep' },
+          extraHeaders: { 'x-custom': 'keep' },
         },
       }),
     ])
@@ -139,7 +139,7 @@ describe('CoreModelService schema', () => {
     })
   })
 
-  it('supports typed CRUD, preserves secrets and legacy fields, refreshes after each mutation, and onboards only the first usable model', async () => {
+  it('supports typed CRUD, preserves secrets and request options, refreshes after each mutation, and onboards only the first usable model', async () => {
     const root = tmp('cairn-model-service-crud-')
     writeConfig(root, [])
     const lifecycle: string[] = []
@@ -156,7 +156,7 @@ describe('CoreModelService schema', () => {
     const first = await modelService.saveEntry(
       entry({
         entryId: undefined as unknown as string,
-        legacy: { temperature: 0.3, extraBody: { keep: true } },
+        requestOptions: { temperature: 0.3, extraBody: { keep: true } },
       }),
     )
     const firstId = first.activeModelId!
@@ -173,7 +173,7 @@ describe('CoreModelService schema', () => {
       readFileSync(join(root, 'model_config.json'), 'utf8'),
     )
     expect(onDisk.models[0].apiKey).toBe('sk-secret-1234')
-    expect(onDisk.models[0].legacy).toEqual({
+    expect(onDisk.models[0].requestOptions).toEqual({
       temperature: 0.3,
       extraBody: { keep: true },
     })
