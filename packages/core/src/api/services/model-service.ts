@@ -6,14 +6,12 @@ import {
   findEntry,
   loadModelConfig,
   maskSecret,
-  parseModelConfig,
   saveModelEntry,
   saveModelPolicy,
   upsertModelEntryConfig,
   type ModelConfig,
   type ModelEntry,
   type ModelEntryUpdate,
-  type ModelEntryV2,
   type ModelExecutionPolicy,
   type ModelProtocol,
 } from '../../config/model-config'
@@ -72,13 +70,13 @@ export interface ModelProfilePreviewInput {
   provider: string
   protocol: ModelProtocol
   modelId: string
-  capabilityOverrides?: ModelEntryV2['capabilityOverrides']
+  capabilityOverrides?: ModelEntry['capabilityOverrides']
   contextWindowTokens?: number
   maxTokens?: number
 }
 
 export interface ModelEntryPayload extends Omit<
-  ModelEntryV2,
+  ModelEntry,
   'apiKey' | 'legacy'
 > {
   apiKey: string
@@ -148,7 +146,7 @@ export class CoreModelService {
   async getConfig(): Promise<ModelConfigPayload> {
     const config = await loadModelConfig(this.root)
     const entry = activeEntry(config) ?? null
-    const models = config.raw.models.map((item) => modelEntryPayload(item))
+    const models = config.models.map((item) => modelEntryPayload(item))
     return {
       schemaVersion: 2,
       activeModelId: config.activeModelId,
@@ -164,7 +162,7 @@ export class CoreModelService {
     const before = await loadModelConfig(this.root)
     const wasUsable = modelAvailability(before).usable
     const update = normalizeEntrySecret(input)
-    const prospective = upsertModelEntryConfig(before.raw, update)
+    const prospective = upsertModelEntryConfig(before, update)
     const prospectiveEntry = update.entryId
       ? prospective.models.find((entry) => entry.entryId === update.entryId)
       : prospective.models[prospective.models.length - 1]
@@ -366,11 +364,11 @@ export class CoreModelService {
       return buildProviderSnapshot(config, { modelOverride: entryId })
     const entry = findEntry(config, entryId)
     if (!entry) throw new Error(`model entry not found: ${entryId}`)
-    const raw = upsertModelEntryConfig(config.raw, {
+    const updated = upsertModelEntryConfig(config, {
       entryId,
       capabilityOverrides: { ...entry.capabilityOverrides, vision: true },
     })
-    return buildProviderSnapshot(parseModelConfig(raw), {
+    return buildProviderSnapshot(updated, {
       modelOverride: entryId,
     })
   }
@@ -411,22 +409,18 @@ function normalizeEntrySecret(input: ModelEntrySaveInput): ModelEntryUpdate {
   return update
 }
 
-function resolvedProfile(
-  entry: ModelEntry | ModelEntryV2,
-): ResolvedModelProfile {
-  const modelId =
-    entry.modelId || ('mainModelId' in entry ? entry.mainModelId : '')
+function resolvedProfile(entry: ModelEntry): ResolvedModelProfile {
   return resolveModelProfile({
     provider: entry.provider,
-    protocol: entry.protocol ?? 'openai',
-    modelId,
+    protocol: entry.protocol,
+    modelId: entry.modelId,
     capabilityOverrides: entry.capabilityOverrides,
-    contextWindowTokens: entry.contextWindowTokens ?? undefined,
-    maxTokens: entry.maxTokens ?? undefined,
+    contextWindowTokens: entry.contextWindowTokens,
+    maxTokens: entry.maxTokens,
   })
 }
 
-function modelEntryPayload(entry: ModelEntryV2): ModelEntryPayload {
+function modelEntryPayload(entry: ModelEntry): ModelEntryPayload {
   const { legacy: _legacy, ...safe } = entry
   return {
     ...safe,
@@ -440,15 +434,14 @@ function currentModelPayload(entry: ModelEntry): CurrentModelPayload {
   const profile = resolvedProfile(entry)
   const spec = findByName(entry.provider)
   return {
-    entryId: entry.entryId || entry.name,
+    entryId: entry.entryId,
     provider: entry.provider,
     providerLabel: spec?.displayName ?? entry.provider,
-    protocol: entry.protocol ?? spec?.defaultProtocol ?? 'openai',
-    modelId: entry.modelId || entry.mainModelId,
-    displayName: entry.displayName || entry.label || null,
-    effectiveDisplayName:
-      entry.displayName || entry.label || entry.modelId || entry.mainModelId,
-    apiBase: entry.apiBase || '',
+    protocol: entry.protocol,
+    modelId: entry.modelId,
+    displayName: entry.displayName || null,
+    effectiveDisplayName: entry.displayName || entry.modelId,
+    apiBase: entry.apiBase,
     reasoningEffort: entry.reasoningEffort,
     contextWindowTokens: profile.contextWindowTokens,
     maxTokens: profile.maxTokens,

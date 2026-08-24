@@ -137,7 +137,7 @@ export class CoreDiagnosticsService {
     if (!exists) return payload
     try {
       const config = await loadModelConfig(this.configRoot(), { create: false })
-      validateCompleteModelEntries(config.raw)
+      validateCompleteModelEntries(config)
       payload.status = 'ok'
       payload.models = config.models.length
     } catch (err) {

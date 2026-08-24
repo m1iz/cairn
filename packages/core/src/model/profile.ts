@@ -1,6 +1,6 @@
 import type {
   ModelCapabilityOverrides,
-  ModelEntryV2,
+  ModelEntry,
   ModelProtocol,
 } from '../config/model-config'
 import { findByName } from '../providers/registry'
@@ -29,7 +29,7 @@ export type ModelReasoningAdapter =
   | 'reasoning_split_toggle'
 
 export interface ModelProfileEntry extends Pick<
-  ModelEntryV2,
+  ModelEntry,
   'provider' | 'protocol' | 'modelId'
 > {
   capabilityOverrides?: ModelCapabilityOverrides

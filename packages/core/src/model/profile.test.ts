@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import type { ModelEntryV2 } from '../config/model-config'
+import type { ModelEntry } from '../config/model-config'
 import {
   REASONING_EFFORT_ORDER,
   reasoningPayload,
   resolveModelProfile,
 } from './profile'
 
-const entry = (overrides: Partial<ModelEntryV2> = {}): ModelEntryV2 => ({
+const entry = (overrides: Partial<ModelEntry> = {}): ModelEntry => ({
   entryId: 'model-test',
   provider: 'custom',
   protocol: 'openai',

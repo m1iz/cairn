@@ -11,7 +11,7 @@ import {
   type ConfigRecoveryInfo,
 } from '../store/atomic-json'
 
-/** 单模型配置文件。磁盘只保存 schemaVersion=2；旧字段仅通过只读 adapter 暂时兼容。 */
+/** 单模型配置文件。磁盘使用 schemaVersion=2；旧文档只在加载边界迁移。 */
 export const MODEL_CONFIG_FILE = 'model_config.json'
 export const MODEL_CONFIG_V1_BACKUP_FILE = 'model_config.v1-backup.json'
 export const MODEL_CONFIG_EXAMPLE_FILE = 'model_config.example.json'
@@ -53,7 +53,7 @@ export interface ModelUsageCost {
   complete: boolean
 }
 
-export interface ModelEntryV2 {
+export interface ModelEntry {
   entryId: string
   provider: string
   protocol: ModelProtocol
@@ -69,84 +69,14 @@ export interface ModelEntryV2 {
   legacy?: ModelEntryLegacyData
 }
 
-export interface ModelConfigV2 {
-  schemaVersion: 2
-  activeModelId: string | null
-  models: ModelEntryV2[]
-  policy?: ModelExecutionPolicy
-}
-
-/** @deprecated Task 2 删除；只为旧 router/CoreApi 在迁移期间提供内存视图。 */
-export interface AgentDefaults {
-  model: string
-  provider: string
-  maxTokens: number
-  temperature: number
-  reasoningEffort: string | null
-  contextWindowTokens: number
-}
-
-/** @deprecated Task 2 删除；不会写入 v2 磁盘。 */
-export interface ProviderConfig {
-  apiKey: string | null
-  apiBase: string | null
-  extraHeaders: Record<string, string> | null
-  extraBody: Record<string, unknown> | null
-}
-
-/** @deprecated aliases 不会出现在 config.raw 或磁盘。 */
-export interface ModelEntry {
-  entryId?: string
-  provider: string
-  protocol?: ModelProtocol
-  modelId?: string
-  displayName?: string
-  apiBase: string | null
-  apiKey: string | null
-  capabilityOverrides?: ModelCapabilityOverrides
-  pricing?: ModelPricing
-  contextWindowTokens: number | null
-  maxTokens: number | null
-  reasoningEffort: string | null
-  legacy?: ModelEntryLegacyData
-  name: string
-  id: string
-  mainModelId: string
-  secondaryModelId: string
-  label: string
-  extraHeaders: Record<string, string> | null
-  extraBody: Record<string, unknown> | null
-  temperature: number | null
-  supportsVision: boolean
-}
-
 export interface ModelConfig {
   schemaVersion: 2
   activeModelId: string | null
   models: ModelEntry[]
   policy: ModelExecutionPolicy
-  raw: ModelConfigV2 & Record<string, unknown>
-  /** @deprecated compatibility view; never serialized. */
-  defaults: AgentDefaults
-  /** @deprecated compatibility view; never serialized. */
-  providers: Record<string, ProviderConfig>
 }
 
-export interface WizardModelSettings {
-  provider: string
-  name: string
-  label: string
-  apiKey: string
-  apiBase: string
-  mainModelId: string
-  secondaryModelId: string
-  maxTokens: number
-  temperature: number
-  contextWindowTokens: number
-  reasoningEffort?: string | null
-}
-
-export type ModelEntryUpdate = Omit<Partial<ModelEntryV2>, 'pricing'> & {
+export type ModelEntryUpdate = Omit<Partial<ModelEntry>, 'pricing'> & {
   apiKey?: string | null
   pricing?: ModelPricing | null
 }
@@ -160,8 +90,13 @@ const REMOVED_PROVIDERS = new Set([
   'github_copilot',
 ])
 
-export function defaultModelConfig(): ModelConfigV2 {
-  return { schemaVersion: 2, activeModelId: null, models: [] }
+export function defaultModelConfig(): ModelConfig {
+  return {
+    schemaVersion: 2,
+    activeModelId: null,
+    models: [],
+    policy: defaultModelExecutionPolicy(),
+  }
 }
 
 export function defaultModelExecutionPolicy(): ModelExecutionPolicy {
@@ -323,7 +258,7 @@ function newEntryId(): string {
 function normalizeEntry(
   input: RawRecord,
   options: { allowMissingEntryId?: boolean } = {},
-): ModelEntryV2 {
+): ModelEntry {
   const entryId = optionalString(input.entryId)
   if (!entryId && !options.allowMissingEntryId)
     throw new ValidationError('entryId 不能为空')
@@ -357,7 +292,7 @@ function normalizeEntry(
   )
   const legacy = normalizeLegacy(input.legacy)
   const pricing = normalizePricing(input.pricing)
-  const result: ModelEntryV2 = {
+  const result: ModelEntry = {
     entryId: entryId ?? newEntryId(),
     provider,
     protocol,
@@ -380,7 +315,7 @@ function normalizeEntry(
 
 function normalizeExecutionPolicy(
   value: unknown,
-  models: readonly ModelEntryV2[],
+  models: readonly ModelEntry[],
   activeModelId: string | null,
 ): ModelExecutionPolicy {
   const defaults = defaultModelExecutionPolicy()
@@ -450,7 +385,7 @@ function normalizeExecutionPolicy(
   }
 }
 
-function normalizeV2(raw: RawRecord): ModelConfigV2 {
+function normalizeConfigDocument(raw: RawRecord): ModelConfig {
   if (raw.schemaVersion !== 2)
     throw new ValidationError('model_config schemaVersion 必须为 2')
   if (!Array.isArray(raw.models))
@@ -467,83 +402,13 @@ function normalizeV2(raw: RawRecord): ModelConfigV2 {
     ids.add(item.entryId)
   }
   const activeModelId = optionalString(raw.activeModelId)
-  const result: ModelConfigV2 = {
+  const result: ModelConfig = {
     schemaVersion: 2,
     activeModelId: models.length ? activeModelId : null,
     models,
+    policy: normalizeExecutionPolicy(raw.policy, models, activeModelId),
   }
-  const policy = normalizeExecutionPolicy(
-    raw.policy,
-    models,
-    result.activeModelId,
-  )
-  if (raw.policy !== undefined) result.policy = policy
   return result
-}
-
-function providerNames(): string[] {
-  return (PROVIDERS as readonly unknown[])
-    .map((item) => (isRecord(item) ? optionalString(item.name) : null))
-    .filter((name): name is string => Boolean(name))
-}
-
-function compatibilityEntry(entry: ModelEntryV2): ModelEntry {
-  const name = entry.displayName || entry.modelId
-  return {
-    ...structuredClone(entry),
-    name,
-    id: entry.modelId,
-    mainModelId: entry.modelId,
-    secondaryModelId: entry.modelId,
-    label: entry.displayName ?? '',
-    extraHeaders: entry.legacy?.extraHeaders ?? null,
-    extraBody: entry.legacy?.extraBody ?? null,
-    temperature: entry.legacy?.temperature ?? null,
-    supportsVision: entry.capabilityOverrides?.vision ?? false,
-  }
-}
-
-function runtimeConfig(raw: ModelConfigV2): ModelConfig {
-  const clean = structuredClone(raw)
-  const models = clean.models.map(compatibilityEntry)
-  const active = clean.activeModelId
-    ? models.find((entry) => entry.entryId === clean.activeModelId)
-    : undefined
-  const providers: Record<string, ProviderConfig> = {}
-  for (const name of new Set([
-    ...providerNames(),
-    ...models.map((m) => m.provider),
-  ])) {
-    const model = models.find((entry) => entry.provider === name)
-    providers[name] = {
-      apiKey: model?.apiKey ?? null,
-      apiBase:
-        model?.apiBase ??
-        defaultApiBase(name, findByName(name)?.defaultProtocol ?? 'openai'),
-      extraHeaders: model?.legacy?.extraHeaders ?? null,
-      extraBody: model?.legacy?.extraBody ?? null,
-    }
-  }
-  return {
-    schemaVersion: 2,
-    activeModelId: clean.activeModelId,
-    models,
-    policy: normalizeExecutionPolicy(
-      clean.policy,
-      clean.models,
-      clean.activeModelId,
-    ),
-    raw: clean as ModelConfigV2 & Record<string, unknown>,
-    defaults: {
-      model: active?.entryId ?? '',
-      provider: active?.provider ?? 'auto',
-      maxTokens: active?.maxTokens ?? 8192,
-      temperature: active?.legacy?.temperature ?? 0.1,
-      reasoningEffort: active?.reasoningEffort ?? null,
-      contextWindowTokens: active?.contextWindowTokens ?? 128000,
-    },
-    providers,
-  }
 }
 
 function legacyCandidates(
@@ -604,14 +469,14 @@ function realLegacySecret(...values: unknown[]): string | null {
   return null
 }
 
-function migrateV1(raw: RawRecord): ModelConfigV2 {
+function migrateV1(raw: RawRecord): ModelConfig {
   const defaults = optionalRecord(optionalRecord(raw.agents)?.defaults) ?? {}
   const providerBlocks = optionalRecord(raw.providers) ?? {}
   const legacyModels = Array.isArray(raw.models)
     ? raw.models.filter(isRecord)
     : []
   const activeLegacyName = optionalString(defaults.model)
-  const models: ModelEntryV2[] = []
+  const models: ModelEntry[] = []
   let activeModelId: string | null = null
 
   for (const legacyEntry of legacyModels) {
@@ -623,7 +488,7 @@ function migrateV1(raw: RawRecord): ModelConfigV2 {
       legacyEntry.mainModelId ?? legacyEntry.id ?? legacyEntry.modelId,
     )
     if (submittedProvider.toLowerCase() === 'auto' && mainModelId)
-      submittedProvider = resolveProviderName('auto', mainModelId, {})
+      submittedProvider = inferLegacyProviderName('auto', mainModelId, {})
     const provider = canonicalProviderName(submittedProvider)
     if (!provider || REMOVED_PROVIDERS.has(provider)) continue
     if (!mainModelId) continue
@@ -686,7 +551,7 @@ function migrateV1(raw: RawRecord): ModelConfigV2 {
     if (secondary && secondary !== mainModelId) modelIds.push(secondary)
 
     for (const [position, modelId] of modelIds.entries()) {
-      const migrated: ModelEntryV2 = {
+      const migrated: ModelEntry = {
         entryId: newEntryId(),
         provider,
         protocol,
@@ -716,14 +581,17 @@ function migrateV1(raw: RawRecord): ModelConfigV2 {
     }
   }
   if (!activeModelId && models.length) activeModelId = models[0]!.entryId
-  return { schemaVersion: 2, activeModelId, models }
+  return {
+    schemaVersion: 2,
+    activeModelId,
+    models,
+    policy: defaultModelExecutionPolicy(),
+  }
 }
 
 export function parseModelConfig(raw: RawRecord): ModelConfig {
   if (!isRecord(raw)) throw new ValidationError('model_config 必须是对象')
-  return runtimeConfig(
-    raw.schemaVersion === 2 ? normalizeV2(raw) : migrateV1(raw),
-  )
+  return raw.schemaVersion === 2 ? normalizeConfigDocument(raw) : migrateV1(raw)
 }
 
 export function findEntry(
@@ -732,10 +600,7 @@ export function findEntry(
 ): ModelEntry | undefined {
   if (!entryId) return undefined
   return config.models.find(
-    (entry) =>
-      entry.entryId === entryId ||
-      entry.name === entryId ||
-      entry.displayName === entryId,
+    (entry) => entry.entryId === entryId || entry.displayName === entryId,
   )
 }
 
@@ -743,11 +608,10 @@ export function activeEntry(config: ModelConfig): ModelEntry | undefined {
   return findEntry(config, config.activeModelId)
 }
 
-/** @deprecated migration compatibility only. */
-export function resolveProviderName(
+function inferLegacyProviderName(
   provider: string,
   model: string,
-  providers: Record<string, ProviderConfig>,
+  providers: Record<string, RawRecord>,
 ): string {
   if (provider && !['auto', 'default'].includes(provider.toLowerCase())) {
     const canonical = canonicalProviderName(provider)
@@ -782,9 +646,10 @@ export function resolveProviderName(
 }
 
 export function validateCompleteModelEntries(
-  raw: ModelConfigV2 | RawRecord,
+  raw: ModelConfig | RawRecord,
 ): void {
-  const config = raw.schemaVersion === 2 ? normalizeV2(raw) : migrateV1(raw)
+  const config =
+    raw.schemaVersion === 2 ? normalizeConfigDocument(raw) : migrateV1(raw)
   if (!config.models.length) throw new ValidationError('请至少添加一个模型条目')
   if (!config.activeModelId) throw new ValidationError('activeModelId 不能为空')
   if (!config.models.some((entry) => entry.entryId === config.activeModelId))
@@ -815,7 +680,7 @@ export async function ensureExampleConfig(root: string): Promise<string> {
 
 function validateDiskConfig(value: unknown): RawRecord {
   if (!isRecord(value)) throw new Error('model_config must be an object')
-  if (value.schemaVersion === 2) return normalizeV2(value)
+  if (value.schemaVersion === 2) return normalizeConfigDocument(value)
   if (value.schemaVersion !== undefined)
     throw new Error(
       `unsupported model_config schemaVersion: ${value.schemaVersion}`,
@@ -864,7 +729,7 @@ export async function loadModelConfig(
   const path = configPath(rootOrFile)
   if (opts.create !== false && !existsSync(path))
     await writeJsonAtomic(path, defaultModelConfig(), { mode: 0o600 })
-  if (!existsSync(path)) return runtimeConfig(defaultModelConfig())
+  if (!existsSync(path)) return defaultModelConfig()
 
   const source = await readFile(path, 'utf8')
   const loaded = await readJson<RawRecord>(path, defaultModelConfig(), {
@@ -874,40 +739,40 @@ export async function loadModelConfig(
   // readJson isolates invalid files by renaming them. Do not immediately
   // recreate the invalid path here; the next normal load/explicit save owns
   // creation, matching the existing recovery contract.
-  if (!existsSync(path)) return runtimeConfig(defaultModelConfig())
+  if (!existsSync(path)) return defaultModelConfig()
   if (loaded.schemaVersion !== 2) {
     await backupV1(path, source)
     const migrated = migrateV1(loaded)
     await writeJsonAtomic(path, migrated, { mode: 0o600 })
-    return runtimeConfig(migrated)
+    return migrated
   }
-  const normalized = normalizeV2(loaded)
+  const normalized = normalizeConfigDocument(loaded)
   try {
     if (JSON.stringify(JSON.parse(source)) !== JSON.stringify(normalized))
       await writeJsonAtomic(path, normalized, { mode: 0o600 })
   } catch {
     // readJson 已负责隔离畸形文件；这里不重复恢复。
   }
-  return runtimeConfig(normalized)
+  return normalized
 }
 
 export async function saveModelConfig(
   rootOrFile: string,
-  data: ModelConfigV2 | RawRecord,
+  data: ModelConfig | RawRecord,
   opts: { validateComplete?: boolean } = {},
 ): Promise<ModelConfig> {
   const path = configPath(rootOrFile)
   const merged = await preserveStoredApiKeys(path, data)
   const config = parseModelConfig(merged)
-  if (opts.validateComplete) validateCompleteModelEntries(config.raw)
-  await writeJsonAtomic(path, config.raw, { mode: 0o600 })
+  if (opts.validateComplete) validateCompleteModelEntries(config)
+  await writeJsonAtomic(path, config, { mode: 0o600 })
   return config
 }
 
 async function preserveStoredApiKeys(
   path: string,
-  data: ModelConfigV2 | RawRecord,
-): Promise<ModelConfigV2 | RawRecord> {
+  data: ModelConfig | RawRecord,
+): Promise<ModelConfig | RawRecord> {
   if (!isRecord(data) || data.schemaVersion !== 2 || !existsSync(path))
     return data
   let stored: unknown
@@ -950,10 +815,10 @@ function mergeDefined(target: RawRecord, patch: RawRecord): RawRecord {
 }
 
 export function upsertModelEntryConfig(
-  config: ModelConfigV2,
+  config: ModelConfig,
   update: ModelEntryUpdate,
-): ModelConfigV2 {
-  const raw = normalizeV2(config as unknown as RawRecord)
+): ModelConfig {
+  const raw = normalizeConfigDocument(config as unknown as RawRecord)
   const requestedId = optionalString(update.entryId)
   const index = requestedId
     ? raw.models.findIndex((entry) => entry.entryId === requestedId)
@@ -989,7 +854,7 @@ export function upsertModelEntryConfig(
   const models = raw.models.slice()
   if (index >= 0) models[index] = normalized
   else models.push(normalized)
-  return normalizeV2({
+  return normalizeConfigDocument({
     schemaVersion: 2,
     activeModelId: raw.activeModelId ?? normalized.entryId,
     models,
@@ -998,10 +863,10 @@ export function upsertModelEntryConfig(
 }
 
 export function deleteModelEntryConfig(
-  config: ModelConfigV2,
+  config: ModelConfig,
   entryId: string,
-): ModelConfigV2 {
-  const raw = normalizeV2(config as unknown as RawRecord)
+): ModelConfig {
+  const raw = normalizeConfigDocument(config as unknown as RawRecord)
   if (!raw.models.some((entry) => entry.entryId === entryId))
     throw new ValidationError(
       `entry '${entryId}' not found in model_config.json`,
@@ -1011,7 +876,7 @@ export function deleteModelEntryConfig(
       '该模型仍被 policy fallback 引用，请先关闭或修改 fallback',
     )
   const models = raw.models.filter((entry) => entry.entryId !== entryId)
-  return normalizeV2({
+  return normalizeConfigDocument({
     schemaVersion: 2,
     activeModelId:
       raw.activeModelId === entryId
@@ -1023,23 +888,23 @@ export function deleteModelEntryConfig(
 }
 
 export function activateModelEntryConfig(
-  config: ModelConfigV2,
+  config: ModelConfig,
   entryId: string,
-): ModelConfigV2 {
-  const raw = normalizeV2(config as unknown as RawRecord)
+): ModelConfig {
+  const raw = normalizeConfigDocument(config as unknown as RawRecord)
   if (!raw.models.some((entry) => entry.entryId === entryId))
     throw new ValidationError(
       `entry '${entryId}' not found in model_config.json`,
     )
-  return normalizeV2({ ...raw, activeModelId: entryId })
+  return normalizeConfigDocument({ ...raw, activeModelId: entryId })
 }
 
 export function updateModelPolicyConfig(
-  config: ModelConfigV2,
+  config: ModelConfig,
   policy: ModelExecutionPolicy,
-): ModelConfigV2 {
-  const raw = normalizeV2(config as unknown as RawRecord)
-  return normalizeV2({ ...raw, policy })
+): ModelConfig {
+  const raw = normalizeConfigDocument(config as unknown as RawRecord)
+  return normalizeConfigDocument({ ...raw, policy })
 }
 
 export async function saveModelPolicy(
@@ -1047,10 +912,7 @@ export async function saveModelPolicy(
   policy: ModelExecutionPolicy,
 ): Promise<ModelConfig> {
   const current = await loadModelConfig(rootOrFile)
-  return saveModelConfig(
-    rootOrFile,
-    updateModelPolicyConfig(current.raw, policy),
-  )
+  return saveModelConfig(rootOrFile, updateModelPolicyConfig(current, policy))
 }
 
 export async function saveModelEntry(
@@ -1058,10 +920,7 @@ export async function saveModelEntry(
   update: ModelEntryUpdate,
 ): Promise<ModelConfig> {
   const current = await loadModelConfig(rootOrFile)
-  return saveModelConfig(
-    rootOrFile,
-    upsertModelEntryConfig(current.raw, update),
-  )
+  return saveModelConfig(rootOrFile, upsertModelEntryConfig(current, update))
 }
 
 export async function deleteModelEntry(
@@ -1069,10 +928,7 @@ export async function deleteModelEntry(
   entryId: string,
 ): Promise<ModelConfig> {
   const current = await loadModelConfig(rootOrFile)
-  return saveModelConfig(
-    rootOrFile,
-    deleteModelEntryConfig(current.raw, entryId),
-  )
+  return saveModelConfig(rootOrFile, deleteModelEntryConfig(current, entryId))
 }
 
 export async function activateModelEntry(
@@ -1080,59 +936,7 @@ export async function activateModelEntry(
   entryId: string,
 ): Promise<ModelConfig> {
   const current = await loadModelConfig(rootOrFile)
-  return saveModelConfig(
-    rootOrFile,
-    activateModelEntryConfig(current.raw, entryId),
-  )
-}
-
-/** @deprecated onboarding Task 2 会改为 saveModelEntry。 */
-export function buildWizardModelConfig(
-  existingRaw: RawRecord | null | undefined,
-  settings: WizardModelSettings,
-): ModelConfigV2 {
-  const current = parseModelConfig(existingRaw ?? defaultModelConfig())
-  const existing = activeEntry(current)
-  const provider = settings.provider || 'custom'
-  return upsertModelEntryConfig(current.raw, {
-    entryId: existing?.entryId,
-    provider,
-    protocol: provider === 'anthropic' ? 'anthropic' : 'openai',
-    modelId: settings.mainModelId,
-    displayName: settings.label || settings.name,
-    apiBase:
-      settings.apiBase ||
-      defaultApiBase(
-        provider,
-        provider === 'anthropic' ? 'anthropic' : 'openai',
-      ),
-    apiKey: settings.apiKey || undefined,
-    contextWindowTokens: settings.contextWindowTokens,
-    maxTokens: settings.maxTokens,
-    reasoningEffort: settings.reasoningEffort ?? null,
-    legacy: { temperature: settings.temperature },
-  })
-}
-
-/** @deprecated use capabilityOverrides through saveModelEntry. */
-export async function markEntryVision(
-  rootOrFile: string,
-  entryId: string,
-  value = true,
-): Promise<ModelConfig> {
-  const config = await loadModelConfig(rootOrFile)
-  const found = findEntry(config, entryId)
-  if (!found)
-    throw new ValidationError(
-      `entry '${entryId}' not found in model_config.json`,
-    )
-  return saveModelEntry(rootOrFile, {
-    entryId: found.entryId,
-    capabilityOverrides: {
-      ...found.capabilityOverrides,
-      vision: Boolean(value),
-    },
-  })
+  return saveModelConfig(rootOrFile, activateModelEntryConfig(current, entryId))
 }
 
 function reportModelConfigRecovery(info: ConfigRecoveryInfo): void {

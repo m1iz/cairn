@@ -2,7 +2,6 @@ import {
   activeEntry,
   type ModelConfig,
   type ModelEntry,
-  type ProviderConfig,
 } from '../config/model-config'
 import { ModelConfigurationError } from '../errors'
 import { findByName } from '../providers/registry'
@@ -30,17 +29,9 @@ export function modelAvailability(config: ModelConfig): ModelAvailability {
     )
   }
   const providerName = String(entry.provider || '').trim() || null
-  const mainModelId = String(entry.mainModelId || entry.id || '').trim()
+  const mainModelId = String(entry.modelId || '').trim()
   const entryName =
-    String(
-      entry.displayName ||
-        entry.label ||
-        entry.modelId ||
-        entry.mainModelId ||
-        entry.id ||
-        entry.name ||
-        '',
-    ).trim() || null
+    String(entry.displayName || entry.modelId || '').trim() || null
   if (!mainModelId) {
     return unavailable(
       `模型条目「${entryName || '未命名'}」缺少 Main Model ID。请先补全模型配置。`,
@@ -50,11 +41,7 @@ export function modelAvailability(config: ModelConfig): ModelAvailability {
   }
 
   const spec = findByName(providerName) ?? findByName('custom')
-  if (
-    !spec?.isLocal &&
-    !spec?.isOauth &&
-    !credentialFor(entry, config.providers[spec?.name || providerName || ''])
-  ) {
+  if (!spec?.isLocal && !spec?.isOauth && !credentialFor(entry)) {
     return unavailable(
       `模型条目「${entryName || mainModelId}」缺少 API Key。请到模型配置中填写 ${spec?.displayName || providerName || 'Provider'} 的 API Key。`,
       spec?.name || providerName,
@@ -94,9 +81,6 @@ function unavailable(
   }
 }
 
-function credentialFor(
-  entry: ModelEntry,
-  provider: ProviderConfig | null | undefined,
-): string {
-  return String(entry.apiKey || provider?.apiKey || '').trim()
+function credentialFor(entry: ModelEntry): string {
+  return String(entry.apiKey || '').trim()
 }

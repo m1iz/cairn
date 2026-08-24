@@ -8,6 +8,7 @@ import {
   activateModelEntry,
   activeEntry,
   defaultModelConfig,
+  defaultModelExecutionPolicy,
   deleteModelEntry,
   findEntry,
   loadModelConfig,
@@ -16,18 +17,18 @@ import {
   saveModelConfig,
   saveModelEntry,
   validateCompleteModelEntries,
-  type ModelConfigV2,
+  type ModelConfig,
 } from './model-config'
 
 let dir: string
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'cairn-mc-v2-'))
+  dir = await mkdtemp(join(tmpdir(), 'cairn-model-config-'))
 })
 
 const entry = (
-  overrides: Partial<ModelConfigV2['models'][number]> = {},
-): ModelConfigV2['models'][number] => ({
+  overrides: Partial<ModelConfig['models'][number]> = {},
+): ModelConfig['models'][number] => ({
   entryId: 'entry-openai',
   provider: 'openai',
   protocol: 'openai',
@@ -41,12 +42,13 @@ const entry = (
   ...overrides,
 })
 
-describe('model_config v2 schema', () => {
-  it('uses an empty single-active-model v2 document by default', () => {
+describe('model config schema', () => {
+  it('uses an empty single-active-model document by default', () => {
     expect(defaultModelConfig()).toEqual({
       schemaVersion: 2,
       activeModelId: null,
       models: [],
+      policy: defaultModelExecutionPolicy(),
     })
   })
 
@@ -65,12 +67,12 @@ describe('model_config v2 schema', () => {
       ],
     })
 
-    expect(parsed.raw.models[0]).not.toHaveProperty('displayName')
-    expect(parsed.raw.models[1]).not.toHaveProperty('displayName')
-    expect(parsed.raw.models[2]?.displayName).toBe('工作模型')
+    expect(parsed.models[0]).not.toHaveProperty('displayName')
+    expect(parsed.models[1]).not.toHaveProperty('displayName')
+    expect(parsed.models[2]?.displayName).toBe('工作模型')
   })
 
-  it('normalizes v2 entries and resolves the single active entry', () => {
+  it('normalizes entries and resolves the single active entry', () => {
     const config = parseModelConfig({
       schemaVersion: 2,
       activeModelId: ' entry-openai ',
@@ -79,10 +81,11 @@ describe('model_config v2 schema', () => {
       ],
     })
 
-    expect(config.raw).toEqual({
+    expect(config).toEqual({
       schemaVersion: 2,
       activeModelId: 'entry-openai',
       models: [entry()],
+      policy: defaultModelExecutionPolicy(),
     })
     expect(activeEntry(config)?.modelId).toBe('gpt-5')
     expect(findEntry(config, 'entry-openai')?.displayName).toBe('GPT-5')
@@ -99,7 +102,7 @@ describe('model_config v2 schema', () => {
     [{ ...entry(), provider: 'bedrock' }, /provider/i],
     [{ ...entry(), provider: 'Azure-OpenAI' }, /provider/i],
     [{ ...entry(), provider: 'OPENAI-CODEX' }, /provider/i],
-  ])('rejects invalid v2 entries %#', (invalid, message) => {
+  ])('rejects invalid entries %#', (invalid, message) => {
     expect(() =>
       parseModelConfig({
         schemaVersion: 2,
@@ -306,18 +309,18 @@ describe('typed entry mutation', () => {
       capabilityOverrides: { reasoning: false },
     })
 
-    expect(
-      (await loadModelConfig(dir)).raw.models[0]?.capabilityOverrides,
-    ).toEqual({
-      reasoning: false,
-    })
+    expect((await loadModelConfig(dir)).models[0]?.capabilityOverrides).toEqual(
+      {
+        reasoning: false,
+      },
+    )
 
     await saveModelEntry(dir, {
       entryId: 'entry-openai',
       capabilityOverrides: {},
     })
 
-    expect((await loadModelConfig(dir)).raw.models[0]).not.toHaveProperty(
+    expect((await loadModelConfig(dir)).models[0]).not.toHaveProperty(
       'capabilityOverrides',
     )
   })
@@ -368,7 +371,7 @@ describe('v1 migration', () => {
 
     const migrated = await loadModelConfig(dir)
 
-    expect(migrated.raw.schemaVersion).toBe(2)
+    expect(migrated.schemaVersion).toBe(2)
     expect(migrated.models.map((item) => item.modelId)).toEqual([
       'gpt-4o',
       'gpt-4o-mini',
@@ -426,11 +429,7 @@ describe('v1 migration', () => {
       'deepseek-v4-pro',
       'deepseek-v4-lite',
     ])
-    expect(migrated.raw.models.every((item) => !item.displayName)).toBe(true)
-    expect(migrated.models.map((item) => item.name)).toEqual([
-      'deepseek-v4-pro',
-      'deepseek-v4-lite',
-    ])
+    expect(migrated.models.every((item) => !item.displayName)).toBe(true)
   })
 
   it('deduplicates equal main/secondary and creates unique ids for duplicate legacy records', async () => {
@@ -507,25 +506,26 @@ describe('v1 migration', () => {
 })
 
 describe('model-config IO recovery', () => {
-  it('round-trips v2 with private permissions and accepts a direct file path', async () => {
+  it('round-trips the current schema with private permissions and accepts a direct file path', async () => {
     const path = join(dir, 'custom-models.json')
-    const data: ModelConfigV2 = {
+    const data: ModelConfig = {
       schemaVersion: 2,
       activeModelId: 'entry-openai',
       models: [entry()],
+      policy: defaultModelExecutionPolicy(),
     }
     await saveModelConfig(path, data, { validateComplete: true })
 
-    expect((await loadModelConfig(path)).raw).toEqual(data)
+    expect(await loadModelConfig(path)).toEqual(data)
     if (process.platform !== 'win32') {
       expect((await stat(path)).mode & 0o777).toBe(0o600)
     }
   })
 
-  it('isolates malformed JSON and invalid v2 schema into corrupt backups', async () => {
+  it('isolates malformed JSON and invalid current schema into corrupt backups', async () => {
     const path = join(dir, 'model_config.json')
     await writeFile(path, '{"models":[', 'utf8')
-    expect((await loadModelConfig(dir)).raw).toEqual(defaultModelConfig())
+    expect(await loadModelConfig(dir)).toEqual(defaultModelConfig())
     expect(existsSync(path)).toBe(false)
     expect(
       (await readdir(dir)).some((name) =>
@@ -538,7 +538,7 @@ describe('model-config IO recovery', () => {
       JSON.stringify({ schemaVersion: 2, activeModelId: null, models: {} }),
       'utf8',
     )
-    expect((await loadModelConfig(dir)).raw).toEqual(defaultModelConfig())
+    expect(await loadModelConfig(dir)).toEqual(defaultModelConfig())
     expect(existsSync(path)).toBe(false)
 
     await writeFile(
@@ -550,7 +550,7 @@ describe('model-config IO recovery', () => {
       }),
       'utf8',
     )
-    expect((await loadModelConfig(dir)).raw).toEqual(defaultModelConfig())
+    expect(await loadModelConfig(dir)).toEqual(defaultModelConfig())
     expect(existsSync(path)).toBe(false)
   })
 })

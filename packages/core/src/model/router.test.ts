@@ -64,7 +64,7 @@ describe('buildProviderSnapshot profile forwarding', () => {
         },
       ],
     })
-    config.models[0]!.protocol = undefined
+    ;(config.models[0] as { protocol?: string }).protocol = undefined
 
     expect(() => buildProviderSnapshot(config)).toThrow(
       /custom.*explicit protocol/i,
@@ -90,7 +90,7 @@ describe('buildProviderSnapshot profile forwarding', () => {
       ],
     })
     config.models[0]!.protocol = 'anthropic'
-    config.models[0]!.apiBase = null
+    ;(config.models[0] as { apiBase: string | null }).apiBase = null
 
     expect(() => buildProviderSnapshot(config)).toThrow(
       /openai.*anthropic.*protocol/i,

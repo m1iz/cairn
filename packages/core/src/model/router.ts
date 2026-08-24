@@ -7,7 +7,6 @@ import {
   type ModelEntry,
   type ModelFallbackTrigger,
   type ModelPricing,
-  resolveProviderName,
 } from '../config/model-config'
 import { createProvider } from '../providers/factory'
 import {
@@ -76,8 +75,12 @@ export class ModelRouter {
     // modelOverride 只保留构造签名兼容；全局 activeModelId 是唯一运行时选择。
     this.modelOverride = modelOverride ?? null
     this.availability = modelAvailability(config)
-    this.active = buildProviderSnapshot(config)
-    this.executionPolicy = buildExecutionPolicy(config)
+    this.active = activeEntry(config)
+      ? buildProviderSnapshot(config)
+      : bootstrapProviderSnapshot()
+    this.executionPolicy = activeEntry(config)
+      ? buildExecutionPolicy(config)
+      : undefined
   }
 
   route(
@@ -124,8 +127,10 @@ export class ModelRouter {
 
   payload(): Record<string, unknown> {
     return {
-      activeModelId: this.active.modelEntryId ?? this.active.entryName,
-      activeModel: this.active.model,
+      activeModelId: this.availability.usable
+        ? (this.active.modelEntryId ?? this.active.entryName)
+        : null,
+      activeModel: this.availability.usable ? this.active.model : null,
       routeCounts: Object.fromEntries(this.routeCounts),
     }
   }
@@ -150,14 +155,12 @@ export function buildProviderSnapshot(
   const modelOverride = args.modelOverride ?? null
   const entry = resolveActiveEntry(config, modelOverride)
   const spec = findByName(entry.provider) ?? fallbackSpec(entry.provider)
-  const modelId = entry.modelId || entry.mainModelId
-  const [apiKey, apiBase, extraHeaders, extraBody] = resolveCredentials(
-    entry,
-    config.providers,
-    spec,
-  )
+  const modelId = entry.modelId
+  const apiKey = entry.apiKey
+  const apiBase = entry.apiBase
+  const extraHeaders = entry.legacy?.extraHeaders ?? null
+  const extraBody = entry.legacy?.extraBody ?? null
 
-  const defaults = config.defaults
   const protocol = snapshotProtocol(entry, spec)
   const resolvedApiBase = snapshotApiBase(apiBase, spec, protocol)
   const profile = resolveModelProfile({
@@ -165,14 +168,13 @@ export function buildProviderSnapshot(
     protocol,
     modelId,
     capabilityOverrides: entry.capabilityOverrides,
-    contextWindowTokens:
-      entry.contextWindowTokens ?? defaults.contextWindowTokens,
-    maxTokens: entry.maxTokens ?? defaults.maxTokens,
+    contextWindowTokens: entry.contextWindowTokens,
+    maxTokens: entry.maxTokens,
   })
   const generation: GenerationSettings = {
     maxTokens: profile.maxTokens,
-    temperature: entry.temperature ?? defaults.temperature,
-    reasoningEffort: entry.reasoningEffort ?? defaults.reasoningEffort,
+    temperature: entry.legacy?.temperature ?? 0.1,
+    reasoningEffort: entry.reasoningEffort,
   }
 
   const provider = createProvider({
@@ -199,19 +201,66 @@ export function buildProviderSnapshot(
     profile,
     protocol,
     contextWindowTokens,
-    config: config.raw,
+    config: structuredClone(config) as unknown as Record<string, unknown>,
     supportsVision: profile.vision,
     ...(entry.pricing ? { pricing: structuredClone(entry.pricing) } : {}),
-    modelEntryId: entry.entryId || entry.name,
-    entryName: entry.entryId || entry.name,
-    entryLabel:
-      entry.displayName ||
-      entry.label ||
-      entry.modelId ||
-      entry.mainModelId ||
-      entry.id ||
-      entry.name,
+    modelEntryId: entry.entryId,
+    entryName: entry.entryId,
+    entryLabel: entry.displayName || entry.modelId,
     routeReason: 'active_model',
+  }
+}
+
+/**
+ * Session bindings need a provider object before first-run model setup. This
+ * placeholder is never considered available and normal turn admission rejects
+ * it before provider I/O.
+ */
+function bootstrapProviderSnapshot(): ProviderSnapshot {
+  const spec = findByName('deepseek')
+  if (!spec) throw new Error('deepseek provider missing from registry')
+  const protocol: ProviderProtocol = 'openai'
+  const model = 'deepseek-chat'
+  const apiBase = spec.apiBases[protocol]
+  if (!apiBase) throw new Error('deepseek provider API base is missing')
+  const profile = resolveModelProfile({
+    provider: spec.name,
+    protocol,
+    modelId: model,
+    contextWindowTokens: 128_000,
+    maxTokens: 8_192,
+  })
+  const generation: GenerationSettings = {
+    maxTokens: profile.maxTokens,
+    temperature: 0.1,
+    reasoningEffort: null,
+  }
+  const provider = createProvider({
+    protocol,
+    profile,
+    spec,
+    apiKey: null,
+    apiBase,
+    defaultModel: model,
+    extraHeaders: null,
+    extraBody: null,
+  })
+  provider.generation = generation
+  return {
+    provider,
+    providerName: spec.name,
+    providerLabel: spec.displayName,
+    model,
+    apiBase,
+    generation,
+    profile,
+    protocol,
+    contextWindowTokens: profile.contextWindowTokens,
+    config: {},
+    supportsVision: profile.vision,
+    entryName: 'unconfigured',
+    entryLabel: 'Unconfigured model',
+    routeReason: 'bootstrap_unconfigured',
   }
 }
 
@@ -266,86 +315,20 @@ function resolveActiveEntry(
   config: ModelConfig,
   modelOverride: string | null,
 ): ModelEntry {
-  if (modelOverride) {
-    const match = findEntry?.(config, modelOverride) ?? activeEntry(config)
-    return match || synthEntryFromLegacy(config, modelOverride)
-  }
-  if (config.models.length) {
-    const a = activeEntry(config)
-    if (a) return a
-  }
-  return synthEntryFromLegacy(config, config.defaults.model ?? '')
-}
-
-function synthEntryFromLegacy(
-  config: ModelConfig,
-  modelId: string,
-): ModelEntry {
-  if (!modelId) {
-    return {
-      name: 'default',
-      id: 'deepseek-chat',
-      mainModelId: 'deepseek-chat',
-      provider: 'deepseek',
-      secondaryModelId: '',
-      apiKey: null,
-      apiBase: null,
-      extraHeaders: null,
-      extraBody: null,
-      maxTokens: null,
-      temperature: null,
-      contextWindowTokens: null,
-      reasoningEffort: null,
-      label: '',
-      supportsVision: false,
-    }
-  }
-  const providerName = resolveProviderName(
-    config.defaults.provider,
-    modelId,
-    config.providers,
-  )
-  const p = config.providers[providerName] ?? null
-  return {
-    name: modelId,
-    id: modelId,
-    mainModelId: modelId,
-    provider: providerName,
-    secondaryModelId: '',
-    apiKey: p?.apiKey ?? null,
-    apiBase: p?.apiBase ?? null,
-    extraHeaders: p?.extraHeaders ?? null,
-    extraBody: p?.extraBody ?? null,
-    maxTokens: null,
-    temperature: null,
-    contextWindowTokens: null,
-    reasoningEffort: null,
-    label: '',
-    supportsVision: false,
-  }
+  const entry = modelOverride
+    ? findEntry(config, modelOverride)
+    : activeEntry(config)
+  if (!entry)
+    throw new Error(
+      modelOverride
+        ? `Model entry not found: ${modelOverride}`
+        : 'No active model entry is configured',
+    )
+  return entry
 }
 
 function fallbackSpec(_providerName: string): ProviderSpec {
   const custom = findByName('custom')
   if (!custom) throw new Error('custom provider missing from registry')
   return custom
-}
-
-function resolveCredentials(
-  entry: ModelEntry,
-  providers: Record<string, any>,
-  spec: ProviderSpec,
-): [
-  string | null,
-  string | null,
-  Record<string, string> | null,
-  Record<string, unknown> | null,
-] {
-  const p = providers[spec.name] ?? null
-  return [
-    entry.apiKey || (p?.apiKey ?? null),
-    entry.apiBase || (p?.apiBase ?? null),
-    entry.extraHeaders || (p?.extraHeaders ?? null),
-    entry.extraBody || (p?.extraBody ?? null),
-  ]
 }

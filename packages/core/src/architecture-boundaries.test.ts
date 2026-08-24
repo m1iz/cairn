@@ -54,4 +54,17 @@ describe('source architecture boundaries', () => {
 
     expect(violations).toEqual([])
   })
+
+  it('keeps model configuration on one canonical object model', async () => {
+    const violations: string[] = []
+    const obsoleteModelConfig =
+      /\b(?:ModelEntryV2|ModelConfigV2|normalizeV2|compatibilityEntry|runtimeConfig)\b/
+    for (const file of await sourceFiles(SOURCE_ROOT)) {
+      const source = await readFile(file, 'utf8')
+      if (obsoleteModelConfig.test(source))
+        violations.push(path.relative(SOURCE_ROOT, file))
+    }
+
+    expect(violations).toEqual([])
+  })
 })

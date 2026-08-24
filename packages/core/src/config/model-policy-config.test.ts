@@ -5,7 +5,7 @@ import {
   parseModelConfig,
   updateModelPolicyConfig,
   upsertModelEntryConfig,
-  type ModelConfigV2,
+  type ModelConfig,
 } from './model-config'
 
 const pricing = {
@@ -17,8 +17,8 @@ const pricing = {
 
 const entry = (
   entryId: string,
-  overrides: Partial<ModelConfigV2['models'][number]> = {},
-): ModelConfigV2['models'][number] => ({
+  overrides: Partial<ModelConfig['models'][number]> = {},
+): ModelConfig['models'][number] => ({
   entryId,
   provider: 'openai',
   protocol: 'openai',
@@ -31,7 +31,7 @@ const entry = (
   ...overrides,
 })
 
-const configured = (): ModelConfigV2 => ({
+const configured = (): ModelConfig => ({
   schemaVersion: 2,
   activeModelId: 'primary',
   models: [
@@ -49,15 +49,14 @@ const configured = (): ModelConfigV2 => ({
 })
 
 describe('model config execution policy', () => {
-  it('keeps old v2 documents byte-shape compatible while exposing disabled defaults', () => {
+  it('normalizes documents without policy to explicit disabled defaults', () => {
     const config = parseModelConfig({
       schemaVersion: 2,
       activeModelId: 'primary',
       models: [entry('primary')],
     })
 
-    expect(config.raw).not.toHaveProperty('policy')
-    expect(config.raw.models[0]).not.toHaveProperty('pricing')
+    expect(config.models[0]).not.toHaveProperty('pricing')
     expect(config.policy).toEqual({
       fallback: {
         enabled: false,
@@ -81,7 +80,7 @@ describe('model config execution policy', () => {
       },
     })
 
-    expect(config.raw).toEqual(configured())
+    expect(config).toEqual(configured())
     expect(config.policy).toEqual(configured().policy)
   })
 

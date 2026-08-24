@@ -4,8 +4,9 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   loadModelConfig,
-  type ModelConfigV2,
-  type ModelEntryV2,
+  defaultModelExecutionPolicy,
+  type ModelConfig,
+  type ModelEntry,
 } from '../../config/model-config'
 import { ModelRouter } from '../../model/router'
 import { CoreModelService } from './model-service'
@@ -14,7 +15,7 @@ function tmp(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
 }
 
-function entry(overrides: Partial<ModelEntryV2> = {}): ModelEntryV2 {
+function entry(overrides: Partial<ModelEntry> = {}): ModelEntry {
   return {
     entryId: 'entry-openai',
     provider: 'openai',
@@ -32,10 +33,15 @@ function entry(overrides: Partial<ModelEntryV2> = {}): ModelEntryV2 {
 
 function writeConfig(
   root: string,
-  models: ModelEntryV2[],
+  models: ModelEntry[],
   activeModelId = models[0]?.entryId ?? null,
 ): void {
-  const config: ModelConfigV2 = { schemaVersion: 2, activeModelId, models }
+  const config: ModelConfig = {
+    schemaVersion: 2,
+    activeModelId,
+    models,
+    policy: defaultModelExecutionPolicy(),
+  }
   writeFileSync(
     join(root, 'model_config.json'),
     `${JSON.stringify(config, null, 2)}\n`,
@@ -58,9 +64,9 @@ async function service(
 
 afterEach(() => vi.restoreAllMocks())
 
-describe('CoreModelService schema v2', () => {
-  it('returns only the v2 typed config with redacted models and resolved profiles', async () => {
-    const root = tmp('cairn-model-service-v2-')
+describe('CoreModelService schema', () => {
+  it('returns only the typed config with redacted models and resolved profiles', async () => {
+    const root = tmp('cairn-model-service-')
     writeConfig(root, [
       entry({
         capabilityOverrides: { vision: false },
@@ -256,7 +262,7 @@ describe('CoreModelService schema v2', () => {
     expect(payload.models[0]?.pricing).toEqual(priced)
     expect(refresh).toHaveBeenCalledOnce()
     expect(JSON.stringify(payload)).not.toContain('sk-secret-1234')
-    expect((await loadModelConfig(root)).raw.policy).toEqual(payload.policy)
+    expect((await loadModelConfig(root)).policy).toEqual(payload.policy)
   })
 
   it('validates and persists only supported reasoning efforts', async () => {
@@ -265,16 +271,14 @@ describe('CoreModelService schema v2', () => {
     const modelService = await service(root)
 
     await modelService.setReasoningEffort('entry-openai', 'xhigh')
-    expect((await loadModelConfig(root)).raw.models[0]?.reasoningEffort).toBe(
+    expect((await loadModelConfig(root)).models[0]?.reasoningEffort).toBe(
       'xhigh',
     )
     await expect(
       modelService.setReasoningEffort('entry-openai', 'max'),
     ).rejects.toThrow('不支持思考强度')
     await modelService.setReasoningEffort('entry-openai', null)
-    expect(
-      (await loadModelConfig(root)).raw.models[0]?.reasoningEffort,
-    ).toBeNull()
+    expect((await loadModelConfig(root)).models[0]?.reasoningEffort).toBeNull()
 
     await expect(
       modelService.saveEntry({
