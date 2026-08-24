@@ -520,7 +520,7 @@ const runtimeReplayOptionsSchema = z
     includeArchive: booleanLikeSchema,
     include_archive: booleanLikeSchema,
     compact: booleanLikeSchema,
-    format: z.enum(['projection', 'envelope_v2']).optional(),
+    format: z.enum(['projection', 'envelope']).optional(),
   })
   .strict()
 

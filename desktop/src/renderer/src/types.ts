@@ -1104,7 +1104,7 @@ export interface RuntimeReplayPayload {
   sessionId?: string
   afterSeq?: number
   latestSeq: number
-  format?: 'projection' | 'envelope_v2'
+  format?: 'projection' | 'envelope'
   busy?: boolean
   scope?: 'unarchived' | string
   events: RuntimeEventEnvelope[]

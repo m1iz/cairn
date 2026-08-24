@@ -15,10 +15,10 @@ import { basename, dirname, join } from 'node:path'
 import { relativePortable } from '../util/paths'
 import {
   adaptRuntimeEventToEnvelope,
-  createEventEnvelopeV2,
-  isEventEnvelopeV2,
-  projectEventEnvelopeV2,
-  type EventEnvelopeV2,
+  createEventEnvelope,
+  isEventEnvelope,
+  projectEventEnvelope,
+  type EventEnvelope,
   type EventVisibility,
 } from './envelope'
 
@@ -29,7 +29,6 @@ export interface RuntimeAppendOptions {
   sessionId?: string | null
   source?: string | null
   owner?: Row | null
-  envelopeV2?: boolean | null
   eventId?: string | null
   idempotencyKey?: string | null
   requestId?: string | null
@@ -160,7 +159,6 @@ export class RuntimeEventStore {
   readonly archiveDir: string
   readonly indexFile: string
   private readonly sessionId: string | null
-  private readonly writeEnvelopeV2: boolean
   private readonly idempotencyIndex = new Map<string, Row>()
   private _latestSeq = 0
   private lastIndexWriteMs = 0
@@ -169,13 +167,10 @@ export class RuntimeEventStore {
     root: string,
     opts: {
       sessionDirOverride?: boolean
-      writeEnvelopeV2?: boolean | null
     } = {},
   ) {
     this.root = root
     this.sessionId = opts.sessionDirOverride ? basename(root) || null : null
-    this.writeEnvelopeV2 =
-      opts.writeEnvelopeV2 ?? process.env.CAIRN_EVENT_ENVELOPE_V2 === '1'
     this.runtimeDir = opts.sessionDirOverride
       ? join(root, 'runtime')
       : join(root, 'memory', 'runtime')
@@ -226,24 +221,21 @@ export class RuntimeEventStore {
     if (opts.ownerId) payload.owner_id = cleanString(opts.ownerId)
     if (opts.visibility) payload.visibility = opts.visibility
 
-    const stored: Row =
-      opts.envelopeV2 || (opts.envelopeV2 !== false && this.writeEnvelopeV2)
-        ? (createEventEnvelopeV2(payload, {
-            eventId: opts.eventId,
-            idempotencyKey,
-            sessionId,
-            turnId,
-            requestId: opts.requestId,
-            attemptId: opts.attemptId,
-            taskId: opts.taskId,
-            parentTaskId: opts.parentTaskId,
-            toolCallId: opts.toolCallId,
-            ownerId: opts.ownerId,
-            sequence: this._latestSeq,
-            timestamp: payload.ts,
-            visibility: opts.visibility,
-          }) as unknown as Row)
-        : payload
+    const stored = createEventEnvelope(payload, {
+      eventId: opts.eventId,
+      idempotencyKey,
+      sessionId,
+      turnId,
+      requestId: opts.requestId,
+      attemptId: opts.attemptId,
+      taskId: opts.taskId,
+      parentTaskId: opts.parentTaskId,
+      toolCallId: opts.toolCallId,
+      ownerId: opts.ownerId,
+      sequence: this._latestSeq,
+      timestamp: payload.ts,
+      visibility: opts.visibility,
+    }) as unknown as Row
     const projected = this.normalizeEvent(stored)!
     appendFileSync(this.eventsFile, JSON.stringify(stored) + '\n', 'utf8')
     if (idempotencyKey) this.idempotencyIndex.set(idempotencyKey, stored)
@@ -280,7 +272,7 @@ export class RuntimeEventStore {
   replayEnvelopesAfter(
     seq: number,
     opts: RuntimeReplayOptions = {},
-  ): EventEnvelopeV2[] {
+  ): EventEnvelope[] {
     const sessionId = cleanString(opts.sessionId)
     const visibility = new Set(
       Array.isArray(opts.visibility)
@@ -418,7 +410,7 @@ export class RuntimeEventStore {
       if (!line) continue
       try {
         const raw = JSON.parse(line)
-        if (isEventEnvelopeV2(raw)) rows.push(raw as unknown as Row)
+        if (isEventEnvelope(raw)) rows.push(raw as unknown as Row)
         else if (
           raw &&
           typeof raw === 'object' &&
@@ -434,7 +426,7 @@ export class RuntimeEventStore {
   }
 
   private normalizeEvent(raw: unknown): Row | null {
-    if (isEventEnvelopeV2(raw)) return projectEventEnvelopeV2(raw)
+    if (isEventEnvelope(raw)) return projectEventEnvelope(raw)
     if (
       !raw ||
       typeof raw !== 'object' ||
@@ -576,17 +568,17 @@ function eventTsSeconds(event: Row): number {
 }
 
 function storedSequence(event: Row): number {
-  return isEventEnvelopeV2(event) ? event.sequence : Number(event.seq || 0) || 0
+  return isEventEnvelope(event) ? event.sequence : Number(event.seq || 0) || 0
 }
 
 function storedTurnId(event: Row): string {
-  return isEventEnvelopeV2(event)
+  return isEventEnvelope(event)
     ? cleanString(event.turnId)
     : cleanString(event.turn_id ?? event.owner?.turn_id)
 }
 
 function storedIdempotencyKey(event: Row): string {
-  return isEventEnvelopeV2(event)
+  return isEventEnvelope(event)
     ? cleanString(event.idempotencyKey)
     : cleanString(event.idempotency_key ?? event.idempotencyKey)
 }
@@ -609,7 +601,7 @@ function isRecord(value: unknown): value is Row {
 }
 
 function archiveMonth(event: Row): string {
-  if (isEventEnvelopeV2(event)) return event.timestamp.slice(0, 7)
+  if (isEventEnvelope(event)) return event.timestamp.slice(0, 7)
   const ts = event.ts
   if (typeof ts === 'number')
     return new Date(ts * 1000).toISOString().slice(0, 7)

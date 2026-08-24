@@ -6,7 +6,7 @@ export type EventVisibility = 'model' | 'user' | 'diagnostic' | 'internal'
 export type RuntimeCorrelationKind =
   'request' | 'attempt' | 'task' | 'tool' | 'event'
 
-export interface EventEnvelopeV2<
+export interface EventEnvelope<
   TType extends string = string,
   TPayload extends Record<string, unknown> = Record<string, unknown>,
 > {
@@ -85,10 +85,10 @@ export function runtimeEventVisibility(type: string): EventVisibility {
   return 'user'
 }
 
-export function createEventEnvelopeV2(
+export function createEventEnvelope(
   event: Row,
   opts: RuntimeEnvelopeOptions = {},
-): EventEnvelopeV2 {
+): EventEnvelope {
   const type = cleanString(event.event ?? event.type)
   if (!type) throw new Error('runtime event type is required')
   const sequence = nonNegativeInteger(opts.sequence ?? event.seq ?? 0)
@@ -162,7 +162,7 @@ export function createEventEnvelopeV2(
   }
 }
 
-export function isEventEnvelopeV2(value: unknown): value is EventEnvelopeV2 {
+export function isEventEnvelope(value: unknown): value is EventEnvelope {
   if (!isRecord(value) || value.schemaVersion !== 2) return false
   return Boolean(
     cleanString(value.eventId) &&
@@ -180,10 +180,10 @@ export function isEventEnvelopeV2(value: unknown): value is EventEnvelopeV2 {
 export function adaptRuntimeEventToEnvelope(
   event: Row,
   defaults: Pick<RuntimeEnvelopeOptions, 'sessionId'> = {},
-): EventEnvelopeV2 {
-  if (isEventEnvelopeV2(event)) return cloneEnvelope(event)
+): EventEnvelope {
+  if (isEventEnvelope(event)) return cloneEnvelope(event)
   const existingEventId = cleanString(event.event_id ?? event.eventId)
-  const draft = createEventEnvelopeV2(event, {
+  const draft = createEventEnvelope(event, {
     ...defaults,
     eventId: existingEventId || 'legacy-placeholder',
     timestamp: normalizeLegacyTimestamp(event.ts, event.seq),
@@ -206,7 +206,7 @@ export function adaptRuntimeEventToEnvelope(
   }
 }
 
-export function projectEventEnvelopeV2(envelope: EventEnvelopeV2): Row {
+export function projectEventEnvelope(envelope: EventEnvelope): Row {
   const ts = Date.parse(envelope.timestamp) / 1000
   return {
     ...envelope.payload,
@@ -237,7 +237,7 @@ export function projectEventEnvelopeV2(envelope: EventEnvelopeV2): Row {
 }
 
 export function modelVisibleEnvelopePayloads(
-  envelopes: EventEnvelopeV2[],
+  envelopes: EventEnvelope[],
 ): Row[] {
   return envelopes
     .filter((envelope) => envelope.visibility === 'model')
@@ -287,7 +287,7 @@ const ENVELOPE_METADATA_KEYS = new Set([
   'payload',
 ])
 
-function cloneEnvelope(envelope: EventEnvelopeV2): EventEnvelopeV2 {
+function cloneEnvelope(envelope: EventEnvelope): EventEnvelope {
   return {
     ...envelope,
     payload: { ...envelope.payload },

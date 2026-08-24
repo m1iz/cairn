@@ -125,9 +125,9 @@ describe('Core operation registry', () => {
     ).toThrow()
     expect(
       CORE_OPERATION_REGISTRY['runtime.replay'].args.parse([
-        { sessionId: 's1', afterSeq: 0, format: 'envelope_v2' },
+        { sessionId: 's1', afterSeq: 0, format: 'envelope' },
       ]),
-    ).toEqual([{ sessionId: 's1', afterSeq: 0, format: 'envelope_v2' }])
+    ).toEqual([{ sessionId: 's1', afterSeq: 0, format: 'envelope' }])
     expect(() =>
       CORE_OPERATION_REGISTRY['runtime.replay'].args.parse([{ format: 'raw' }]),
     ).toThrow()

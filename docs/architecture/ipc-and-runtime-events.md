@@ -55,15 +55,15 @@ Terminal 高频输出不进入下面的持久 Runtime Event 链，而使用独�
 3. Renderer 的 domain reducer 将事件纯投影成卡片、消息和状态；live-only 行为由 effect executor 执行。
 4. 刷新或重启时，bootstrap 返回历史与可 replay 的事件；live 与 replay 复用同一 projection reducer，但 replay 不执行 timer、IPC refresh、toast callback 等副作用。
 
-V2 `turn_change_snapshot` 是本次用户任务的可回放净变更投影，以 `executionId` 聚合并同时携带 `rootTurnId`、`activeTurnId`；因此一次任务跨 Ask、Permission、Plan 审批或明确继续恢复时仍只有一个账本。Core 在每个产生净变化的受管工具批次后更新，终态为 `complete` 或 `partial`；同一文件多次修改只保留相对任务基线的最终净差异。事件只含有界相对路径、kind、行数与 binary 标记，不含文件正文或私有基线。V1 事件继续按原 `turnId` 兼容读取。`git_operation_completed` 是结构化 Git 写操作的脱敏凭据，供 Environment 和最终报告验证 commit/push/worktree/PR 结果。
+`turn_change_snapshot` 是本次用户任务的可回放净变更投影，以 `executionId` 聚合并同时携带 `rootTurnId`、`activeTurnId`；因此一次任务跨 Ask、Permission、Plan 审批或明确继续恢复时仍只有一个账本。Core 在每个产生净变化的受管工具批次后更新，终态为 `complete` 或 `partial`；同一文件多次修改只保留相对任务基线的最终净差异。事件只含有界相对路径、kind、行数与 binary 标记，不含文件正文或私有基线。历史平面事件继续按原 `turnId` 兼容读取。`git_operation_completed` 是结构化 Git 写操作的脱敏凭据，供 Environment 和最终报告验证 commit/push/worktree/PR 结果。
 
 事件必须带 session 归属和可用于去重的顺序信息。后台任务的事件写入任务所属 session，不能因为用户切换了当前页面而写入前台 session。Bootstrap 的 `runtime.busy` 只表示当前 session 是否有 active task；`active_tasks` 和 Diagnostics 仍可列出其他 session 的并行工作。
 
-## EventEnvelope V2 兼容边界
+## EventEnvelope 兼容边界
 
-Runtime store 的 reader 同时接受历史平面事件 V1 和 `EventEnvelopeV2`。V2 提供稳定 `eventId`、可选 `idempotencyKey`，以及 session、turn、request、attempt、task、parent task、tool call、owner 和 sequence 的统一关联字段。历史 V1 文件不会被原地改写；reader 为 V1 生成可重复的 legacy event ID，并可投影为 V2 读取结果。
+Runtime store 的 reader 同时接受历史平面事件和 `EventEnvelope`。Envelope 提供稳定 `eventId`、可选 `idempotencyKey`，以及 session、turn、request、attempt、task、parent task、tool call、owner 和 sequence 的统一关联字段。历史平面文件不会被原地改写；reader 为历史事件生成可重复的 legacy event ID，并可投影为统一 envelope 读取结果。
 
-V2 writer 当前受 `CAIRN_EVENT_ENVELOPE_V2=1` 控制，默认仍写 V1。显式 append 选项可在测试或受控迁移中覆盖该开关；SamplingCoordinator 的 `model_attempt_*`、TaskRuntime 的 `task_*`、工具调度器的 `tool_*`、命令 containment 的 `process_containment` 与 MCP 的 `mcp_connection_state` 是当前生产强制 V2 writer，分别保证 request/attempt、task terminal、tool call terminal、实际 sandbox backend 与 MCP generation 对账不被旧投影丢失。Task 事件携带 task ID、revision 组成的幂等键；工具和 containment 事件携带 `toolCallId`；MCP 状态以 server/client generation/state/活动数构造幂等键。它们只包含有界 record、状态、错误摘要或不含路径的 receipt，完整 output 留在受管 artifact。无论磁盘写入格式为何，live bridge 和默认 `runtime.replay` 都返回兼容的平面 projection；维护工具可调用 `runtime.replay({ format: 'envelope_v2' })` 读取统一 envelope。压缩和归档保持磁盘原格式，不能把 V2 降级成 V1。
+所有新事件统一写入 `EventEnvelope`；旧平面格式只保留读取兼容，不再存在写入开关或调用点级别的格式选择。Task 事件携带 task ID、revision 组成的幂等键；工具和 containment 事件携带 `toolCallId`；MCP 状态以 server/client generation/state/活动数构造幂等键。它们只包含有界 record、状态、错误摘要或不含路径的 receipt，完整 output 留在受管 artifact。Live bridge 和默认 `runtime.replay` 返回兼容的平面 projection；维护工具可调用 `runtime.replay({ format: 'envelope' })` 读取统一 envelope。压缩和归档保持原始已存格式，读取时统一规范化。
 
 同一 session 的 sequence 保持单调；相同 `idempotencyKey` 在热日志、归档和进程重启后都只对应第一次提交的事件。Renderer 对默认 projection 继续按 session + sequence 去重，所以重复消费同一 replay batch 不改变投影状态。
 
@@ -100,7 +100,7 @@ turn 取消在 IPC 使用稳定错误码 `cancelled`。Core 会先结束流式 t
 | 数据                  | 用途                                          | 是否权威                  |
 | --------------------- | --------------------------------------------- | ------------------------- |
 | Session history       | 模型可见的对话与工具消息                      | 对会话内容权威            |
-| Message graph sidecar | 分支、leaf、partial tombstone 与 prompt queue | 对 V2 链和 queue 状态权威 |
+| Message graph sidecar | 分支、leaf、partial tombstone 与 prompt queue | 对消息链和 queue 状态权威 |
 | Domain store / ledger | Goal、Plan、Scheduler 等业务状态              | 对对应领域权威            |
 | Runtime events        | renderer 的过程投影与恢复                     | 不是领域终态的替代品      |
 

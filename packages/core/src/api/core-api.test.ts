@@ -653,7 +653,7 @@ describe('CoreApi (MIG-IPC-001)', () => {
     await api.close()
   })
 
-  it('records failed MCP lifecycle state as a diagnostic V2 event instead of an empty-tool ambiguity', async () => {
+  it('records failed MCP lifecycle state as a diagnostic event instead of an empty-tool ambiguity', async () => {
     const root = tmp('cairn-core-api-mcp-lifecycle-')
     const stateRoot = tmp('cairn-core-api-mcp-lifecycle-state-')
     writeFileSync(
@@ -689,7 +689,7 @@ describe('CoreApi (MIG-IPC-001)', () => {
     const replay = api.runtime.replay({
       sessionId: api.loop.activeSessionId,
       afterSeq: 0,
-      format: 'envelope_v2',
+      format: 'envelope',
     })
     expect(replay.events).toEqual(
       expect.arrayContaining([
@@ -782,123 +782,127 @@ describe('CoreApi (MIG-IPC-001)', () => {
     await api.close()
   })
 
-  it('previews and explicitly soft-rewinds Git through the same conflict-checked file checkpoint', async () => {
-    const root = tmp('cairn-core-api-soft-git-')
-    const stateRoot = tmp('cairn-core-api-soft-git-state-')
-    const gitRun = (...args: string[]) =>
-      execFileSync('git', args, {
-        cwd: root,
-        encoding: 'utf8',
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
-      }).trim()
-    gitRun('init', '--quiet')
-    const target = join(root, 'checkpoint-git.txt')
-    writeFileSync(target, 'before-git\n')
-    gitRun('add', '--', 'checkpoint-git.txt')
-    gitRun(
-      '-c',
-      'user.name=Cairn Test',
-      '-c',
-      'user.email=test@example.invalid',
-      'commit',
-      '--quiet',
-      '-m',
-      'base',
-    )
-    const baseHead = gitRun('rev-parse', 'HEAD')
-    const gitVersion =
-      execFileSync('git', ['--version'], { encoding: 'utf8' }).match(
-        /[0-9]+(?:\.[0-9]+)+/,
-      )?.[0] ?? ''
-    const api = await CoreApi.create({
-      root,
-      stateRoot,
-      templatesDir: TEMPLATES_DIR,
-      modelRouter: fakeRouter(new FakeProvider()),
-      fileCheckpointsEnabled: true,
-      softGitRewindMode: 'on',
-      processSandbox: passThroughProcessSandbox(),
-      softGitRewindEvaluationGate: {
-        passed: true,
-        datasetSha256: 'a'.repeat(64),
-        platform: process.platform,
-        gitVersion,
-        stashVerified: true,
-        rollbackVerified: true,
-        conflictVetoVerified: true,
-        forbiddenCommandScanVerified: true,
-      },
-    })
-    const sessionId = api.loop.activeSessionId!
-    const captured = await api.loop.fileCheckpoints.capture(
-      {
-        sessionId,
-        turnId: 'turn-api-soft-git',
-        toolCallId: 'call-api-soft-git',
-        toolName: 'write_file',
-        workspaceRoot: root,
-        paths: ['checkpoint-git.txt'],
-      },
-      async () => writeFileSync(target, 'after-git\n'),
-    )
-    gitRun('add', '--', 'checkpoint-git.txt')
-    gitRun(
-      '-c',
-      'user.name=Cairn Test',
-      '-c',
-      'user.email=test@example.invalid',
-      'commit',
-      '--quiet',
-      '-m',
-      'agent change',
-    )
+  it(
+    'previews and explicitly soft-rewinds Git through the same conflict-checked file checkpoint',
+    async () => {
+      const root = tmp('cairn-core-api-soft-git-')
+      const stateRoot = tmp('cairn-core-api-soft-git-state-')
+      const gitRun = (...args: string[]) =>
+        execFileSync('git', args, {
+          cwd: root,
+          encoding: 'utf8',
+          env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+        }).trim()
+      gitRun('init', '--quiet')
+      const target = join(root, 'checkpoint-git.txt')
+      writeFileSync(target, 'before-git\n')
+      gitRun('add', '--', 'checkpoint-git.txt')
+      gitRun(
+        '-c',
+        'user.name=Cairn Test',
+        '-c',
+        'user.email=test@example.invalid',
+        'commit',
+        '--quiet',
+        '-m',
+        'base',
+      )
+      const baseHead = gitRun('rev-parse', 'HEAD')
+      const gitVersion =
+        execFileSync('git', ['--version'], { encoding: 'utf8' }).match(
+          /[0-9]+(?:\.[0-9]+)+/,
+        )?.[0] ?? ''
+      const api = await CoreApi.create({
+        root,
+        stateRoot,
+        templatesDir: TEMPLATES_DIR,
+        modelRouter: fakeRouter(new FakeProvider()),
+        fileCheckpointsEnabled: true,
+        softGitRewindMode: 'on',
+        processSandbox: passThroughProcessSandbox(),
+        softGitRewindEvaluationGate: {
+          passed: true,
+          datasetSha256: 'a'.repeat(64),
+          platform: process.platform,
+          gitVersion,
+          stashVerified: true,
+          rollbackVerified: true,
+          conflictVetoVerified: true,
+          forbiddenCommandScanVerified: true,
+        },
+      })
+      const sessionId = api.loop.activeSessionId!
+      const captured = await api.loop.fileCheckpoints.capture(
+        {
+          sessionId,
+          turnId: 'turn-api-soft-git',
+          toolCallId: 'call-api-soft-git',
+          toolName: 'write_file',
+          workspaceRoot: root,
+          paths: ['checkpoint-git.txt'],
+        },
+        async () => writeFileSync(target, 'after-git\n'),
+      )
+      gitRun('add', '--', 'checkpoint-git.txt')
+      gitRun(
+        '-c',
+        'user.name=Cairn Test',
+        '-c',
+        'user.email=test@example.invalid',
+        'commit',
+        '--quiet',
+        '-m',
+        'agent change',
+      )
 
-    const preview = await api.fileCheckpoints.preview({
-      sessionId,
-      checkpointId: captured.checkpoint!.id,
-    })
-    expect(preview.git).toMatchObject({
-      canRewind: true,
-      reason: 'ready',
-      targetHead: baseHead,
-      commitsToRewind: 1,
-    })
-    expect(JSON.stringify(preview)).not.toContain(join(root, '.git'))
-    writeFileSync(target, 'external-after-preview\n')
-    await expect(
-      api.fileCheckpoints.rewindGit({
+      const preview = await api.fileCheckpoints.preview({
+        sessionId,
+        checkpointId: captured.checkpoint!.id,
+      })
+      expect(preview.git).toMatchObject({
+        canRewind: true,
+        reason: 'ready',
+        targetHead: baseHead,
+        commitsToRewind: 1,
+      })
+      expect(JSON.stringify(preview)).not.toContain(join(root, '.git'))
+      writeFileSync(target, 'external-after-preview\n')
+      await expect(
+        api.fileCheckpoints.rewindGit({
+          sessionId,
+          checkpointId: captured.checkpoint!.id,
+          confirmed: true,
+          confirmedGitRisk: true,
+          previewRevision: preview.git!.revision,
+          dirtyStrategy: 'abort',
+        }),
+      ).rejects.toMatchObject({ code: 'rewind_conflict' })
+      expect(gitRun('for-each-ref', 'refs/cairn/rewind')).toBe('')
+      writeFileSync(target, 'after-git\n')
+      const freshPreview = await api.fileCheckpoints.preview({
+        sessionId,
+        checkpointId: captured.checkpoint!.id,
+      })
+      const result = await api.fileCheckpoints.rewindGit({
         sessionId,
         checkpointId: captured.checkpoint!.id,
         confirmed: true,
         confirmedGitRisk: true,
-        previewRevision: preview.git!.revision,
+        previewRevision: freshPreview.git!.revision,
         dirtyStrategy: 'abort',
-      }),
-    ).rejects.toMatchObject({ code: 'rewind_conflict' })
-    expect(gitRun('for-each-ref', 'refs/cairn/rewind')).toBe('')
-    writeFileSync(target, 'after-git\n')
-    const freshPreview = await api.fileCheckpoints.preview({
-      sessionId,
-      checkpointId: captured.checkpoint!.id,
-    })
-    const result = await api.fileCheckpoints.rewindGit({
-      sessionId,
-      checkpointId: captured.checkpoint!.id,
-      confirmed: true,
-      confirmedGitRisk: true,
-      previewRevision: freshPreview.git!.revision,
-      dirtyStrategy: 'abort',
-    })
+      })
 
-    expect(result).toMatchObject({
-      checkpoint: { status: 'rewound' },
-      git: { status: 'completed', targetHead: baseHead },
-    })
-    expect(gitRun('rev-parse', 'HEAD')).toBe(baseHead)
-    expect(readFileSync(target, 'utf8')).toBe('before-git\n')
-    expect(gitRun('status', '--porcelain')).toBe('')
-    await api.close()
-  }, process.platform === 'win32' ? 90_000 : 30_000)
+      expect(result).toMatchObject({
+        checkpoint: { status: 'rewound' },
+        git: { status: 'completed', targetHead: baseHead },
+      })
+      expect(gitRun('rev-parse', 'HEAD')).toBe(baseHead)
+      expect(readFileSync(target, 'utf8')).toBe('before-git\n')
+      expect(gitRun('status', '--porcelain')).toBe('')
+      await api.close()
+    },
+    process.platform === 'win32' ? 90_000 : 30_000,
+  )
 
   it('boots, submits a chat turn, and persists session runtime state without HTTP', async () => {
     const root = tmp('cairn-core-api-')
@@ -2007,9 +2011,9 @@ describe('CoreApi (MIG-IPC-001)', () => {
     const envelopes = api.runtime.replay({
       sessionId: firstSessionId,
       afterSeq: 0,
-      format: 'envelope_v2',
+      format: 'envelope',
     }) as any
-    expect(envelopes.format).toBe('envelope_v2')
+    expect(envelopes.format).toBe('envelope')
     expect(envelopes.events.length).toBeGreaterThan(0)
     expect(
       envelopes.events.every(
@@ -3314,19 +3318,18 @@ describe('CoreApi (MIG-IPC-001)', () => {
         'utf8',
       ),
     ).toContain('[CONTROL:ASK_ANSWERED]')
-    const ownerEvents = readFileSync(
-      join(
-        root,
-        '.cairn',
-        'sessions',
-        ownerSessionId,
-        'runtime',
-        'events.jsonl',
-      ),
-      'utf8',
+    const ownerEvents = api.runtime.replay({
+      sessionId: ownerSessionId,
+      compact: false,
+    }).events
+    expect(ownerEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: 'ask_answered',
+          session_id: ownerSessionId,
+        }),
+      ]),
     )
-    expect(ownerEvents).toContain('"event":"ask_answered"')
-    expect(ownerEvents).toContain(`"session_id":"${ownerSessionId}"`)
     const otherHistoryPath = join(
       root,
       '.cairn',
@@ -3339,17 +3342,11 @@ describe('CoreApi (MIG-IPC-001)', () => {
         ? readFileSync(otherHistoryPath, 'utf8')
         : '',
     ).not.toContain('[CONTROL:ASK_ANSWERED]')
-    const otherEventsPath = join(
-      root,
-      '.cairn',
-      'sessions',
-      String(other.id),
-      'runtime',
-      'events.jsonl',
-    )
     expect(
-      existsSync(otherEventsPath) ? readFileSync(otherEventsPath, 'utf8') : '',
-    ).not.toContain('"event":"ask_answered"')
+      api.runtime
+        .replay({ sessionId: String(other.id), compact: false })
+        .events.some((event) => event.event === 'ask_answered'),
+    ).toBe(false)
 
     await api.close()
   })
@@ -3388,30 +3385,24 @@ describe('CoreApi (MIG-IPC-001)', () => {
     expect(
       api.loop.sessionStore.get(String(other.id))?.control_pending,
     ).toBeNull()
-    const ownerEvents = readFileSync(
-      join(
-        root,
-        '.cairn',
-        'sessions',
-        ownerSessionId,
-        'runtime',
-        'events.jsonl',
-      ),
-      'utf8',
-    )
-    expect(ownerEvents).toContain('"event":"interaction_cancelled"')
-    expect(ownerEvents).toContain(`"session_id":"${ownerSessionId}"`)
-    const otherEventsPath = join(
-      root,
-      '.cairn',
-      'sessions',
-      String(other.id),
-      'runtime',
-      'events.jsonl',
+    expect(
+      api.runtime.replay({
+        sessionId: ownerSessionId,
+        compact: false,
+      }).events,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: 'interaction_cancelled',
+          session_id: ownerSessionId,
+        }),
+      ]),
     )
     expect(
-      existsSync(otherEventsPath) ? readFileSync(otherEventsPath, 'utf8') : '',
-    ).not.toContain('"event":"interaction_cancelled"')
+      api.runtime
+        .replay({ sessionId: String(other.id), compact: false })
+        .events.some((event) => event.event === 'interaction_cancelled'),
+    ).toBe(false)
 
     await api.close()
   })
@@ -3446,19 +3437,19 @@ describe('CoreApi (MIG-IPC-001)', () => {
       'utf8',
     )
     expect(ownerHistory).toContain('scheduled hello')
-    const ownerEvents = readFileSync(
-      join(
-        root,
-        '.cairn',
-        'sessions',
-        ownerSessionId,
-        'runtime',
-        'events.jsonl',
-      ),
-      'utf8',
+    expect(
+      api.runtime.replay({
+        sessionId: ownerSessionId,
+        compact: false,
+      }).events,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: 'scheduler_run_start',
+          session_id: ownerSessionId,
+        }),
+      ]),
     )
-    expect(ownerEvents).toContain('"event":"scheduler_run_start"')
-    expect(ownerEvents).toContain(`"session_id":"${ownerSessionId}"`)
     const otherHistoryPath = join(
       root,
       '.cairn',

@@ -4614,7 +4614,6 @@ export class AgentLoop {
           processEvent ||
           mcpEvent
             ? {
-                envelopeV2: true,
                 requestId:
                   samplingAttempt || mcpEvent
                     ? String(scoped.request_id ?? '').trim() || null

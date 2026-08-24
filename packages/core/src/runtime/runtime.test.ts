@@ -292,7 +292,7 @@ describe('runtime events (test_runtime_events.py)', () => {
 })
 
 describe('RuntimeEventStore (test_runtime_events.py)', () => {
-  it('writes V2 behind a flag, projects V1 wire events, and dedupes idempotency keys across restart', () => {
+  it('writes canonical envelopes, projects wire events, and dedupes idempotency keys across restart', () => {
     const sessionRoot = join(
       tmp('cairn-runtime-envelope-v2-'),
       'sessions',
@@ -300,7 +300,6 @@ describe('RuntimeEventStore (test_runtime_events.py)', () => {
     )
     const store = new RuntimeEventStore(sessionRoot, {
       sessionDirOverride: true,
-      writeEnvelopeV2: true,
     })
     const first = store.append(
       { event: 'tool_run_started', id: 'call_1', name: 'grep' },
@@ -349,7 +348,6 @@ describe('RuntimeEventStore (test_runtime_events.py)', () => {
 
     const reopened = new RuntimeEventStore(sessionRoot, {
       sessionDirOverride: true,
-      writeEnvelopeV2: true,
     })
     expect(
       reopened.append(
@@ -368,7 +366,7 @@ describe('RuntimeEventStore (test_runtime_events.py)', () => {
     })
   })
 
-  it('opens mixed V1/V2 logs and assigns stable envelope ids to legacy events', () => {
+  it('opens legacy projection rows beside envelopes and assigns stable compatibility ids', () => {
     const sessionRoot = join(
       tmp('cairn-runtime-envelope-mixed-'),
       'sessions',
@@ -377,24 +375,32 @@ describe('RuntimeEventStore (test_runtime_events.py)', () => {
     const legacyStore = new RuntimeEventStore(sessionRoot, {
       sessionDirOverride: true,
     })
-    legacyStore.append(
-      { event: 'user_message', content: 'legacy' },
-      { turnId: 'legacy_turn' },
+    writeFileSync(
+      legacyStore.eventsFile,
+      `${JSON.stringify({
+        event: 'user_message',
+        content: 'legacy',
+        seq: 1,
+        ts: 1,
+        session_id: 'legacy_session',
+        turn_id: 'legacy_turn',
+        source: 'core',
+      })}\n`,
+      'utf8',
     )
-    const v2Store = new RuntimeEventStore(sessionRoot, {
+    const envelopeStore = new RuntimeEventStore(sessionRoot, {
       sessionDirOverride: true,
-      writeEnvelopeV2: true,
     })
-    v2Store.append(
+    envelopeStore.append(
       { event: 'assistant_done', content: 'new' },
       { turnId: 'legacy_turn', idempotencyKey: 'assistant:new' },
     )
 
-    expect(v2Store.replayAfter(0).map((event) => event.event)).toEqual([
+    expect(envelopeStore.replayAfter(0).map((event) => event.event)).toEqual([
       'user_message',
       'assistant_done',
     ])
-    const firstRead = v2Store.replayEnvelopesAfter(0)
+    const firstRead = envelopeStore.replayEnvelopesAfter(0)
     const secondRead = new RuntimeEventStore(sessionRoot, {
       sessionDirOverride: true,
     }).replayEnvelopesAfter(0)
@@ -412,7 +418,7 @@ describe('RuntimeEventStore (test_runtime_events.py)', () => {
     expect(firstRead[0]!.eventId).toMatch(/^evt_legacy_/)
   })
 
-  it('preserves V2 envelopes and archived idempotency receipts through compaction', () => {
+  it('preserves envelopes and archived idempotency receipts through compaction', () => {
     const sessionRoot = join(
       tmp('cairn-runtime-envelope-compact-'),
       'sessions',
@@ -420,7 +426,6 @@ describe('RuntimeEventStore (test_runtime_events.py)', () => {
     )
     const store = new RuntimeEventStore(sessionRoot, {
       sessionDirOverride: true,
-      writeEnvelopeV2: true,
     })
     const archived = store.append(
       { event: 'assistant_done', content: 'archive me' },
@@ -443,7 +448,6 @@ describe('RuntimeEventStore (test_runtime_events.py)', () => {
 
     const reopened = new RuntimeEventStore(sessionRoot, {
       sessionDirOverride: true,
-      writeEnvelopeV2: true,
     })
     expect(
       reopened.append(
@@ -456,7 +460,7 @@ describe('RuntimeEventStore (test_runtime_events.py)', () => {
 
   it('keeps diagnostic envelope payloads out of the model-visible projection', () => {
     const root = tmp('cairn-runtime-envelope-visibility-')
-    const store = new RuntimeEventStore(root, { writeEnvelopeV2: true })
+    const store = new RuntimeEventStore(root)
     store.append(
       { event: 'partial_stream_capture', content: 'DIAGNOSTIC_SECRET' },
       { visibility: 'diagnostic', ownerId: 'request_1' },
@@ -482,7 +486,7 @@ describe('RuntimeEventStore (test_runtime_events.py)', () => {
     expect(JSON.stringify(modelPayloads)).not.toContain('DIAGNOSTIC_SECRET')
   })
 
-  it('reconstructs retry, parallel tool, and child-task correlation from V2 envelopes', () => {
+  it('reconstructs retry, parallel tool, and child-task correlation from envelopes', () => {
     const sessionRoot = join(
       tmp('cairn-runtime-envelope-timeline-'),
       'sessions',
@@ -490,7 +494,6 @@ describe('RuntimeEventStore (test_runtime_events.py)', () => {
     )
     const store = new RuntimeEventStore(sessionRoot, {
       sessionDirOverride: true,
-      writeEnvelopeV2: true,
     })
     const requestId = newRuntimeCorrelationId('request')
     const attempt1 = newRuntimeCorrelationId('attempt')

@@ -1704,7 +1704,7 @@ describe('MainlineTurnService (MIG-IPC-005)', () => {
     await api.close()
   })
 
-  it('persists every sampling attempt as a correlated diagnostic V2 envelope', async () => {
+  it('persists every sampling attempt as a correlated diagnostic envelope', async () => {
     const root = tmp('cairn-mainline-sampling-envelope-')
     const stateRoot = join(root, '.cairn')
     const provider = new RetryOnceProvider()

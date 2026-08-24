@@ -14,7 +14,7 @@ import {
   type LoopModelRouter,
 } from '../agent/loop'
 import type { RuntimePaths } from '../runtime/paths'
-import type { EventEnvelopeV2 } from '../runtime/envelope'
+import type { EventEnvelope } from '../runtime/envelope'
 import {
   assertCoreMutationAllowed,
   CoreMutationGuardError,
@@ -121,7 +121,7 @@ export interface CoreRuntimeEventPayload {
   [key: string]: unknown
 }
 
-export type CoreRuntimeReplayFormat = 'projection' | 'envelope_v2'
+export type CoreRuntimeReplayFormat = 'projection' | 'envelope'
 
 export interface CoreRuntimeReplayPayload<
   TFormat extends CoreRuntimeReplayFormat = 'projection',
@@ -131,7 +131,7 @@ export interface CoreRuntimeReplayPayload<
   latestSeq: number
   format: TFormat
   events: Array<
-    TFormat extends 'envelope_v2' ? EventEnvelopeV2 : CoreRuntimeEventPayload
+    TFormat extends 'envelope' ? EventEnvelope : CoreRuntimeEventPayload
   >
   [key: string]: unknown
 }
@@ -699,7 +699,7 @@ export class CoreApi {
         latestSeq: store.latestSequence,
         format,
         events:
-          format === 'envelope_v2'
+          format === 'envelope'
             ? store.replayEnvelopesAfter(afterSeq, {
                 sessionId,
                 limit,

@@ -57,7 +57,7 @@ Interject 到达模型/工具边界后，旧 response 与尚未执行的旧 tool
 
 每个 session runner 持有一个 `SamplingCoordinator`。Runner 只提交一次逻辑 request；coordinator 生成稳定 `requestId` 和逐次 `attemptId`，拥有最多 3 次 foreground attempt、90 秒总 deadline、Retry-After、指数退避与有界 jitter，并让 parent `AbortSignal` 同时中止 provider stream 和 retry sleep。认证、schema、权限、context、429、5xx、transport、doom、content-filter 分开分类；只有 429、5xx 和 transport 默认可重试，context 仍交给现有 emergency context shrink，不暗中切换模型。
 
-OpenAI 与 Anthropic SDK 的内建 retry 均设为 0，避免和 Core 合成不可解释的双层预算。OpenAI-compatible 的 `stream_options` 能力协商也不在 provider 内部二次提交：provider 只更新请求能力，下一次提交仍由 coordinator 记为新的 attempt。每次 attempt 恰有 `model_attempt_started` 和一个 succeeded / failed / cancelled terminal 事件；这些事件强制以 `EventEnvelopeV2`、`visibility=diagnostic` 写入 owner session，包含 request/attempt correlation 和幂等键，不进入模型 history。
+OpenAI 与 Anthropic SDK 的内建 retry 均设为 0，避免和 Core 合成不可解释的双层预算。OpenAI-compatible 的 `stream_options` 能力协商也不在 provider 内部二次提交：provider 只更新请求能力，下一次提交仍由 coordinator 记为新的 attempt。每次 attempt 恰有 `model_attempt_started` 和一个 succeeded / failed / cancelled terminal 事件；这些事件以 `EventEnvelope`、`visibility=diagnostic` 写入 owner session，包含 request/attempt correlation 和幂等键，不进入模型 history。
 
 ## 显式模型回退与成本策略
 
@@ -162,13 +162,13 @@ MCP tool call 由 supervisor 分配 request ID，并把父 `AbortSignal` 与默�
 
 默认关闭的文件检查点 Beta 在 permission/hook 已允许、ToolRegistry 真正执行之前接入同一 runner 边界。只有 Core 已知路径参数的 `write_file`、`edit_file`、`delete_file`、`rename_file` 和 `apply_patch` 会被捕获；before durable commit 成功后才执行工具，after 再以精确哈希收口。检查点按 session、turn、tool call 和 workspace 绑定，保存于 `stateRoot/sessions/<id>/file-checkpoints/`，不进入模型 history 或 runtime event。命令、MCP 和外部进程写入不在本阶段覆盖范围内。
 
-`TurnChangeLedger` 复用受管工具的 before/after 事实，为每个 `sessionId + executionId` 维护一次用户任务的净变更；`turnId` 只表示其中一次模型恢复回合。Ask、Permission、Plan 审批和明确 `/continue` 会继承原 `executionId`，普通新请求和其他 session 不继承。任务开始前已有脏改动不计入；同一文件反复编辑只计算相对基线的最终行差，新建、删除、纯重命名和二进制分别建模，恢复原状后退出集合。Shell AST 已证明只读的 `grep`、`wc`、`head`、`tail` 等命令不影响账本；只有成功执行、可能修改 workspace 且无法确定目标路径的命令才把状态降为 `partial`。每批变化产生 V2 `turn_change_snapshot`，最终无工具回复前注入隐藏统计并由 Final Reply Gate 补齐一次正文摘要；基线正文只在活动/暂停期间保留在私有 session 目录。
+`TurnChangeLedger` 复用受管工具的 before/after 事实，为每个 `sessionId + executionId` 维护一次用户任务的净变更；`turnId` 只表示其中一次模型恢复回合。Ask、Permission、Plan 审批和明确 `/continue` 会继承原 `executionId`，普通新请求和其他 session 不继承。任务开始前已有脏改动不计入；同一文件反复编辑只计算相对基线的最终行差，新建、删除、纯重命名和二进制分别建模，恢复原状后退出集合。Shell AST 已证明只读的 `grep`、`wc`、`head`、`tail` 等命令不影响账本；只有成功执行、可能修改 workspace 且无法确定目标路径的命令才把状态降为 `partial`。每批变化产生 `turn_change_snapshot`，最终无工具回复前注入隐藏统计并由 Final Reply Gate 补齐一次正文摘要；基线正文只在活动/暂停期间保留在私有 session 目录。
 
 回退不是普通工具调用：`fileCheckpoints.preview` 从受信 session 推导 workspace，核对当前状态与 after 制品；`fileCheckpoints.rewind` 还要求运行时 schema 和领域服务双重确认。Renderer 不能传入 workspace root，也只收到脱敏摘要，不会得到快照正文、artifact 路径或本机绝对路径。详细持久化、配额和崩溃对账见[全局私有存储根](global-state-store.md#文件检查点)。
 
 可选 Soft Git rewind 与纯文件回退是两条独立路径。开启 `workspace.gitRewind.mode=eval|on` 后，文件工具执行前会额外只读捕获 repo identity、HEAD、branch 和 index/staged fingerprint；Git 捕获失败不阻塞原文件工具。`eval` 只允许预览；`on` 还必须匹配 trusted host 注入的 platform/Git-version-bound safety receipt。执行路径重新校验 opaque preview revision、HEAD ancestor、index、Git operation marker 和脏路径，mutation 前为原 HEAD 与 index tree 创建 `refs/cairn/rewind/<transaction>/` 救援引用及 reflog。受管路径外有脏改动时默认 abort；只有独立确认才允许创建并保留 rescue stash。成功路径仅执行 `reset --soft` 和 index unstage，再调用原 FileCheckpointService；失败 rollback 只恢复 HEAD/index，绝不执行 hard reset、checkout、clean 或自动 stash drop/pop。
 
-`run_command` 在 permission/workspace 通过后仍不能直接 spawn。`OwnedProcessRuntime` 先取得 OS capability 与 containment preparation：macOS Seatbelt、Linux bwrap 或明确 unsupported；未证明只读的命令要求真实 backend，不可用时 spawn 次数必须为零。它再提交脱敏 process receipt 后启动进程，默认 120 秒命令 deadline、组合输出超额即终止，并让 owner cancel 清理整个进程组。每次 containment 决定仍写入 correlated `process_containment` EventEnvelope V2，并把同一有界 sandbox receipt 放进工具 metadata，renderer 与 Diagnostics 显示实际 backend，而不是根据 permission mode 推断“已 sandbox”。
+`run_command` 在 permission/workspace 通过后仍不能直接 spawn。`OwnedProcessRuntime` 先取得 OS capability 与 containment preparation：macOS Seatbelt、Linux bwrap 或明确 unsupported；未证明只读的命令要求真实 backend，不可用时 spawn 次数必须为零。它再提交脱敏 process receipt 后启动进程，默认 120 秒命令 deadline、组合输出超额即终止，并让 owner cancel 清理整个进程组。每次 containment 决定写入 correlated `process_containment` EventEnvelope，并把同一有界 sandbox receipt 放进工具 metadata，renderer 与 Diagnostics 显示实际 backend，而不是根据 permission mode 推断“已 sandbox”。
 
 `ask_user` 和 `propose_plan` 会创建可恢复 interaction。Runner 在等待用户时保存带真实 session 归属的 checkpoint，不用普通 assistant 文本伪造批准。它们属于 Control 工具，renderer 只显示专用 Ask/Plan 卡，不再同时显示工具参数、marker 或 IN/OUT JSON；旧 replay 也按 tool call ID 去重。
 
@@ -210,7 +210,7 @@ runtime/events.jsonl
 prompt-snapshots/
 ```
 
-`history.jsonl` 保存模型上下文需要的消息；checkpoint 描述未完成 turn 的恢复边界；runtime events 用于 renderer replay。Runtime reader 兼容平面 V1 与 `EventEnvelopeV2`，后者用 request / attempt / task / tool IDs 串联诊断时间线，但 diagnostic visibility 不属于模型上下文。Task 的完整输出是 `stateRoot/tasks/<task-id>/output.log` 受管 artifact，不复制进 event 或 history。切换 Chat / Build 或应用重启时，Core 先完成 lifecycle reconcile、激活 owner session，再返回历史、control 和领域摘要。
+`history.jsonl` 保存模型上下文需要的消息；checkpoint 描述未完成 turn 的恢复边界；runtime events 用于 renderer replay。Runtime reader 兼容历史平面事件与 `EventEnvelope`，后者用 request / attempt / task / tool IDs 串联诊断时间线，但 diagnostic visibility 不属于模型上下文。Task 的完整输出是 `stateRoot/tasks/<task-id>/output.log` 受管 artifact，不复制进 event 或 history。切换 Chat / Build 或应用重启时，Core 先完成 lifecycle reconcile、激活 owner session，再返回历史、control 和领域摘要。
 
 Build 项目的 `AGENTS.md` 只读；私有 session、记忆、附件和 Goal 不写入项目源码目录。详见[全局私有存储根](global-state-store.md)。
 
