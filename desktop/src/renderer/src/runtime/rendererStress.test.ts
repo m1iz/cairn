@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { RuntimeEventEnvelope } from '../types'
+import type { RuntimeEventProjection } from '../types'
 import {
   createExpansionStore,
   messageScrollSignature,
@@ -10,7 +10,7 @@ import { projectChatEvents } from './chatProjection'
 describe('renderer long-session pressure contract', () => {
   it('projects and expands more than 1,000 streamed messages within the desktop budget', () => {
     const startedAt = performance.now()
-    const events: RuntimeEventEnvelope[] = []
+    const events: RuntimeEventProjection[] = []
     let seq = 0
     for (let index = 0; index < 1_001; index += 1) {
       const turnId = `turn-${index}`

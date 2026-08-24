@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { RuntimeEventEnvelope } from '../types'
+import type { RuntimeEventProjection } from '../types'
 import {
   createRendererProjectionState,
   replayRendererProjection,
@@ -7,7 +7,7 @@ import {
 
 describe('renderer runtime replay reducer', () => {
   it('sorts replay, deduplicates events, and never emits live effects', () => {
-    const events: RuntimeEventEnvelope[] = [
+    const events: RuntimeEventProjection[] = [
       {
         event: 'assistant_done',
         seq: 4,

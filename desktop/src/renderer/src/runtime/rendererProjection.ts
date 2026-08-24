@@ -1,4 +1,4 @@
-import type { RuntimeEventEnvelope, WsEvent } from '../types'
+import type { RuntimeEventProjection, WsEvent } from '../types'
 import { sortRuntimeEvents } from './events'
 import {
   createSessionProjectionState,
@@ -12,7 +12,7 @@ import {
   reduceTaskProjection,
   type TaskProjectionState,
 } from './taskProjection'
-import { adaptLegacyRuntimeEvent } from './legacyRuntimeAdapter'
+import { normalizeRuntimeEvent } from './runtimeEventCompatibility'
 
 export interface RendererProjectionState {
   session: SessionProjectionState
@@ -36,12 +36,12 @@ export function createRendererProjectionState(
 
 export function replayRendererProjection(
   initial: RendererProjectionState,
-  events: Array<RuntimeEventEnvelope | WsEvent>,
+  events: Array<RuntimeEventProjection | WsEvent>,
 ): RendererProjectionReplayResult {
   let state = initial
   const acceptedEvents: WsEvent[] = []
   for (const rawEvent of sortRuntimeEvents(events)) {
-    const event = adaptLegacyRuntimeEvent(rawEvent)
+    const event = normalizeRuntimeEvent(rawEvent)
     const session = reduceSessionProjection(state.session, {
       type: 'runtime_event_received',
       origin: 'replay',

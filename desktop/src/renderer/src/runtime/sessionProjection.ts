@@ -1,5 +1,5 @@
 import type { RuntimeStatus, WsEvent } from '../types'
-import { adaptLegacyRuntimeEvent } from './legacyRuntimeAdapter'
+import { normalizeRuntimeEvent } from './runtimeEventCompatibility'
 import type {
   ActionEffectDescriptor,
   ActionEffectTaskResult,
@@ -246,7 +246,7 @@ export function reduceSessionProjection(
     })
   }
 
-  return reduceRuntimeEvent(state, adaptLegacyRuntimeEvent(action.event))
+  return reduceRuntimeEvent(state, normalizeRuntimeEvent(action.event))
 }
 
 export function eventOwnerSessionId(data: unknown): string {

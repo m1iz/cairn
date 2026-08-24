@@ -5,7 +5,7 @@ import { toGoalCardViewModel } from './runtime/goalRender'
 import { replayGoalRuntimeEvents } from './runtime/reducer'
 import type {
   BootstrapPayload,
-  RuntimeEventEnvelope,
+  RuntimeEventProjection,
   RuntimeGoalSummary,
 } from './types'
 
@@ -125,7 +125,7 @@ describe('Goal desktop runtime E2E', () => {
   })
 })
 
-function lifecycleEvents(): RuntimeEventEnvelope[] {
+function lifecycleEvents(): RuntimeEventProjection[] {
   return [
     {
       event: 'goal_created',
@@ -215,7 +215,7 @@ function summary(
   }
 }
 
-function options(events: RuntimeEventEnvelope[]) {
+function options(events: RuntimeEventProjection[]) {
   const boot = ref({
     app: 'Cairn',
     runtime: {

@@ -11,7 +11,7 @@ import './styles/chat.css'
 import './styles/activity.css'
 import './styles/panels.css'
 import './styles/responsive.css'
-import './styles/codex-v2.css'
+import './styles/workbench.css'
 import './styles/workspace.css'
 
 applyTheme(document, localStorage.getItem('cairn.theme') ?? DEFAULT_THEME)

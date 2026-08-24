@@ -2,7 +2,7 @@ import type {
   AssistantMessage,
   ChatMessage,
   ControlInteraction,
-  RuntimeEventEnvelope,
+  RuntimeEventProjection,
   ThoughtSegment,
   ToolSegment,
   WsEvent,
@@ -15,7 +15,7 @@ import {
   applyToolRunUpdateToSegment,
   settleRunningToolSegments,
 } from './toolStatus'
-import { adaptLegacyRuntimeEvent } from './legacyRuntimeAdapter'
+import { normalizeRuntimeEvent } from './runtimeEventCompatibility'
 
 export interface ChatProjectionState {
   messages: ChatMessage[]
@@ -75,18 +75,13 @@ export function isChatProjectionEvent(event: { event: string }): boolean {
 }
 
 export function projectChatEvents(
-  events: RuntimeEventEnvelope[],
+  events: RuntimeEventProjection[],
   opts: { sessionId?: string | null } = {},
 ): ChatProjectionState {
   const state = emptyChatProjection()
   const runtime: ProjectionRuntime = createProjectionRuntime()
   for (const event of sortRuntimeEvents(events))
-    applyChatProjectionEvent(
-      state,
-      adaptLegacyRuntimeEvent(event),
-      runtime,
-      opts,
-    )
+    applyChatProjectionEvent(state, normalizeRuntimeEvent(event), runtime, opts)
   return state
 }
 

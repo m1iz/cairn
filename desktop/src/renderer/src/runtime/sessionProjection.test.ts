@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { RuntimeEventEnvelope, WsEvent } from '../types'
-import { adaptLegacyRuntimeEvent } from './legacyRuntimeAdapter'
+import type { RuntimeEventProjection, WsEvent } from '../types'
+import { normalizeRuntimeEvent } from './runtimeEventCompatibility'
 import {
   createSessionProjectionState,
   reduceSessionProjection,
@@ -81,7 +81,7 @@ describe('session action reducer', () => {
     let state = reduceSessionProjection(createSessionProjectionState('s1'), {
       type: 'runtime_event_received',
       origin: 'replay',
-      event: adaptLegacyRuntimeEvent({
+      event: normalizeRuntimeEvent({
         event: 'turn_continuation_evaluated',
         seq: 1,
         session_id: 's1',
@@ -92,14 +92,14 @@ describe('session action reducer', () => {
         grantedIterations: 8,
         summary: 'continue',
         nextActions: ['verify'],
-      } satisfies RuntimeEventEnvelope),
+      } satisfies RuntimeEventProjection),
     }).state
     expect(state.sessions.s1?.running).toBe(true)
 
     state = reduceSessionProjection(state, {
       type: 'runtime_event_received',
       origin: 'replay',
-      event: adaptLegacyRuntimeEvent({
+      event: normalizeRuntimeEvent({
         event: 'turn_continuation_evaluated',
         seq: 2,
         session_id: 's1',
@@ -110,7 +110,7 @@ describe('session action reducer', () => {
         grantedIterations: 0,
         summary: 'paused',
         nextActions: ['inspect'],
-      } satisfies RuntimeEventEnvelope),
+      } satisfies RuntimeEventProjection),
     }).state
     expect(state.sessions.s1?.running).toBe(false)
   })

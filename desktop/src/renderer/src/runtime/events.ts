@@ -1,6 +1,6 @@
-import type { RuntimeEventEnvelope, WsEvent } from '../types'
+import type { RuntimeEventProjection, WsEvent } from '../types'
 
-export type RuntimeEvent = RuntimeEventEnvelope
+export type RuntimeEvent = RuntimeEventProjection
 export type RuntimeWireEvent = WsEvent
 
 export const GOAL_RUNTIME_EVENT_NAMES = [
@@ -22,7 +22,7 @@ export type GoalRuntimeEvent = Extract<WsEvent, { event: GoalRuntimeEventName }>
 const GOAL_RUNTIME_EVENT_NAME_SET = new Set<string>(GOAL_RUNTIME_EVENT_NAMES)
 
 export function isGoalRuntimeEvent(
-  event: RuntimeEventEnvelope | WsEvent,
+  event: RuntimeEventProjection | WsEvent,
 ): event is GoalRuntimeEvent {
   return GOAL_RUNTIME_EVENT_NAME_SET.has(String(event.event))
 }

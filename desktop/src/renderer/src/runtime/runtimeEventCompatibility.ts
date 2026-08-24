@@ -1,6 +1,6 @@
-import type { RuntimeEventEnvelope, WsEvent } from '../types'
+import type { RuntimeEventProjection, WsEvent } from '../types'
 
-interface LegacyContinuationEvent extends RuntimeEventEnvelope {
+interface HistoricalContinuationEvent extends RuntimeEventProjection {
   event: 'turn_continuation_evaluated'
   decision?: 'continue' | 'finalize' | 'pause'
   grantedIterations?: number
@@ -13,18 +13,18 @@ interface LegacyContinuationEvent extends RuntimeEventEnvelope {
  * Core event contract. Old continuation-budget events are normalized to one
  * generic historical activity before any current projection consumes them.
  */
-export function adaptLegacyRuntimeEvent(
-  raw: RuntimeEventEnvelope | WsEvent,
+export function normalizeRuntimeEvent(
+  raw: RuntimeEventProjection | WsEvent,
 ): WsEvent {
   if (raw.event !== 'turn_continuation_evaluated') return raw as WsEvent
-  const legacy = raw as LegacyContinuationEvent
+  const historical = raw as HistoricalContinuationEvent
   const decision =
-    legacy.decision === 'continue' || legacy.decision === 'finalize'
-      ? legacy.decision
+    historical.decision === 'continue' || historical.decision === 'finalize'
+      ? historical.decision
       : 'pause'
-  const granted = Math.max(0, Number(legacy.grantedIterations || 0))
+  const granted = Math.max(0, Number(historical.grantedIterations || 0))
   return {
-    ...legacy,
+    ...historical,
     event: 'historical_runtime_activity',
     label:
       decision === 'continue'
@@ -32,7 +32,7 @@ export function adaptLegacyRuntimeEvent(
         : decision === 'finalize'
           ? '历史记录：执行完成，正在整理交付'
           : '历史记录：执行已暂停',
-    detail: String(legacy.summary || '').trim(),
+    detail: String(historical.summary || '').trim(),
     tone:
       decision === 'continue'
         ? 'running'
@@ -41,14 +41,14 @@ export function adaptLegacyRuntimeEvent(
           : 'error',
     running: decision !== 'pause',
     action: decision === 'pause' ? 'continue' : undefined,
-    nextActions: Array.isArray(legacy.nextActions)
-      ? legacy.nextActions.map(String)
+    nextActions: Array.isArray(historical.nextActions)
+      ? historical.nextActions.map(String)
       : [],
   } as unknown as WsEvent
 }
 
-export function adaptLegacyRuntimeEvents(
-  events: RuntimeEventEnvelope[],
+export function normalizeRuntimeEvents(
+  events: RuntimeEventProjection[],
 ): WsEvent[] {
-  return events.map(adaptLegacyRuntimeEvent)
+  return events.map(normalizeRuntimeEvent)
 }

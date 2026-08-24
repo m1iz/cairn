@@ -29,7 +29,7 @@ declare global {
   }
 }
 
-const screenshotDir = resolve(process.cwd(), 'screenshots', 'codex-v2')
+const screenshotDir = resolve(process.cwd(), 'screenshots', 'workbench')
 const visualProjectDir = resolve(
   process.cwd(),
   'screenshots',
@@ -2367,7 +2367,7 @@ async function installVisualCoreBridge(page: Page) {
                 binary: false,
               },
               {
-                path: 'codex-v2.css',
+                path: 'workbench.css',
                 kind: 'modified',
                 additions: 111,
                 deletions: 0,

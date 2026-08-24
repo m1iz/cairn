@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { RuntimeEventEnvelope, WsEvent } from '../../types'
+import type { RuntimeEventProjection, WsEvent } from '../../types'
 import {
   applyGoalEvent,
   createGoalProjectionState,
@@ -146,7 +146,7 @@ describe('Goal runtime projection', () => {
   })
 
   it('produces the same state for live reduction and sorted replay', () => {
-    const events: Array<GoalRuntimeEvent & RuntimeEventEnvelope> = [
+    const events: Array<GoalRuntimeEvent & RuntimeEventProjection> = [
       {
         event: 'goal_completed',
         seq: 4,

@@ -1063,7 +1063,7 @@ export interface RuntimeHistoryItem {
   scheduler?: SchedulerMessageMeta
 }
 
-export interface RuntimeEventEnvelope {
+export interface RuntimeEventProjection {
   event: string
   seq?: number
   ts?: number
@@ -1107,7 +1107,7 @@ export interface RuntimeReplayPayload {
   format?: 'projection' | 'envelope'
   busy?: boolean
   scope?: 'unarchived' | string
-  events: RuntimeEventEnvelope[]
+  events: RuntimeEventProjection[]
   active_tasks?: ActiveRuntimeTask[]
 }
 

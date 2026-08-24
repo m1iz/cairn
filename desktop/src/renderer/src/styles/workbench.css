@@ -1,4 +1,4 @@
-/* Codex UI V2: compact workbench shell with restrained Cairn accents. */
+/* Compact desktop workbench shell with restrained Cairn accents. */
 :root,
 :root[data-theme='dark'] {
   --bg: 12 12 14;
@@ -2953,63 +2953,6 @@ select:focus-visible {
   border-radius: var(--radius-md) !important;
 }
 
-.model-form-section,
-.advanced-panel {
-  border-radius: var(--radius-md) !important;
-  border-color: rgb(var(--border)) !important;
-  background: rgb(var(--bg-inset) / 0.34) !important;
-  box-shadow: none !important;
-}
-
-.model-form-section {
-  padding: 10px !important;
-}
-
-.model-form-section-head {
-  min-height: 22px;
-}
-
-.model-form-section-head h4 {
-  color: rgb(var(--fg)) !important;
-  font-size: var(--font-size-md) !important;
-  font-weight: 650 !important;
-}
-
-.model-form-section-head span {
-  color: rgb(var(--fg-subtle)) !important;
-  font-size: var(--font-size-xs) !important;
-}
-
-.model-form-grid {
-  gap: 8px !important;
-}
-
-.model-form-v2 .form-label {
-  color: rgb(var(--fg-subtle)) !important;
-  font-size: var(--font-size-2xs) !important;
-  letter-spacing: 0.08em !important;
-}
-
-.model-form-v2 .form-input,
-.model-form-v2 .form-select,
-.advanced-grid textarea {
-  border-radius: var(--radius-md) !important;
-  border-color: rgb(var(--border)) !important;
-  background: rgb(var(--bg)) !important;
-  box-shadow: none !important;
-}
-
-.advanced-panel {
-  margin-top: 0 !important;
-  padding: 9px 10px !important;
-}
-
-.advanced-toggle {
-  font-family: inherit !important;
-  font-size: var(--font-size-md) !important;
-  font-weight: 650 !important;
-}
-
 .team-section-head,
 .entry-editor-head {
   border-color: rgb(var(--border)) !important;
@@ -3313,16 +3256,6 @@ select:focus-visible {
     grid-column: 2;
     justify-self: start;
     max-width: 100%;
-  }
-
-  .model-form-grid,
-  .advanced-grid {
-    grid-template-columns: minmax(0, 1fr) !important;
-  }
-
-  .model-form-v2 .form-row.span-2,
-  .advanced-grid .form-row.span-2 {
-    grid-column: span 1 !important;
   }
 
   .composer-palette {

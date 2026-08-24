@@ -392,7 +392,7 @@ function toLocalInputValue(ms: number) {
 </script>
 
 <template>
-  <div class="panel-content scheduler-panel scheduler-panel-v2">
+  <div class="panel-content scheduler-panel">
     <div class="scheduler-overview">
       <span
         ><b>{{ jobs.length }}</b

@@ -398,72 +398,6 @@
   @apply col-span-2;
 }
 
-/* ── ModelPanel v2: simplified vertical layout + advanced collapse ── */
-.model-form-v2 {
-  @apply flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1;
-}
-
-.model-form-section {
-  @apply grid gap-3 rounded-[1.1rem] border border-border/70 bg-bg-inset/35 p-3;
-}
-
-.model-form-section-head {
-  @apply flex items-baseline justify-between gap-3;
-}
-
-.model-form-section-head h4 {
-  @apply font-display text-sm font-bold text-fg;
-}
-
-.model-form-section-head span {
-  @apply text-xs text-fg-muted;
-}
-
-.model-form-grid {
-  @apply grid grid-cols-2 gap-3;
-}
-
-.capacity-grid {
-  @apply grid-cols-2;
-}
-
-.model-form-v2 .form-row {
-  @apply flex flex-col gap-1.5;
-}
-
-.model-form-v2 .form-row.span-2 {
-  @apply col-span-2;
-}
-
-.model-form-v2 .form-label {
-  @apply text-xs font-semibold uppercase tracking-[0.12em] text-fg-muted;
-}
-
-.model-form-v2 .form-input,
-.model-form-v2 .form-select {
-  @apply rounded-2xl border border-border/70 bg-bg-inset/50 px-3 py-2 text-sm text-fg shadow-insetPaper;
-}
-
-.model-form-v2 .form-select option {
-  @apply bg-bg text-fg;
-}
-
-.provider-control-row {
-  @apply flex items-center gap-2;
-}
-
-.provider-control-row .form-select {
-  @apply min-w-0 flex-1;
-}
-
-.provider-fetch-button {
-  @apply shrink-0 whitespace-nowrap px-3;
-}
-
-.provider-meta-row {
-  @apply flex min-h-5 flex-wrap items-center gap-2 text-xs text-fg-muted;
-}
-
 .provider-meta-row a {
   @apply rounded-md border border-border/60 bg-bg-inset/50 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-fg-muted transition hover:border-accent/40 hover:text-accent;
 }
@@ -2056,10 +1990,6 @@
 
 .mcp-editor-actions {
   @apply flex shrink-0 justify-end gap-2 border-t border-border/50 p-3;
-}
-
-.scheduler-panel-v2 {
-  @apply overflow-hidden;
 }
 
 .scheduler-overview {

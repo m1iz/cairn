@@ -10,7 +10,7 @@ import type {
   QueueDraftRecovery,
   QueuedPromptItem,
   RequestedSkill,
-  RuntimeEventEnvelope,
+  RuntimeEventProjection,
   RuntimeHistoryItem,
   RuntimeStatus,
   SessionInfo,
@@ -87,7 +87,7 @@ import {
   createRendererProjectionState,
   replayRendererProjection,
 } from '../runtime/rendererProjection'
-import { adaptLegacyRuntimeEvents } from '../runtime/legacyRuntimeAdapter'
+import { normalizeRuntimeEvents } from '../runtime/runtimeEventCompatibility'
 import {
   applyTurnChangeSnapshot,
   createTurnChangeProjection,
@@ -1037,7 +1037,7 @@ export function useRuntime(options: {
       })
   }
 
-  function restoreFromRuntimeEvents(events: RuntimeEventEnvelope[]) {
+  function restoreFromRuntimeEvents(events: RuntimeEventProjection[]) {
     messages.value = []
     currentAssistantId.value = null
     busy.value = false
@@ -1054,7 +1054,7 @@ export function useRuntime(options: {
     projectionRuntime = createProjectionRuntime()
     rehydrating = true
     try {
-      const adaptedEvents = adaptLegacyRuntimeEvents(events)
+      const adaptedEvents = normalizeRuntimeEvents(events)
       const scope =
         sessionId.value || options.boot.value?.runtime?.sessionId || null
       const replay = replayRendererProjection(
@@ -1085,7 +1085,7 @@ export function useRuntime(options: {
         state: replay.state.session,
       })
       for (const event of replay.acceptedEvents) {
-        if (!isChatProjectionEvent(event as RuntimeEventEnvelope))
+        if (!isChatProjectionEvent(event as RuntimeEventProjection))
           applyNonChatProjection(event, 'replay')
       }
       sessionStore.dispatch({
@@ -1147,7 +1147,7 @@ export function useRuntime(options: {
       return
     }
 
-    if (isChatProjectionEvent(data as RuntimeEventEnvelope)) {
+    if (isChatProjectionEvent(data as RuntimeEventProjection)) {
       const assistantBefore = currentAssistant.value
       applyChatProjectionEvent(liveProjection, data, projectionRuntime)
       applyDomainProjectionEvent(data)
