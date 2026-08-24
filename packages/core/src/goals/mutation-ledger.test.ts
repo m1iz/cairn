@@ -7,6 +7,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs'
@@ -490,9 +491,7 @@ describe('GoalGateMutationLedger', () => {
   })
 
   it('purely diagnoses active, stale, and identity-ambiguous recovery markers', () => {
-    const fixture = interruptedRecoveryMarker(
-      'cairn-goal-marker-diagnostics-',
-    )
+    const fixture = interruptedRecoveryMarker('cairn-goal-marker-diagnostics-')
     const markerBefore = readFileSync(fixture.guard.recoveryMarkerPath)
     const intentBefore = readFileSync(fixture.intentPath)
     const namesBefore = readdirSync(fixture.guard.recoveryIntentsDir).sort()
@@ -694,9 +693,7 @@ describe('GoalGateMutationLedger', () => {
     ).toBe(false)
     expect(readFileSync(active.guard.recoveryMarkerPath)).toEqual(activeBytes)
 
-    const replaced = interruptedRecoveryMarker(
-      'cairn-goal-marker-replacement-',
-    )
+    const replaced = interruptedRecoveryMarker('cairn-goal-marker-replacement-')
     rewriteRecoveryMarker(replaced.guard, { recoveryPid: 999_999_999 })
     const replacedDiagnostic = replaced.guard.diagnoseRecoveryMarker()
     writeFileSync(replaced.guard.path, '{replacement owner')
@@ -812,33 +809,50 @@ describe('GoalGateMutationLedger', () => {
     expect(existsSync(fixture.guard.recoveryMarkerPath)).toBe(false)
   }, 20_000)
 
-  it('reclaims an operator claim left by a crashed process before retrying recovery', async () => {
-    const fixture = interruptedRecoveryMarker(
-      'cairn-goal-marker-operator-crash-',
-    )
-    rewriteRecoveryMarker(fixture.guard, { recoveryPid: 999_999_999 })
-    const input = staleMarkerRecoveryInput(
-      fixture,
-      fixture.guard.diagnoseRecoveryMarker(),
-    )
-    await expect(markerRecoveryCrashChild(fixture.root, input)).rejects.toThrow(
-      /exited with 91/,
-    )
-    expect(existsSync(fixture.guard.operatorRecoveryClaimPath)).toBe(true)
-    await expect(
-      markerRecoveryCrashChild(fixture.root, input, 'operator-reclaimer'),
-    ).rejects.toThrow(/exited with 92/)
-    expect(existsSync(fixture.guard.operatorRecoveryReclaimBarrierPath)).toBe(
-      true,
-    )
-    await new Promise((resolve) => setTimeout(resolve, 1_100))
+  it(
+    'reclaims an operator claim left by a crashed process before retrying recovery',
+    async () => {
+      const fixture = interruptedRecoveryMarker(
+        'cairn-goal-marker-operator-crash-',
+      )
+      rewriteRecoveryMarker(fixture.guard, { recoveryPid: 999_999_999 })
+      const input = staleMarkerRecoveryInput(
+        fixture,
+        fixture.guard.diagnoseRecoveryMarker(),
+      )
+      await expect(
+        markerRecoveryCrashChild(fixture.root, input),
+      ).rejects.toThrow(/exited with 91/)
+      expect(existsSync(fixture.guard.operatorRecoveryClaimPath)).toBe(true)
+      await expect(
+        markerRecoveryCrashChild(fixture.root, input, 'operator-reclaimer'),
+      ).rejects.toThrow(/exited with 92/)
+      expect(existsSync(fixture.guard.operatorRecoveryReclaimBarrierPath)).toBe(
+        true,
+      )
+      await waitUntil(() => {
+        try {
+          return (
+            Date.now() -
+              statSync(fixture.guard.operatorRecoveryReclaimBarrierPath)
+                .mtimeMs >=
+            1_250
+          )
+        } catch {
+          return false
+        }
+      })
 
-    expect(new GoalMutationGuard(fixture.root).recoverStaleMarker(input)).toBe(
-      true,
-    )
-    expect(existsSync(fixture.guard.operatorRecoveryClaimPath)).toBe(false)
-    expect(existsSync(fixture.guard.recoveryMarkerPath)).toBe(false)
-  }, 20_000)
+      expect(
+        new GoalMutationGuard(fixture.root, {
+          timeoutMs: 15_000,
+        }).recoverStaleMarker(input),
+      ).toBe(true)
+      expect(existsSync(fixture.guard.operatorRecoveryClaimPath)).toBe(false)
+      expect(existsSync(fixture.guard.recoveryMarkerPath)).toBe(false)
+    },
+    process.platform === 'win32' ? 45_000 : 20_000,
+  )
 
   it('never unlinks a replacement operator claim while reclaiming a crashed owner', async () => {
     const fixture = interruptedRecoveryMarker(
