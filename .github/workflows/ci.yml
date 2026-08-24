@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+      - name: Install Core dependencies
+        run: npm ci
+      - name: Install Desktop dependencies
+        run: npm --prefix desktop ci
+      - name: Reject new formatting regressions
+        run: node scripts/verify-prettier-baseline.mjs
+      - name: Check public documentation boundaries
+        run: node scripts/check_public_docs.mjs
+      - name: Typecheck Core
+        run: npm run typecheck --workspace @cairn/core
+      - name: Lint Core
+        run: npm run lint --workspace @cairn/core
+      - name: Typecheck Desktop tests
+        run: npm --prefix desktop run typecheck:test
+      - name: Typecheck Desktop
+        run: npm --prefix desktop run typecheck
+      - name: Lint Desktop
+        run: npm --prefix desktop run lint
+      - name: Build Desktop
+        run: npm --prefix desktop run build
+
+  windows-test-ratchet:
+    name: Windows test ratchet
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+      - run: npm ci
+      - run: npm --prefix desktop ci
+      - name: Reject Core regressions beyond the captured Windows baseline
+        run: >-
+          node scripts/verify-vitest-baseline.mjs
+          --cwd packages/core
+          --vitest ../../node_modules/vitest/vitest.mjs
+          --min-passed 2170
+          --max-failed 43
+          --max-skipped 19
+          --max-runtime-errors 1
+      - name: Reject Desktop regressions beyond the captured baseline
+        run: >-
+          node scripts/verify-vitest-baseline.mjs
+          --cwd desktop
+          --vitest ../node_modules/vitest/vitest.mjs
+          --min-passed 509
+          --max-failed 4
+          --max-skipped 0
+          --max-runtime-errors 0
+
+  linux-tests:
+    name: Linux tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+      - run: npm ci
+      - run: npm --prefix desktop ci
+      - name: Core tests
+        run: npm test --workspace @cairn/core
+      - name: Reject Desktop regressions beyond the captured UI baseline
+        run: >-
+          node scripts/verify-vitest-baseline.mjs
+          --cwd desktop
+          --vitest ../node_modules/vitest/vitest.mjs
+          --min-passed 509
+          --max-failed 4
+          --max-skipped 0
+          --max-runtime-errors 0

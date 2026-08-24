@@ -75,7 +75,9 @@ async function waitForCompleteAsar(
       expectedBytes = 8 + headerSize + payloadBytes
       const complete = fs.statSync(archivePath).size >= expectedBytes
       const entries = complete
-        ? listPackage(archivePath).map((entry) => entry.replaceAll('\\', '/'))
+        ? listPackage(archivePath, { isPack: false }).map((entry) =>
+            entry.replaceAll('\\', '/'),
+          )
         : []
       if (complete && entries.includes('/out/preload/index.cjs')) return
     } catch {
