@@ -29,12 +29,11 @@ import {
   assertGoalTransition,
   parseGoalRecord,
 } from './validation'
-import {
-  GoalGateMutationLedger,
-  type GoalGateMutationSnapshot,
-} from './mutation-ledger'
+import { GoalGateMutationLedger } from './mutation-ledger'
 import type { GoalMutationLease } from './mutation-guard'
 import { registerGoalTerminalCommitter } from './goal-terminal-internal'
+import type { GoalTerminalCommitInput } from './terminal-contracts'
+export type { GoalTerminalCommitInput } from './terminal-contracts'
 
 export const GOAL_INDEX_SCHEMA_VERSION = 'cairn.goal.index.v1' as const
 
@@ -126,15 +125,6 @@ export interface GoalAppendInput {
   readonly createdAt?: string
   readonly data?: Readonly<JsonObject>
   readonly expectedLastEventSeq?: number
-}
-
-export interface GoalTerminalCommitInput {
-  readonly record: GoalRecord
-  readonly createdAt?: string
-  readonly data?: Readonly<JsonObject>
-  readonly expectedLastEventSeq: number
-  readonly mutationPrecondition: GoalGateMutationSnapshot
-  readonly validatePrecondition: () => void | Promise<void>
 }
 
 interface GoalEventInput extends Omit<GoalAppendInput, 'type'> {

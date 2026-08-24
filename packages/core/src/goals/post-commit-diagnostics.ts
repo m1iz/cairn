@@ -9,7 +9,7 @@ import {
   syncFileBestEffort,
 } from '../util/fs-durability'
 import { GoalGateMutationLedger } from './mutation-ledger'
-import type { GoalPostCommitFailureCode } from './completion-gate'
+import type { GoalPostCommitFailureCode } from './terminal-contracts'
 
 export const GOAL_POST_COMMIT_DIAGNOSTIC_SCHEMA_VERSION =
   'cairn.goal.post-commit-diagnostic.v1' as const

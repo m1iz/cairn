@@ -40,6 +40,8 @@ import {
   type GoalBlockerFact,
   type GoalTypedBlockerCode,
 } from './blocker-facts'
+import type { GoalPostCommitFailureCode } from './terminal-contracts'
+export type { GoalPostCommitFailureCode } from './terminal-contracts'
 
 export interface GoalGateReason {
   readonly code: GoalGateReasonCode
@@ -103,13 +105,6 @@ export interface GoalCompletionReceipt {
   readonly createdAt: string
   readonly integritySha256: string
 }
-
-export type GoalPostCommitFailureCode =
-  | 'plan_token_revoke_failed'
-  | 'active_run_clear_failed'
-  | 'pending_interaction_clear_failed'
-  | 'runtime_event_emit_failed'
-  | 'diagnostic_persist_failed'
 
 type GoalPostCommitActionFailureCode = Exclude<
   GoalPostCommitFailureCode,
@@ -515,7 +510,8 @@ export class GoalCompletionGate {
 
   async complete(goalIdValue: string): Promise<GoalCompletionResult> {
     const goalId = String(goalIdValue ?? '').trim()
-    const options = trustedGoalCompletionGateOptions(this)
+    const options =
+      trustedGoalCompletionGateOptions<GoalCompletionGateOptions>(this)
     const trustedEvaluator = new GoalCompletionGate(options)
     return GLOBAL_GOAL_COMPLETION_MUTEX.run(
       `${options.goalStore.goalsRoot}:${goalId}`,
@@ -617,7 +613,8 @@ export class GoalCompletionGate {
   ): Promise<GoalRecord> {
     const goalId = String(goalIdValue ?? '').trim()
     const blockerFactVersion = String(blockerFactVersionValue ?? '').trim()
-    const options = trustedGoalCompletionGateOptions(this)
+    const options =
+      trustedGoalCompletionGateOptions<GoalCompletionGateOptions>(this)
     return GLOBAL_GOAL_COMPLETION_MUTEX.run(
       `${options.goalStore.goalsRoot}:${goalId}`,
       async () => {
@@ -858,7 +855,8 @@ export class GoalCompletionGate {
   }
 
   async recoverPostCommitCleanup(): Promise<GoalCleanupRecoveryResult> {
-    const options = trustedGoalCompletionGateOptions(this)
+    const options =
+      trustedGoalCompletionGateOptions<GoalCompletionGateOptions>(this)
     const cleanupJournal = trustedCleanupJournal(options)
     // Claims serialize live workers, but recovery remains deliberately
     // at-least-once across process crashes. Cleanup hosts use the stable

@@ -1,6 +1,5 @@
 import type { GoalRecord } from './models'
-import type { GoalCompletionGateOptions } from './completion-gate'
-import type { GoalTerminalCommitInput } from './store'
+import type { GoalTerminalCommitInput } from './terminal-contracts'
 
 type GoalTerminalType = 'goal_completed' | 'goal_blocked'
 type GoalTerminalCommitter = (
@@ -12,7 +11,7 @@ type GoalTerminalCommitter = (
 const STORE_COMMITTERS = new WeakMap<object, GoalTerminalCommitter>()
 interface GoalTerminalAuthority {
   readonly store: object
-  readonly options: GoalCompletionGateOptions
+  readonly options: object
 }
 
 const AUTHORIZED_GATES = new WeakMap<object, GoalTerminalAuthority>()
@@ -28,10 +27,10 @@ export function registerGoalTerminalCommitter(
 }
 
 /** Internal composition-root grant; this module is not re-exported. */
-export function authorizeGoalCompletionGate(
+export function authorizeGoalCompletionGate<Options extends object>(
   gate: object,
   store: object,
-  options: GoalCompletionGateOptions,
+  options: Options,
 ): void {
   if (!STORE_COMMITTERS.has(store))
     throw new Error('GoalStore terminal committer is unavailable.')
@@ -40,21 +39,23 @@ export function authorizeGoalCompletionGate(
   AUTHORIZED_GATES.set(gate, Object.freeze({ store, options }))
 }
 
-export function trustedGoalCompletionGateOptions(
+export function trustedGoalCompletionGateOptions<Options extends object>(
   gate: object,
-): GoalCompletionGateOptions {
+): Options {
   const authority = AUTHORIZED_GATES.get(gate)
   if (!authority)
     throw new Error('Goal completion Gate lacks terminal authority.')
-  return authority.options
+  return authority.options as Options
 }
 
 /** Authorized Gates ignore mutable instance fields; plain evaluators use their input. */
-export function goalCompletionGateOptions(
+export function goalCompletionGateOptions<Options extends object>(
   gate: object,
-  fallback: GoalCompletionGateOptions,
-): GoalCompletionGateOptions {
-  return AUTHORIZED_GATES.get(gate)?.options ?? fallback
+  fallback: Options,
+): Options {
+  return (
+    (AUTHORIZED_GATES.get(gate)?.options as Options | undefined) ?? fallback
+  )
 }
 
 export function commitAuthorizedGoalTerminal(

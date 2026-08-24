@@ -35,6 +35,8 @@ import {
   GoalReviewerPolicy,
   type GoalReviewerRiskFactResolver,
 } from './reviewer'
+import type { PlanReviewerContext, PlanReviewerFact } from './review-contracts'
+export type { PlanReviewerContext, PlanReviewerFact } from './review-contracts'
 
 export interface PlanStepWaiverContext {
   readonly goalId: string
@@ -77,20 +79,6 @@ export type PlanStepVerificationResolver = (
   context: PlanStepVerificationContext,
   snapshot: PlanStepResolutionSnapshot,
 ) => PlanStepVerificationFact | null | Promise<PlanStepVerificationFact | null>
-
-export interface PlanReviewerContext {
-  readonly goalId: string
-  readonly planId: string
-  readonly planEventSeq: number
-}
-
-export interface PlanReviewerFact extends PlanReviewerContext {
-  readonly kind: 'core_independent_plan_review'
-  readonly issuedBy: 'core'
-  readonly verdict: 'pass' | 'waived'
-  readonly receiptId: string
-  readonly commandEvidenceRefs: readonly string[]
-}
 
 export type PlanReviewerResolver = (
   context: PlanReviewerContext,

@@ -21,7 +21,7 @@ import type {
   GoalIndependentReviewerSource,
 } from './evidence'
 import { verifyObservationIntegrity, type GoalObservation } from './evidence'
-import type { PlanReviewerContext, PlanReviewerFact } from './plan-bridge'
+import type { PlanReviewerContext, PlanReviewerFact } from './review-contracts'
 import { planMatchesGoalScope } from './scope'
 import type { GoalRecord } from './models'
 import type { GoalStore } from './store'
