@@ -303,6 +303,7 @@ describe('GoalCleanupJournal claim ownership', () => {
 
     const markerPath = `${seed!.path}.recovery`
     const marker = JSON.parse(readFileSync(markerPath, 'utf8'))
+    expect(marker.schemaVersion).toBe('cairn.goal.cleanup-claim-recovery')
     const { integritySha256: _integritySha256, ...markerBase } = marker
     const staleMarkerBase = { ...markerBase, recoveryPid: 999_999_998 }
     writeFileSync(
@@ -329,7 +330,7 @@ describe('GoalCleanupJournal claim ownership', () => {
     await new GoalCleanupJournal(root).releaseClaim(recovered!)
   })
 
-  it('drops a stale old-generation marker before reclaiming a crashed replacement owner', async () => {
+  it('accepts a previous recovery marker before reclaiming a crashed replacement owner', async () => {
     const root = mkdtempSync(join(tmpdir(), 'cairn-cleanup-double-crash-'))
     const journal = new GoalCleanupJournal(root)
     const seed = await journal.claim({

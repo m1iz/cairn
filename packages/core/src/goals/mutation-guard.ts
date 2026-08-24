@@ -35,7 +35,8 @@ import {
   type StableProcessStartIdentity,
 } from '../util/stable-process-identity'
 
-const OWNER_SCHEMA = 'cairn.goal.mutation-guard-owner.v2' as const
+const OWNER_SCHEMA = 'cairn.goal.mutation-guard-owner' as const
+const PREVIOUS_OWNER_SCHEMA = 'cairn.goal.mutation-guard-owner.v2' as const
 const DEFAULT_STALE_MS = 30_000
 const DEFAULT_TIMEOUT_MS = 5_000
 const SYNC_RETRY_MS = 2
@@ -1383,7 +1384,10 @@ function diagnoseOwnerAt(path: string): GoalMutationOwnerDiagnostic {
     return ownerDiagnostic('corrupt', path, nonce, acquiredAt, ownerSha256)
   if (value.hostname !== hostname())
     return ownerDiagnostic('ambiguous', path, nonce, acquiredAt, ownerSha256)
-  if (value.schemaVersion !== OWNER_SCHEMA)
+  if (
+    value.schemaVersion !== OWNER_SCHEMA &&
+    value.schemaVersion !== PREVIOUS_OWNER_SCHEMA
+  )
     return ownerDiagnostic('ambiguous', path, nonce, acquiredAt, ownerSha256)
   if (
     typeof value.bootMarker !== 'string' ||
@@ -1439,7 +1443,8 @@ function parseOwner(value: unknown): GoalMutationOwner | null {
       ? null
       : parseStableProcessStartIdentity(value.processStartIdentity)
   if (
-    value.schemaVersion !== OWNER_SCHEMA ||
+    (value.schemaVersion !== OWNER_SCHEMA &&
+      value.schemaVersion !== PREVIOUS_OWNER_SCHEMA) ||
     !Number.isInteger(value.pid) ||
     Number(value.pid) < 1 ||
     typeof value.hostname !== 'string' ||

@@ -73,7 +73,7 @@ describe('GoalGateMutationLedger', () => {
     expect(ledger.inspect()).toEqual(expected)
   }, 20_000)
 
-  it('recovers a stale v2 lock only after proving the local owner pid is dead', () => {
+  it('writes the current owner schema and accepts its previous persisted form', () => {
     const root = mkdtempSync(join(tmpdir(), 'cairn-goal-mutations-stale-'))
     const ledger = new GoalGateMutationLedger(root)
     const guard = new GoalMutationGuard(root, {
@@ -84,11 +84,15 @@ describe('GoalGateMutationLedger', () => {
       'mutation',
       () => JSON.parse(readFileSync(guard.ownerPath, 'utf8')) as object,
     )
+    expect(owner).toMatchObject({
+      schemaVersion: 'cairn.goal.mutation-guard-owner',
+    })
     mkdirSync(guard.path, { recursive: true })
     writeFileSync(
       guard.ownerPath,
       JSON.stringify({
         ...owner,
+        schemaVersion: 'cairn.goal.mutation-guard-owner.v2',
         pid: 999_999_999,
         nonce: 'dead-owner-nonce',
       }),
@@ -194,7 +198,7 @@ describe('GoalGateMutationLedger', () => {
     )
   })
 
-  it('recovers a stale v2 owner after proving that its live PID was reused', () => {
+  it('recovers a stale owner after proving that its live PID was reused', () => {
     const root = mkdtempSync(join(tmpdir(), 'cairn-goal-mutations-reused-'))
     const guard = new GoalMutationGuard(root, {
       staleMs: 1_000,

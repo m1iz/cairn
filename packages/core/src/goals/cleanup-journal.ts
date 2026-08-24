@@ -33,6 +33,10 @@ import {
   stableProcessStartIdentity as processStartIdentity,
 } from '../util/stable-process-identity'
 
+const CLEANUP_RECOVERY_SCHEMA = 'cairn.goal.cleanup-claim-recovery' as const
+const PREVIOUS_CLEANUP_RECOVERY_SCHEMA =
+  'cairn.goal.cleanup-claim-recovery.v2' as const
+
 export type GoalCleanupObligation =
   | 'revoke_plan_tokens'
   | 'clear_active_run'
@@ -882,7 +886,10 @@ function resumeStaleCleanupRecovery(path: string, claimsDir: string): boolean {
   } catch {
     return resumeLegacyCleanupRecovery(path, claimsDir)
   }
-  if (marker.schemaVersion !== 'cairn.goal.cleanup-claim-recovery.v2')
+  if (
+    marker.schemaVersion !== CLEANUP_RECOVERY_SCHEMA &&
+    marker.schemaVersion !== PREVIOUS_CLEANUP_RECOVERY_SCHEMA
+  )
     return resumeLegacyCleanupRecovery(path, claimsDir)
   const recoveryId = normalizeSha256(marker.recoveryId)
   if (!recoveryId) return false
@@ -1017,7 +1024,7 @@ function removeClaim(
     }),
   )
   const markerBase = {
-    schemaVersion: 'cairn.goal.cleanup-claim-recovery.v2',
+    schemaVersion: CLEANUP_RECOVERY_SCHEMA,
     recoveryId,
     recoveryNonce: randomUUID(),
     label,
