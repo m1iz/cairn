@@ -6,9 +6,45 @@ import {
 } from '../tools/base'
 import { B, I, S, toolParamsSchema } from '../tools/schema'
 import { LEAD_ACTOR } from './models'
-import type { TeamManager } from './manager'
 
-type TeamManagerProvider = TeamManager | (() => TeamManager | null)
+interface TeamToolManager {
+  spawnTeammate(opts: {
+    name: string
+    role: string
+    task?: string | null
+    agent_type?: string | null
+    sender?: string
+    parent_call_id?: string | null
+    eventSink?: ToolExecutionContext['emit'] | null
+  }): Promise<string>
+  listTeammates(): string
+  sendMessage(opts: {
+    to: string
+    content: string
+    sender?: string
+    wake?: boolean
+    parent_call_id?: string | null
+    eventSink?: ToolExecutionContext['emit'] | null
+  }): Promise<string>
+  readInbox(opts?: {
+    actor?: string
+    limit?: number
+    mark_read?: boolean
+  }): string
+  broadcast(opts: {
+    content: string
+    recipients?: string[] | null
+    wake?: boolean
+    parent_call_id?: string | null
+    eventSink?: ToolExecutionContext['emit'] | null
+  }): Promise<string>
+  shutdownTeammate(opts: {
+    name: string
+    eventSink?: ToolExecutionContext['emit'] | null
+  }): Promise<string>
+}
+
+type TeamManagerProvider = TeamToolManager | (() => TeamToolManager | null)
 
 export class TeamTool extends Tool {
   override requiresRuntimeContext = true
@@ -40,7 +76,7 @@ export class TeamTool extends Tool {
     return okResult(raw, { meta: { tool: this.name, team: true } })
   }
 
-  protected manager(): TeamManager {
+  protected manager(): TeamToolManager {
     const manager =
       typeof this.managerProvider === 'function'
         ? this.managerProvider()

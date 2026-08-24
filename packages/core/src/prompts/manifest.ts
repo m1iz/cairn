@@ -9,31 +9,8 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 import type { PromptProjectionSnapshot } from './projection'
-
-export type PromptSectionOwner =
-  | 'core'
-  | 'agent_role'
-  | 'mode'
-  | 'plan'
-  | 'goal'
-  | 'project'
-  | 'memory'
-  | 'default'
-  | 'tool'
-  | 'user_append'
-
-export interface PromptSectionInput {
-  name: string
-  content: string
-  source: string
-  priority: number
-  budgetChars: number | null
-  version: string | null
-  scope?: string | null
-  stability?: 'stable' | 'dynamic'
-  owner?: PromptSectionOwner
-  ruleIds?: string[]
-}
+export type { PromptSectionInput, PromptSectionOwner } from './contracts'
+import type { PromptSectionInput } from './contracts'
 
 export interface PromptManifestSection {
   name: string

@@ -1,4 +1,16 @@
 import type { ToolPermissionProfile } from './models'
+export type {
+  PermissionRuleAction,
+  PermissionRuleCandidate,
+  PermissionRuleSource,
+  PermissionRuleTrust,
+} from './rule-types'
+import type {
+  PermissionRuleAction,
+  PermissionRuleCandidate,
+  PermissionRuleSource,
+  PermissionRuleTrust,
+} from './rule-types'
 import { analyzeShellCommandFailClosed } from './shell-ast'
 import {
   ConfigResolver,
@@ -7,22 +19,6 @@ import {
   type ConfigLayerKind,
   type ConfigSourceTrust,
 } from '../config/resolver'
-
-export type PermissionRuleAction = 'allow' | 'ask' | 'deny'
-export type PermissionRuleTrust =
-  | 'system'
-  | 'managed'
-  | 'user'
-  | 'project'
-  | 'runtime'
-  | 'untrusted'
-  | 'unknown'
-
-export interface PermissionRuleSource {
-  kind: string
-  id: string
-  trust: PermissionRuleTrust
-}
 
 export interface PermissionRuleLayerInput {
   source: PermissionRuleSource
@@ -52,14 +48,6 @@ export interface PermissionRule {
   source: PermissionRuleSource
   inputIndex: number
   specificity: number
-}
-
-export interface PermissionRuleCandidate {
-  id: string
-  action: PermissionRuleAction
-  matched: boolean
-  source: PermissionRuleSource
-  precedence: string
 }
 
 export interface PermissionRuleResolution {

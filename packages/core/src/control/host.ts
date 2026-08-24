@@ -6,7 +6,6 @@ import type { PlanRecord } from '../plans/models'
 import type { GoalRecord } from '../goals/models'
 import type { PlanStore } from '../plans/store'
 import type { ControlStore } from './store'
-import type { PlanPermissionTokenManager } from './plan-permissions'
 
 export interface ControlRuntimeScope {
   sessionId?: string | null
@@ -45,7 +44,9 @@ export interface TaskManagerLike {
 export interface ControlManagerHost {
   readonly planStore: PlanStore
   readonly store: ControlStore
-  readonly permissionTokens: PlanPermissionTokenManager
+  readonly permissionTokens: {
+    issue(record: PlanRecord): PlanRecord
+  }
   readonly planDecisionPolicy: import('./plan-policy').PlanDecisionPolicy
   readonly mode: string
   todoStore: TodoStoreLike | null

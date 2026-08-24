@@ -1076,144 +1076,17 @@ export class AgentRunner implements RunnerModelHost {
         finalParts.length = 0
         continue
       }
-      if (response.usage && Object.keys(response.usage).length) {
-        const callMeta = this.lastModelCall
-        const projectionReport = this.lastContextProjectionReport ?? {}
-        if (this.tokenTracker) {
-          this.tokenTracker.record(
-            String(callMeta.model || this.model),
-            response.usage,
-            {
-              provider: String(
-                callMeta.provider || this.providerName || 'unknown',
-              ),
-              usageType: this.usageType,
-              modelEntryId: String(callMeta.modelEntryId || this.modelEntryId),
-              routeReason: String(
-                callMeta.routeReason || this.routeReason || '',
-              ),
-              estimatedInputTokens: optionalInt(callMeta.estimatedInputTokens),
-              routeEstimatedTokens: optionalInt(callMeta.routeEstimatedTokens),
-              costUsdNanos: callMeta.costUsdNanos,
-              costCapUsdNanos: callMeta.costCapUsdNanos,
-              costComplete: callMeta.costComplete,
-              usedFallback: callMeta.usedFallback,
-              fallbackReason: callMeta.fallbackReason || null,
-            },
-          )
-        }
-        if (emit) {
-          const cacheReadTokens = Math.max(
-            0,
-            Math.trunc(
-              Number(
-                response.usage.cache_read ??
-                  response.usage.cache_read_input_tokens ??
-                  0,
-              ) || 0,
-            ),
-          )
-          const cacheCreateTokens = Math.max(
-            0,
-            Math.trunc(
-              Number(
-                response.usage.cache_create ??
-                  response.usage.cache_creation_input_tokens ??
-                  0,
-              ) || 0,
-            ),
-          )
-          await emit({
-            event: 'context_usage',
-            used: contextUsedFromUsage(response.usage),
-            max: this.maxContext,
-            threshold: Math.trunc(this.maxContext * this.compactThreshold),
-            usage_type: this.usageType,
-            model_entry_id: callMeta.modelEntryId,
-            model: callMeta.model,
-            provider: callMeta.provider,
-            route_reason: callMeta.routeReason,
-            estimated_input_tokens: callMeta.estimatedInputTokens,
-            provider_retry_count:
-              optionalInt(callMeta.providerRetryCount) ?? undefined,
-            provider_error_kind: callMeta.providerErrorKind || undefined,
-            used_fallback: callMeta.usedFallback || undefined,
-            fallback_reason: callMeta.fallbackReason || undefined,
-            cost_usd_nanos: callMeta.costUsdNanos ?? undefined,
-            turn_cost_usd_nanos: callMeta.turnCostUsdNanos,
-            cost_cap_usd_nanos: callMeta.costCapUsdNanos ?? undefined,
-            cost_complete: callMeta.costComplete,
-            replaced_tool_results:
-              optionalInt(projectionReport.replaced_tool_results) ?? undefined,
-            aggregate_replaced_tool_results:
-              optionalInt(projectionReport.aggregate_replaced_tool_results) ??
-              undefined,
-            aggregate_tool_result_budget:
-              optionalInt(projectionReport.aggregate_tool_result_budget) ??
-              undefined,
-            cache_read_tokens: cacheReadTokens,
-            cache_create_tokens: cacheCreateTokens,
-            prompt_cache_hit: cacheReadTokens > 0,
-            stable_prefix_hash:
-              this.lastPromptProjection?.stablePrefix.hash ?? undefined,
-            cache_break_classification:
-              this.lastPromptProjection?.cacheBreak.classification ?? undefined,
-            cache_break_reason:
-              this.lastPromptProjection?.cacheBreak.reasonCode ?? undefined,
-          })
-        }
-      }
-      tokenBudgetUsed += modelUsageTokens(response.usage)
+      tokenBudgetUsed += await this.recordModelUsage(
+        response,
+        history,
+        emit,
+        turnId,
+      )
       if (this.tokenBudget !== null && tokenBudgetUsed > this.tokenBudget) {
         await streamingTools?.cancel('token_budget_exceeded')
         throw new AgentTokenBudgetExceededError(
           this.tokenBudget,
           tokenBudgetUsed,
-        )
-      }
-      if (this.memoryStore) {
-        const lastUser = [...history].reverse().find((m) => m.role === 'user')
-        const userInput = lastUser
-          ? String(lastUser.content ?? '').slice(0, 500)
-          : ''
-        const aiOutput = String(response.content ?? '').slice(0, 500)
-        let cmdEvent: string | null = null
-        if (userInput.startsWith('/'))
-          cmdEvent = userInput.split(/\s+/)[0] ?? null
-        const inputTokens = response.usage
-          ? Number(response.usage.input ?? 0) || 0
-          : 0
-        const outputTokens = response.usage
-          ? Number(response.usage.output ?? 0) || 0
-          : 0
-        this.memoryStore.appendHistory(
-          'model_call',
-          `${this.lastModelCall.model || this.model} call: input=${inputTokens} output=${outputTokens}`,
-          {
-            extra: {
-              type: 'model_call',
-              model: this.lastModelCall.model || this.model,
-              provider: this.lastModelCall.provider || this.providerName,
-              model_entry_id:
-                this.lastModelCall.modelEntryId || this.modelEntryId,
-              route_reason: this.lastModelCall.routeReason || this.routeReason,
-              estimated_input_tokens: this.lastModelCall.estimatedInputTokens,
-              route_estimated_tokens: this.lastModelCall.routeEstimatedTokens,
-              usage_type: this.usageType,
-              user_input: userInput,
-              ai_output: aiOutput,
-              command_event: cmdEvent,
-              input_tokens: inputTokens,
-              output_tokens: outputTokens,
-              used_fallback: this.lastModelCall.usedFallback,
-              fallback_reason: this.lastModelCall.fallbackReason || null,
-              cost_usd_nanos: this.lastModelCall.costUsdNanos,
-              turn_cost_usd_nanos: this.lastModelCall.turnCostUsdNanos,
-              cost_cap_usd_nanos: this.lastModelCall.costCapUsdNanos,
-              cost_complete: this.lastModelCall.costComplete,
-              ...(turnId ? { turn_id: turnId } : {}),
-            },
-          },
         )
       }
 
@@ -1552,6 +1425,146 @@ export class AgentRunner implements RunnerModelHost {
       // a permissive Stop hook.
       return finalReply
     }
+  }
+
+  private async recordModelUsage(
+    response: LLMResponse,
+    history: Msg[],
+    emit: StreamEmitter | null,
+    turnId: string | null,
+  ): Promise<number> {
+    if (response.usage && Object.keys(response.usage).length) {
+      const callMeta = this.lastModelCall
+      const projectionReport = this.lastContextProjectionReport ?? {}
+      if (this.tokenTracker) {
+        this.tokenTracker.record(
+          String(callMeta.model || this.model),
+          response.usage,
+          {
+            provider: String(
+              callMeta.provider || this.providerName || 'unknown',
+            ),
+            usageType: this.usageType,
+            modelEntryId: String(callMeta.modelEntryId || this.modelEntryId),
+            routeReason: String(callMeta.routeReason || this.routeReason || ''),
+            estimatedInputTokens: optionalInt(callMeta.estimatedInputTokens),
+            routeEstimatedTokens: optionalInt(callMeta.routeEstimatedTokens),
+            costUsdNanos: callMeta.costUsdNanos,
+            costCapUsdNanos: callMeta.costCapUsdNanos,
+            costComplete: callMeta.costComplete,
+            usedFallback: callMeta.usedFallback,
+            fallbackReason: callMeta.fallbackReason || null,
+          },
+        )
+      }
+      if (emit) {
+        const cacheReadTokens = Math.max(
+          0,
+          Math.trunc(
+            Number(
+              response.usage.cache_read ??
+                response.usage.cache_read_input_tokens ??
+                0,
+            ) || 0,
+          ),
+        )
+        const cacheCreateTokens = Math.max(
+          0,
+          Math.trunc(
+            Number(
+              response.usage.cache_create ??
+                response.usage.cache_creation_input_tokens ??
+                0,
+            ) || 0,
+          ),
+        )
+        await emit({
+          event: 'context_usage',
+          used: contextUsedFromUsage(response.usage),
+          max: this.maxContext,
+          threshold: Math.trunc(this.maxContext * this.compactThreshold),
+          usage_type: this.usageType,
+          model_entry_id: callMeta.modelEntryId,
+          model: callMeta.model,
+          provider: callMeta.provider,
+          route_reason: callMeta.routeReason,
+          estimated_input_tokens: callMeta.estimatedInputTokens,
+          provider_retry_count:
+            optionalInt(callMeta.providerRetryCount) ?? undefined,
+          provider_error_kind: callMeta.providerErrorKind || undefined,
+          used_fallback: callMeta.usedFallback || undefined,
+          fallback_reason: callMeta.fallbackReason || undefined,
+          cost_usd_nanos: callMeta.costUsdNanos ?? undefined,
+          turn_cost_usd_nanos: callMeta.turnCostUsdNanos,
+          cost_cap_usd_nanos: callMeta.costCapUsdNanos ?? undefined,
+          cost_complete: callMeta.costComplete,
+          replaced_tool_results:
+            optionalInt(projectionReport.replaced_tool_results) ?? undefined,
+          aggregate_replaced_tool_results:
+            optionalInt(projectionReport.aggregate_replaced_tool_results) ??
+            undefined,
+          aggregate_tool_result_budget:
+            optionalInt(projectionReport.aggregate_tool_result_budget) ??
+            undefined,
+          cache_read_tokens: cacheReadTokens,
+          cache_create_tokens: cacheCreateTokens,
+          prompt_cache_hit: cacheReadTokens > 0,
+          stable_prefix_hash:
+            this.lastPromptProjection?.stablePrefix.hash ?? undefined,
+          cache_break_classification:
+            this.lastPromptProjection?.cacheBreak.classification ?? undefined,
+          cache_break_reason:
+            this.lastPromptProjection?.cacheBreak.reasonCode ?? undefined,
+        })
+      }
+    }
+
+    if (this.memoryStore) {
+      const lastUser = [...history].reverse().find((m) => m.role === 'user')
+      const userInput = lastUser
+        ? String(lastUser.content ?? '').slice(0, 500)
+        : ''
+      const aiOutput = String(response.content ?? '').slice(0, 500)
+      let cmdEvent: string | null = null
+      if (userInput.startsWith('/'))
+        cmdEvent = userInput.split(/\s+/)[0] ?? null
+      const inputTokens = response.usage
+        ? Number(response.usage.input ?? 0) || 0
+        : 0
+      const outputTokens = response.usage
+        ? Number(response.usage.output ?? 0) || 0
+        : 0
+      this.memoryStore.appendHistory(
+        'model_call',
+        `${this.lastModelCall.model || this.model} call: input=${inputTokens} output=${outputTokens}`,
+        {
+          extra: {
+            type: 'model_call',
+            model: this.lastModelCall.model || this.model,
+            provider: this.lastModelCall.provider || this.providerName,
+            model_entry_id:
+              this.lastModelCall.modelEntryId || this.modelEntryId,
+            route_reason: this.lastModelCall.routeReason || this.routeReason,
+            estimated_input_tokens: this.lastModelCall.estimatedInputTokens,
+            route_estimated_tokens: this.lastModelCall.routeEstimatedTokens,
+            usage_type: this.usageType,
+            user_input: userInput,
+            ai_output: aiOutput,
+            command_event: cmdEvent,
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            used_fallback: this.lastModelCall.usedFallback,
+            fallback_reason: this.lastModelCall.fallbackReason || null,
+            cost_usd_nanos: this.lastModelCall.costUsdNanos,
+            turn_cost_usd_nanos: this.lastModelCall.turnCostUsdNanos,
+            cost_cap_usd_nanos: this.lastModelCall.costCapUsdNanos,
+            cost_complete: this.lastModelCall.costComplete,
+            ...(turnId ? { turn_id: turnId } : {}),
+          },
+        },
+      )
+    }
+    return modelUsageTokens(response.usage)
   }
 
   private async emitTurnPhase(

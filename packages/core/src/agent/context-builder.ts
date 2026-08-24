@@ -11,26 +11,14 @@ import {
   type PromptProfile,
 } from '../config/local-config'
 import type { PromptContextPlan } from '../prompts/manifest'
-import type { PromptSectionOwner } from '../prompts/manifest'
 import { ContextAssembler } from '../context/assembler'
 import { ContextPlanner } from '../context/planner'
 import { ContextPolicyRegistry } from '../context/policy'
 import { PromptPolicy } from '../prompts/policy'
+import type { ContextSection } from '../context/contracts'
+export type { ContextSection } from '../context/contracts'
 
 const DEFAULT_MEMORY_BUDGET_CHARS = 12_000
-
-export interface ContextSection {
-  name: string
-  content: string
-  source: string
-  priority: number
-  budgetChars: number | null
-  version: string | null
-  scope?: string | null
-  stability?: 'stable' | 'dynamic'
-  owner?: PromptSectionOwner
-  ruleIds?: string[]
-}
 
 export interface ContextProjection {
   sections: ContextSection[]

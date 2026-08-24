@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { PromptSectionInput } from './manifest'
+import type { PromptSectionInput } from './contracts'
 
 export type PromptSectionStability = 'stable' | 'dynamic'
 export type PromptCacheBreakClassification =

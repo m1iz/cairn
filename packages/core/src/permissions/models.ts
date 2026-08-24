@@ -8,7 +8,7 @@ import type {
   PermissionRuleAction,
   PermissionRuleCandidate,
   PermissionRuleSource,
-} from './rules'
+} from './rule-types'
 
 export enum PermissionMode {
   ASK_BEFORE_EDIT = 'ask_before_edit',
