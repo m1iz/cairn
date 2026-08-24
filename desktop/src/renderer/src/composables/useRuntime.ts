@@ -14,7 +14,6 @@ import type {
   RuntimeHistoryItem,
   RuntimeStatus,
   SessionInfo,
-  TeamMessage,
   ThoughtSegment,
   ToolSegment,
   WsEvent,
@@ -30,20 +29,14 @@ import {
 } from '../runtime/chatProjection'
 import { sortRuntimeEvents } from '../runtime/events'
 import { pendingInteractionForSession } from '../components/chat/bottomControlPanel'
-import {
-  findSubagent,
-  findSubagentTool,
-  findToolSegment,
-} from '../runtime/selectors'
 import type { PlanProjection } from '../runtime/handlers/plans'
 import {
   createGoalProjectionState,
   type GoalProjectionState,
 } from '../runtime/handlers/goals'
-import { applySchedulerEventToBootstrap } from '../runtime/handlers/scheduler'
 import type { TaskProjection } from '../runtime/handlers/tasks'
 import { hasCoreBridge, invokeCore, onCoreEvent } from '../api/backend'
-import { applyTeamEventToBootstrap } from '../runtime/handlers/team'
+import { createAgentEventHandlers } from '../runtime/agentEventHandlers'
 import { schedulerMessageMeta } from '../runtime/schedulerMeta'
 import { isDraftSessionId } from '../runtime/sessionDrafts'
 import { settleRunningToolSegments } from '../runtime/toolStatus'
@@ -102,7 +95,6 @@ function nextId(prefix: string) {
   return `${prefix}-${random}`
 }
 
-const SCHEDULER_DONE_PENDING_MS = 2500
 const PROMPT_QUEUE_FULL_MESSAGE =
   '已有一条消息排队，请先编辑、插入或删除后再发送。'
 
@@ -1185,6 +1177,13 @@ export function useRuntime(options: {
     return true
   }
 
+  const agentEventHandlers = createAgentEventHandlers({
+    assistantForTurn,
+    updatePending,
+    boot: () => options.boot.value,
+    countTeamUnread: () => !rehydrating,
+  })
+
   function applyNonChatProjection(
     data: WsEvent,
     origin: 'live' | 'replay',
@@ -1273,16 +1272,16 @@ export function useRuntime(options: {
     if (applyDomainProjectionEvent(data)) return
 
     if (data.event.startsWith('team_')) {
-      handleTeamEvent(data)
+      agentEventHandlers.handleTeamEvent(data)
       return
     }
 
     if (data.event.startsWith('scheduler_')) {
-      handleSchedulerEvent(data)
+      agentEventHandlers.handleSchedulerEvent(data)
       return
     }
 
-    handleSubagentEvent(data)
+    agentEventHandlers.handleSubagentEvent(data)
   }
 
   /** live 专属副作用（pending 条/busy/boot 同步/装饰性 thought）；投影本体已由 reducer 完成。 */
@@ -1562,321 +1561,6 @@ export function useRuntime(options: {
     return raw < 1_000_000_000_000 ? Math.round(raw * 1000) : Math.round(raw)
   }
 
-  function handleSubagentEvent(data: WsEvent) {
-    const assistant = assistantForTurn((data as { turn_id?: string }).turn_id)
-    if (!assistant) return
-
-    if (data.event === 'subagent_start') {
-      const seg = findToolSegment(assistant, data.parent_id)
-      if (seg) {
-        seg.subagents ||= []
-        seg.subagents.push({
-          id: data.subagent_id,
-          agent_type: data.agent_type,
-          kind: 'subagent',
-          purpose: data.purpose,
-          status: 'running',
-          content: '',
-          tools: [],
-          startedAt: eventTimeMs(data),
-        })
-      }
-      updatePending(
-        `派遣子代理: ${data.agent_type || 'subagent'}`,
-        data.purpose || '',
-      )
-      return
-    }
-
-    if (data.event === 'subagent_delta') {
-      const sub = findSubagent(assistant, data.parent_id, data.subagent_id)
-      if (sub) sub.content = `${sub.content || ''}${data.delta || ''}`
-      updatePending(`子代理 ${data.agent_type || 'subagent'} 处理中...`, '')
-      return
-    }
-
-    if (data.event === 'subagent_tool_call') {
-      const sub = findSubagent(assistant, data.parent_id, data.subagent_id)
-      if (sub) {
-        sub.tools ||= []
-        sub.tools.push({
-          id: data.id,
-          name: data.name,
-          arguments: data.arguments || {},
-          status: 'running',
-          startedAt: eventTimeMs(data),
-        })
-      }
-      updatePending(`子代理调用: ${data.name}`, '')
-      return
-    }
-
-    if (data.event === 'subagent_tool_result') {
-      const tool = findSubagentTool(
-        assistant,
-        data.parent_id,
-        data.subagent_id,
-        data.id,
-      )
-      if (tool) {
-        finishTimedState(tool, eventTimeMs(data))
-        tool.summary = data.summary || '已完成'
-        tool.status = 'done'
-      }
-      return
-    }
-
-    if (data.event === 'subagent_tool_error') {
-      const tool = findSubagentTool(
-        assistant,
-        data.parent_id,
-        data.subagent_id,
-        data.id,
-      )
-      if (tool) {
-        finishTimedState(tool, eventTimeMs(data))
-        tool.summary = data.message || '工具执行出错'
-        tool.status = 'error'
-      }
-      updatePending(
-        `子代理工具 ${data.name || ''} 出错`,
-        data.message || '',
-        'error',
-      )
-      return
-    }
-
-    if (data.event === 'subagent_done') {
-      const sub = findSubagent(assistant, data.parent_id, data.subagent_id)
-      if (sub) {
-        finishTimedState(sub, eventTimeMs(data))
-        sub.status = 'done'
-        sub.summary = data.summary
-      }
-      updatePending('AI 正在整理结果...', '')
-      return
-    }
-
-    if (data.event === 'subagent_error') {
-      const sub = findSubagent(assistant, data.parent_id, data.subagent_id)
-      if (sub) {
-        finishTimedState(sub, eventTimeMs(data))
-        sub.status = 'error'
-        sub.error = data.message
-      }
-      updatePending(
-        `子代理 ${data.agent_type || ''} 出错`,
-        data.message || '',
-        'error',
-      )
-    }
-  }
-
-  function handleTeamEvent(data: WsEvent) {
-    updateTeamBootstrap(data)
-    const assistant = assistantForTurn((data as { turn_id?: string }).turn_id)
-
-    if (data.event === 'team_member_update') {
-      updatePending(
-        data.member?.status === 'working'
-          ? `队友 ${data.member.name} 正在办差`
-          : '',
-        '',
-      )
-      return
-    }
-
-    if (data.event === 'team_message') {
-      if (assistant && data.message) {
-        attachTeamMessage(assistant, data.message)
-      }
-      if (data.message?.to === 'lead')
-        updatePending('队友有新回复', data.message.from, 'done')
-      return
-    }
-
-    if (!assistant) return
-
-    if (data.event === 'team_run_start') {
-      const seg = findToolSegment(assistant, data.parent_id)
-      if (seg) {
-        seg.subagents ||= []
-        seg.subagents.push({
-          id: data.teammate,
-          kind: 'team',
-          agent_type: data.agent_type,
-          role: data.role,
-          purpose: data.purpose,
-          status: 'running',
-          content: '',
-          tools: [],
-          messages: [],
-          startedAt: eventTimeMs(data),
-        })
-      }
-      updatePending(`队友 ${data.teammate || ''} 已唤醒`, data.purpose || '')
-      return
-    }
-
-    if (data.event === 'team_run_delta') {
-      const sub = findSubagent(assistant, data.parent_id, data.teammate)
-      if (sub) sub.content = `${sub.content || ''}${data.delta || ''}`
-      updatePending(`队友 ${data.teammate || ''} 处理中...`, '')
-      return
-    }
-
-    if (data.event === 'team_run_tool_call') {
-      const sub = findSubagent(assistant, data.parent_id, data.teammate)
-      if (sub) {
-        sub.tools ||= []
-        sub.tools.push({
-          id: data.id,
-          name: data.name,
-          arguments: data.arguments || {},
-          status: 'running',
-          startedAt: eventTimeMs(data),
-        })
-      }
-      updatePending(`队友调用: ${data.name}`, data.teammate || '')
-      return
-    }
-
-    if (data.event === 'team_run_tool_result') {
-      const tool = findSubagentTool(
-        assistant,
-        data.parent_id,
-        data.teammate,
-        data.id,
-      )
-      if (tool) {
-        finishTimedState(tool, eventTimeMs(data))
-        tool.summary = data.summary || '已完成'
-        tool.status = 'done'
-      }
-      return
-    }
-
-    if (data.event === 'team_run_tool_error') {
-      const tool = findSubagentTool(
-        assistant,
-        data.parent_id,
-        data.teammate,
-        data.id,
-      )
-      if (tool) {
-        finishTimedState(tool, eventTimeMs(data))
-        tool.summary = data.message || '工具执行出错'
-        tool.status = 'error'
-      }
-      updatePending(
-        `队友工具 ${data.name || ''} 出错`,
-        data.message || '',
-        'error',
-      )
-      return
-    }
-
-    if (data.event === 'team_run_done') {
-      const sub = findSubagent(assistant, data.parent_id, data.teammate)
-      if (sub) {
-        finishTimedState(sub, eventTimeMs(data))
-        sub.status = 'done'
-        sub.summary = data.summary
-      }
-      updatePending('AI 正在整理队友回复...', '')
-      return
-    }
-
-    if (data.event === 'team_run_error') {
-      const sub = findSubagent(assistant, data.parent_id, data.teammate)
-      if (sub) {
-        finishTimedState(sub, eventTimeMs(data))
-        sub.status = 'error'
-        sub.error = data.message
-      }
-      updatePending(
-        `队友 ${data.teammate || ''} 出错`,
-        data.message || '',
-        'error',
-      )
-    }
-  }
-
-  function updateTeamBootstrap(data: WsEvent) {
-    const boot = options.boot.value
-    if (!boot) return
-    applyTeamEventToBootstrap(boot, data, { countUnread: !rehydrating })
-  }
-
-  function handleSchedulerEvent(data: WsEvent) {
-    updateSchedulerBootstrap(data)
-    if (data.event === 'scheduler_run_start') {
-      updatePending(
-        'Scheduler 正在执行任务',
-        data.job?.name || data.job?.id || '',
-      )
-      return
-    }
-    if (data.event === 'scheduler_run_done') {
-      updatePending(
-        'Scheduler 任务已完成',
-        data.job?.name || data.job?.id || '',
-        'done',
-        SCHEDULER_DONE_PENDING_MS,
-      )
-      return
-    }
-    if (data.event === 'scheduler_run_error') {
-      updatePending(
-        'Scheduler 任务失败',
-        data.error || data.job?.state?.lastError || '',
-        'error',
-      )
-      return
-    }
-    if (data.event === 'scheduler_run_cancelled') {
-      updatePending(
-        'Scheduler 任务已停止',
-        data.job?.name || data.job?.id || data.reason || '',
-        'done',
-        SCHEDULER_DONE_PENDING_MS,
-      )
-      return
-    }
-    if (data.event === 'scheduler_run_skipped') {
-      updatePending(
-        'Scheduler 任务已跳过',
-        data.job?.name || data.job?.id || data.reason || '',
-        'done',
-        SCHEDULER_DONE_PENDING_MS,
-      )
-      return
-    }
-    if (data.event === 'scheduler_run_interrupted') {
-      updatePending(
-        'Scheduler 任务已中断',
-        data.job?.name || data.job?.id || data.reason || '',
-        'done',
-        SCHEDULER_DONE_PENDING_MS,
-      )
-      return
-    }
-    if (data.event === 'scheduler_job_update') {
-      updatePending(
-        'Scheduler 任务已更新',
-        data.action || '',
-        'done',
-        SCHEDULER_DONE_PENDING_MS,
-      )
-    }
-  }
-
-  function updateSchedulerBootstrap(data: WsEvent) {
-    const boot = options.boot.value
-    if (!boot) return
-    applySchedulerEventToBootstrap(boot, data)
-  }
-
   function handleChatError(
     message: string,
     opts: {
@@ -2060,32 +1744,6 @@ export function useRuntime(options: {
         type: 'text',
         content: text,
       })
-  }
-
-  function findTeamSubagent(assistant: AssistantMessage, teammate: string) {
-    for (const segment of assistant.segments) {
-      if (segment.type !== 'tool') continue
-      const sub = segment.subagents?.find(
-        (item) => item.kind === 'team' && item.id === teammate,
-      )
-      if (sub) return sub
-    }
-    return undefined
-  }
-
-  function attachTeamMessage(
-    assistant: AssistantMessage,
-    message: TeamMessage,
-  ) {
-    const teammate = message.to === 'lead' ? message.from : message.to
-    if (!teammate || teammate === 'lead') return
-    const sub = findTeamSubagent(assistant, teammate)
-    if (!sub) return
-    sub.messages ||= []
-    if (!sub.messages.some((item) => item.id === message.id)) {
-      sub.messages.push(message)
-      sub.messages = sub.messages.slice(-8)
-    }
   }
 
   return {
