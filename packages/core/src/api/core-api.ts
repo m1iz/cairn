@@ -4,7 +4,6 @@
  * renderer 后续通过 IPC 调用这些方法。
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { randomUUID } from 'node:crypto'
 import { DRAFT_SESSION_PREFIX } from '../sessions/constants'
 import { dirname, join, resolve } from 'node:path'
 import { AttachmentStore } from '../attachments/store'
@@ -84,10 +83,7 @@ import {
   projectWorkspaceTerminal,
   type WorkspaceSnapshot,
 } from '../workspace/snapshot'
-import {
-  CommandPlatform,
-  type CommandExecutionContext,
-} from '../commands/platform'
+import { CommandPlatform } from '../commands/platform'
 import { SessionTransitionService } from '../commands/session-transition'
 import type {
   CommandCompletion,
@@ -100,6 +96,7 @@ import {
 } from '../runtime/event-repository'
 import { SessionRepository } from '../sessions/repository'
 import { completeCoreCommand } from './command-completion'
+import { CoreCommandExecutionService } from './command-execution'
 
 type StreamEmitter = (event: Record<string, unknown>) => void | Promise<void>
 type Dict = Record<string, unknown>
@@ -439,6 +436,47 @@ export class CoreApi {
       inheritWorkspaceBinding: (sourceSessionId, targetSessionId) =>
         this.workspaceBindings.inherit(sourceSessionId, targetSessionId),
     })
+    const commandExecution = new CoreCommandExecutionService({
+      reload: async () => {
+        await this.loop.refreshModelConfig()
+        await this.loop.reloadMcp()
+        this.loop.refreshRuntimeContext()
+      },
+      clearSession: (input) => this.sessionTransitionService.clear(input),
+      compactSession: (input) => this.memoryService.compact(input),
+      listActiveTasks: () => this.loop.activeTasks.list(),
+      pauseGoal: (goalId, sessionId, reason) =>
+        this.goalService.pause(goalId, sessionId, reason),
+      cancelTask: (taskId) => this.loop.activeTasks.cancel({ taskId }),
+      cancelSessionRuntime: (sessionId) =>
+        this.loop.sessionRuntimes.cancel(sessionId),
+      renameSession: async (sessionId, title) =>
+        await this.sessions.rename(sessionId, { title }),
+      getModelConfig: () => this.modelService.getConfig(),
+      activateModel: async (entryId) => {
+        await this.model.activate({ entryId })
+      },
+      setReasoningEffort: async (entryId, reasoningEffort) => {
+        await this.model.setReasoningEffort({ entryId, reasoningEffort })
+      },
+      setPermissionMode: (mode) => this.control.setPermissionMode(mode),
+      getControl: () => this.control.get(),
+      setControlMode: async (mode) => {
+        await this.control.setMode(mode)
+      },
+      listGoals: (sessionId) => this.goalService.list({ sessionId }),
+      resumeGoal: (goalId, sessionId) =>
+        this.goalService.resume(goalId, sessionId),
+      cancelGoal: (goalId, reason, sessionId) =>
+        this.goalService.cancel(goalId, reason, sessionId),
+      startGoal: async (outcome, sessionId) => {
+        await this.goalService.start({ outcome, sessionId })
+      },
+      getSubagent: (name) => this.loop.subagentRegistry.get(name),
+      subagentNames: () =>
+        this.loop.subagentRegistry.names({ includeAliases: false }),
+      submitPrompt: (input) => this.chat.submit(input),
+    })
     this.commandPlatform = new CommandPlatform({
       stateRoot: this.paths.stateRoot,
       listSkills: (sessionId) => this.commandSkillsForSession(sessionId),
@@ -446,8 +484,9 @@ export class CoreApi {
         await this.commandSessionContext(sessionId),
       isBusy: (sessionId) => this.commandSessionBusy(sessionId),
       executeBuiltin: async (context) =>
-        await this.executeBuiltinCommand(context),
-      submitSkill: async (context) => await this.submitSkillCommand(context),
+        await commandExecution.executeBuiltin(context),
+      submitSkill: async (context) =>
+        await commandExecution.submitSkill(context),
       queueAfterTurn: async ({ sessionId, requestId, run }) => {
         const promise = this.loop.sessionRuntimes.run(
           sessionId,
@@ -1638,322 +1677,6 @@ export class CoreApi {
       )
   }
 
-  private async executeBuiltinCommand(
-    context: CommandExecutionContext,
-  ): Promise<CommandInvocationResult> {
-    const { descriptor, parsed, sessionId, invocationId } = context
-    const name = descriptor.name
-    const tail = parsed.args.join(' ').trim()
-    const completed = (
-      code: string,
-      message: string,
-      data?: Record<string, unknown>,
-    ): CommandInvocationResult => ({
-      status: 'completed',
-      receipt: {
-        commandId: descriptor.id,
-        code,
-        message,
-        ...(data ? { data } : {}),
-      },
-    })
-
-    if (name === 'reload') {
-      await this.loop.refreshModelConfig()
-      await this.loop.reloadMcp()
-      this.loop.refreshRuntimeContext()
-      return completed('reloaded', '工作台状态已刷新。')
-    }
-    if (name === 'clear') {
-      const result = await this.sessionTransitionService.clear({
-        sessionId,
-        invocationId,
-      })
-      return completed('session_transitioned', '已创建全新上下文。', {
-        session: result.session as unknown as Record<string, unknown>,
-        previousSessionId: sessionId,
-      })
-    }
-    if (name === 'compact') {
-      const result = await this.memoryService.compact({
-        force: true,
-        sessionId,
-        instructions: tail,
-      })
-      return completed('compacted', '当前会话已压缩并保留摘要。', {
-        result: result as unknown as Record<string, unknown>,
-      })
-    }
-    if (name === 'copy')
-      return completed('copy_last_assistant', '已准备复制最后一条回复。')
-    if (name === 'stop') {
-      const tasks = this.loop.activeTasks
-        .list()
-        .filter((task) => task.session_id === sessionId)
-      for (const task of tasks) {
-        if (task.kind === 'goal')
-          await this.goalService.pause(
-            task.id.replace(/^goal:/, ''),
-            sessionId,
-            'user_stop',
-          )
-        this.loop.activeTasks.cancel({ taskId: task.id })
-      }
-      const actorCancelled = this.loop.sessionRuntimes.cancel(sessionId)
-      const cancelled = tasks.length > 0 || actorCancelled
-      return completed(
-        cancelled ? 'stop_requested' : 'nothing_running',
-        cancelled ? '已请求停止当前任务。' : '当前没有正在运行的任务。',
-      )
-    }
-    if (name === 'rename' && tail) {
-      const session = await this.sessions.rename(sessionId, { title: tail })
-      return completed(
-        'session_renamed',
-        `会话已重命名为“${session.title}”。`,
-        {
-          session: session as unknown as Record<string, unknown>,
-        },
-      )
-    }
-    if (name === 'model' && tail) {
-      const config = await this.modelService.getConfig()
-      const model = config.models.find(
-        (item) => item.entryId === tail || item.modelId === tail,
-      )
-      if (!model)
-        return {
-          status: 'rejected',
-          code: 'model_not_found',
-          message: `找不到模型：${tail}`,
-        }
-      await this.model.activate({ entryId: model.entryId })
-      return completed(
-        'model_activated',
-        `已切换到 ${model.effectiveDisplayName}。`,
-      )
-    }
-    if (name === 'effort' && tail) {
-      const config = await this.modelService.getConfig()
-      if (!config.current)
-        return {
-          status: 'rejected',
-          code: 'model_unavailable',
-          message: '当前没有可用模型。',
-        }
-      await this.model.setReasoningEffort({
-        entryId: config.current.entryId,
-        reasoningEffort: tail,
-      })
-      return completed('effort_updated', `思考强度已切换为 ${tail}。`)
-    }
-    if (name === 'permissions' && tail) {
-      if (tail === 'status')
-        return {
-          status: 'opened',
-          surface: 'permissions',
-          params: {
-            rawArgs: '',
-            invokedName: parsed.name,
-            commandId: descriptor.id,
-          },
-        }
-      const mode =
-        tail === 'ask'
-          ? 'ask_before_edit'
-          : tail === 'smart' || tail === 'edits'
-            ? 'smart_auto'
-            : tail === 'full' || tail === 'auto'
-              ? 'full_access'
-              : null
-      if (!mode)
-        return {
-          status: 'rejected',
-          code: 'invalid_permission_mode',
-          message: '权限模式必须是 ask、smart 或 full。',
-        }
-      this.control.setPermissionMode(mode)
-      return completed('permission_mode_updated', '执行权限已更新。', { mode })
-    }
-    if (name === 'plan') return await this.executePlanCommand(context)
-    if (name === 'goal') return await this.executeGoalCommand(context)
-    if (name === 'continue') {
-      const promptId = this.scheduleCommandPrompt(context, '继续执行')
-      return { status: 'submitted', promptId }
-    }
-
-    if (descriptor.uiSurface) {
-      return {
-        status: 'opened',
-        surface: descriptor.uiSurface,
-        params: {
-          rawArgs: parsed.args.join(' '),
-          options: parsed.options,
-          invokedName: parsed.name,
-          commandId: descriptor.id,
-        },
-      }
-    }
-    return completed('completed', '命令已执行。')
-  }
-
-  private async executePlanCommand(
-    context: CommandExecutionContext,
-  ): Promise<CommandInvocationResult> {
-    const tail = context.parsed.args.join(' ').trim()
-    const normalized = tail.toLowerCase()
-    if (!tail || normalized === 'status' || normalized === 'open')
-      return {
-        status: 'opened',
-        surface: 'plan',
-        params: { action: normalized || 'open' },
-      }
-    if (normalized === 'on') {
-      await this.control.setMode('plan')
-      return commandCompleted(context, 'plan_enabled', 'Plan 模式已开启。')
-    }
-    if (normalized === 'off') {
-      const control = this.control.get()
-      const restore =
-        control.mode === 'plan' && control.previous_mode
-          ? control.previous_mode
-          : 'smart_auto'
-      await this.control.setMode(restore)
-      return commandCompleted(context, 'plan_disabled', 'Plan 模式已关闭。')
-    }
-    await this.control.setMode('plan')
-    const promptId = this.scheduleCommandPrompt(
-      context,
-      tail,
-      context.parsed.raw,
-    )
-    return { status: 'submitted', promptId }
-  }
-
-  private async executeGoalCommand(
-    context: CommandExecutionContext,
-  ): Promise<CommandInvocationResult> {
-    const legacyAction = context.parsed.name.startsWith('goal-')
-      ? context.parsed.name.slice('goal-'.length)
-      : ''
-    const explicitTail = context.parsed.args.join(' ').trim()
-    const tail = legacyAction
-      ? `${legacyAction}${explicitTail ? ` ${explicitTail}` : ''}`
-      : explicitTail
-    if (!tail || tail === 'status' || tail === 'list')
-      return {
-        status: 'opened',
-        surface: 'goal',
-        params: { action: tail || 'open' },
-      }
-    const goals = await this.goalService.list({ sessionId: context.sessionId })
-    const active = goals.find(
-      (goal) => goal.status !== 'completed' && goal.status !== 'cancelled',
-    )
-    if (tail === 'pause' || tail === 'resume' || tail === 'cancel') {
-      if (!active)
-        return {
-          status: 'rejected',
-          code: 'goal_not_found',
-          message: '当前会话没有可操作的 Goal。',
-        }
-      if (tail === 'pause')
-        await this.goalService.pause(active.id, context.sessionId)
-      else if (tail === 'resume')
-        await this.goalService.resume(active.id, context.sessionId)
-      else
-        await this.goalService.cancel(
-          active.id,
-          'slash_command',
-          context.sessionId,
-        )
-      return commandCompleted(
-        context,
-        `goal_${tail}`,
-        `Goal 已${tail === 'pause' ? '暂停' : tail === 'resume' ? '恢复' : '取消'}。`,
-      )
-    }
-    const outcome = tail.replace(/^start\s+/i, '').trim()
-    if (!outcome)
-      return { status: 'opened', surface: 'goal', params: { action: 'start' } }
-    await this.goalService.start({ outcome, sessionId: context.sessionId })
-    return commandCompleted(context, 'goal_started', 'Goal 已启动。')
-  }
-
-  private async submitSkillCommand(
-    context: CommandExecutionContext,
-  ): Promise<CommandInvocationResult> {
-    const binding = context.descriptor.skill
-    if (!binding)
-      return {
-        status: 'rejected',
-        code: 'skill_binding_missing',
-        message: 'Skill 命令绑定缺失。',
-      }
-    const task = context.parsed.args.join(' ').trim()
-    let forkAgent = binding.agent
-    if (binding.context === 'fork') {
-      forkAgent =
-        forkAgent ||
-        (this.loop.subagentRegistry.get('quick_check')
-          ? 'quick_check'
-          : this.loop.subagentRegistry.names({ includeAliases: false })[0] ||
-            null)
-      const spec = forkAgent ? this.loop.subagentRegistry.get(forkAgent) : null
-      if (!spec)
-        return {
-          status: 'rejected',
-          code: 'skill_fork_agent_unavailable',
-          message: 'Skill 指定的子代理不可用。',
-        }
-      const unsupportedTools = binding.allowedTools.filter(
-        (tool) => !spec.toolNames.includes(tool),
-      )
-      if (unsupportedTools.length)
-        return {
-          status: 'rejected',
-          code: 'skill_fork_tool_scope_invalid',
-          message: `Skill 请求了子代理未获授权的工具：${unsupportedTools.join('、')}`,
-        }
-    }
-    const content =
-      binding.context === 'fork'
-        ? `[CONTROL:SKILL_FORK]\nAgent: ${forkAgent}\nAllowed tools: ${binding.allowedTools.join(', ') || 'agent definition'}\nEffort: ${binding.effort || 'inherit'}\nTask: ${task || '按 Skill 默认流程执行'}`
-        : task || '按 Skill 默认流程执行'
-    const promptId = this.scheduleCommandPrompt(
-      context,
-      content,
-      context.parsed.raw,
-      binding.name,
-    )
-    return { status: 'submitted', promptId }
-  }
-
-  private scheduleCommandPrompt(
-    context: CommandExecutionContext,
-    content: string,
-    displayContent = context.parsed.raw,
-    skillName?: string,
-  ): string {
-    const promptId = `command_prompt_${randomUUID().replace(/-/g, '').slice(0, 20)}`
-    void this.chat
-      .submit({
-        sessionId: context.sessionId,
-        content,
-        displayContent,
-        clientMessageId: promptId,
-        turnId: promptId,
-        delivery: 'queue',
-        source: 'command',
-        requestedSkills: skillName
-          ? [{ name: skillName, source: 'slash' }]
-          : [],
-        attachments: context.attachments,
-      })
-      .catch(() => undefined)
-    return promptId
-  }
-
   private async goalSummary(goal: GoalRecord) {
     const evidence = await this.loop.goalEvidenceLedger.listEvidence(goal.id)
     return goalSummary(
@@ -2059,23 +1782,6 @@ export class CoreApi {
       )
     }
     return session
-  }
-}
-
-function commandCompleted(
-  context: CommandExecutionContext,
-  code: string,
-  message: string,
-  data?: Record<string, unknown>,
-): CommandInvocationResult {
-  return {
-    status: 'completed',
-    receipt: {
-      commandId: context.descriptor.id,
-      code,
-      message,
-      ...(data ? { data } : {}),
-    },
   }
 }
 
