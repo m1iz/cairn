@@ -99,6 +99,7 @@ import {
   RuntimeEventRepositoryFactory,
 } from '../runtime/event-repository'
 import { SessionRepository } from '../sessions/repository'
+import { completeCoreCommand } from './command-completion'
 
 type StreamEmitter = (event: Record<string, unknown>) => void | Promise<void>
 type Dict = Record<string, unknown>
@@ -461,8 +462,15 @@ export class CoreApi {
         void promise.catch(() => undefined)
         return requestId
       },
-      completeDynamic: async (descriptor, rawArgs, cursor, sessionId) =>
-        await this.completeCommand(descriptor.name, rawArgs, cursor, sessionId),
+      completeDynamic: async (descriptor, rawArgs, _cursor, sessionId) =>
+        await completeCoreCommand(descriptor.name, rawArgs, sessionId, {
+          getModelConfig: () => this.modelService.getConfig(),
+          listSessions: () =>
+            this.loop.sessionStore.list({ includeArchived: true }),
+          listSkills: () => this.skillService.list(),
+          listTools: () => this.skillService.tools(),
+          searchWorkspace: (input) => this.workspaceFilesService.search(input),
+        }),
     })
     this.loop.setSchedulerAgentTurnSubmitter((payload) =>
       this.mainline.submitSchedulerTurn(payload),
@@ -1633,100 +1641,6 @@ export class CoreApi {
         409,
         '请先处理当前会话中的排队消息，再创建新上下文。',
       )
-  }
-
-  private async completeCommand(
-    name: string,
-    rawArgs: string,
-    _cursor: number,
-    sessionId: string,
-  ): Promise<CommandCompletion[]> {
-    const query = String(rawArgs ?? '')
-      .trim()
-      .toLowerCase()
-    if (name === 'model') {
-      const config = await this.modelService.getConfig()
-      return config.models
-        .filter((item) =>
-          [item.entryId, item.modelId, item.effectiveDisplayName]
-            .join(' ')
-            .toLowerCase()
-            .includes(query),
-        )
-        .map((item) => ({
-          value: item.entryId,
-          label: item.effectiveDisplayName,
-          description: `${item.provider} · ${item.modelId}`,
-          kind: 'model',
-        }))
-    }
-    if (name === 'effort') {
-      const config = await this.modelService.getConfig()
-      return (config.current?.reasoningEfforts ?? [])
-        .filter((value) => value.toLowerCase().includes(query))
-        .map((value) => ({ value, label: value, kind: 'reasoning_effort' }))
-    }
-    if (name === 'resume') {
-      return this.loop.sessionStore
-        .list({ includeArchived: true })
-        .filter((item) =>
-          [item.id, item.title, item.preview]
-            .join(' ')
-            .toLowerCase()
-            .includes(query),
-        )
-        .slice(0, 20)
-        .map((item) => ({
-          value: item.id,
-          label: item.title,
-          description: item.preview,
-          kind: 'session',
-        }))
-    }
-    if (name === 'skills') {
-      return this.skillService
-        .list()
-        .filter((item) => item.status === 'active' && item.name.includes(query))
-        .map((item) => ({
-          value: item.name,
-          label: item.name,
-          description: item.description,
-          kind: 'skill',
-        }))
-    }
-    if (name === 'tools') {
-      return this.skillService
-        .tools()
-        .filter((item) =>
-          `${item.name} ${item.description}`.toLowerCase().includes(query),
-        )
-        .slice(0, 30)
-        .map((item) => ({
-          value: item.name,
-          label: item.name,
-          description: item.description,
-          kind: item.source === 'mcp' ? 'mcp_tool' : 'tool',
-        }))
-    }
-    if (name === 'files' || name === 'diff') {
-      if (!query) return []
-      try {
-        const result = await this.workspaceFilesService.search({
-          sessionId,
-          query,
-          limit: 20,
-        })
-        return result.entries.map((entry) => ({
-          value: entry.path,
-          label: entry.name,
-          description: entry.path,
-          kind: entry.kind,
-        }))
-      } catch {
-        return []
-      }
-    }
-    return []
   }
 
   private async executeBuiltinCommand(
