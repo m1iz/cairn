@@ -1,27 +1,33 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   MessageGraphStore,
-  projectLegacyHistoryToGraph,
-  projectMessageGraphToLegacy,
+  projectHistoryToMessageGraph,
+  projectMessageGraphToHistory,
 } from './message-graph'
 
 function tmp(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
 }
 
-describe('MessageGraphStore v2', () => {
-  it('projects a V1 fixture to a parent-linked graph and back without changing legacy rows', () => {
-    const legacy = [
+describe('MessageGraphStore', () => {
+  it('projects history rows to a parent-linked graph and back without changing them', () => {
+    const history = [
       { seq: 1, role: 'user', content: 'first', turn_id: 'turn_1' },
       { seq: 2, role: 'assistant', content: 'answer', turn_id: 'turn_1' },
       { seq: 3, type: 'compact_event', archived: true },
       { seq: 4, role: 'user', content: 'second', turn_id: 'turn_2' },
     ]
 
-    const graph = projectLegacyHistoryToGraph(legacy, {
+    const graph = projectHistoryToMessageGraph(history, {
       sessionId: 'session_fixture',
     })
 
@@ -38,12 +44,12 @@ describe('MessageGraphStore v2', () => {
         parentLeafId: graph.nodes[1]!.id,
       }),
     ])
-    expect(projectMessageGraphToLegacy(graph)).toEqual([
-      legacy[0],
-      legacy[1],
-      legacy[3],
+    expect(projectMessageGraphToHistory(graph)).toEqual([
+      history[0],
+      history[1],
+      history[3],
     ])
-    expect(legacy[0]).not.toHaveProperty('message_id')
+    expect(history[0]).not.toHaveProperty('message_id')
   })
 
   it('recovers either branch from an explicitly selected leaf', () => {
@@ -80,7 +86,7 @@ describe('MessageGraphStore v2', () => {
     expect(store.snapshot().leafId).toBe(second.id)
   })
 
-  it('commits a partial whose V1 row landed before a crash and tombstones a true orphan', () => {
+  it('commits a partial whose history row landed before a crash and tombstones a true orphan', () => {
     const root = tmp('cairn-message-orphan-')
     const store = new MessageGraphStore(root)
     const landed = store.beginMessage({
@@ -95,7 +101,7 @@ describe('MessageGraphStore v2', () => {
     })
 
     const reopened = new MessageGraphStore(root, {
-      legacyRows: [
+      historyRows: [
         {
           seq: 7,
           role: 'user',
@@ -147,7 +153,7 @@ describe('MessageGraphStore v2', () => {
 
   it('isolates malformed sidecar lines and never copies their raw content into diagnostics', () => {
     const root = tmp('cairn-message-corrupt-')
-    const path = join(root, 'message_graph.v2.jsonl')
+    const path = join(root, 'message_graph.jsonl')
     writeFileSync(path, '{"secret":"do-not-leak"\n', 'utf8')
 
     const store = new MessageGraphStore(root)
@@ -159,6 +165,46 @@ describe('MessageGraphStore v2', () => {
       'do-not-leak',
     )
     expect(readFileSync(path, 'utf8')).toContain('do-not-leak')
+  })
+
+  it('moves the previous graph filename and continues it with the canonical schema', () => {
+    const root = tmp('cairn-message-graph-migration-')
+    const initial = new MessageGraphStore(root)
+    initial.appendCommitted({
+      role: 'user',
+      content: 'before migration',
+      turnId: 'turn_before',
+      historySeq: 1,
+    })
+    const currentPath = join(root, 'message_graph.jsonl')
+    const previousPath = join(root, 'message_graph.v2.jsonl')
+    writeFileSync(
+      currentPath,
+      readFileSync(currentPath, 'utf8').replaceAll(
+        'cairn.message-graph-event',
+        'cairn.message-graph-event.v2',
+      ),
+      'utf8',
+    )
+    renameSync(currentPath, previousPath)
+
+    const reopened = new MessageGraphStore(root)
+    reopened.appendCommitted({
+      role: 'assistant',
+      content: 'after migration',
+      turnId: 'turn_after',
+      historySeq: 2,
+    })
+
+    expect(existsSync(previousPath)).toBe(false)
+    expect(existsSync(currentPath)).toBe(true)
+    expect(reopened.project().map((row) => row.content)).toEqual([
+      'before migration',
+      'after migration',
+    ])
+    expect(
+      readFileSync(currentPath, 'utf8').trim().split('\n').at(-1),
+    ).toContain('"schemaVersion":"cairn.message-graph-event"')
   })
 
   it('replays durable prompt queue transitions after reopening the session', () => {

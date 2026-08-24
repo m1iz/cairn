@@ -30,7 +30,7 @@ export class ConversationStore {
     this.checkpointFile = join(this.sessionDir, '_checkpoint.json')
     this.historyLog = new HistoryLog(this.sessionDir, this.historyFile)
     this.messageGraph = new MessageGraphStore(this.sessionDir, {
-      legacyRows: this.historyLog.loadActiveRows(),
+      historyRows: this.historyLog.loadActiveRows(),
     })
   }
 
@@ -57,7 +57,7 @@ export class ConversationStore {
           role,
           content: normalizedContent,
           turnId: typeof row.turn_id === 'string' ? row.turn_id : null,
-          legacy: row,
+          history: row,
         })
       : null
     if (partial) row.message_id = partial.id
@@ -66,7 +66,7 @@ export class ConversationStore {
       if (partial)
         this.messageGraph.commitMessage(partial.id, {
           historySeq: Number(written.seq),
-          legacy: written,
+          history: written,
         })
     } catch (error) {
       if (partial)

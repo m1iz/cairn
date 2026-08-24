@@ -31,7 +31,7 @@ flowchart LR
 
 - 在 Provider registry / factory 增加实现，不从 renderer 拼接未经验证的 endpoint 或请求体。
 - 更新 `model-config` schema、迁移、credential 解析和 availability 诊断。
-- 当前模型配置契约是 schema v2：可以保存多个条目，但只有一个全局 `activeModelId`。
+- 当前模型配置契约可以保存多个条目，但只有一个全局 `activeModelId`。
 - `models[].pricing` 和顶层 `policy` 都是可选、默认关闭的用户配置。不得内置会过期的价格、从模型顺序推断 fallback，或把缺失 cost 当作 0。修改 schema 时同步 ModelService、`model.savePolicy` operation、renderer 模型面板、ConfigResolver provenance、TokenTracker 和 runtime event 类型。
 - 跨模型调用只能接在 SamplingCoordinator 的 terminal 之后；新增 trigger 时必须证明不会对 auth/schema/context/billing/content-filter/unknown 做隐式切换。切换前只清理 provider projection 的模型绑定 reasoning/signature，不能改写 canonical history；provisional stream/tool callback 必须有提交或丢弃边界。
 - Provider SDK 的 retry 必须保持 0；网络、429、5xx、Retry-After、deadline 和 abort 只能由 `SamplingCoordinator` 消费统一预算。请求形状兼容恢复只能更新 provider capability，再由 coordinator 发起并记录下一 attempt，禁止在 provider 内隐藏二次提交。
@@ -69,7 +69,7 @@ flowchart LR
 - 新增 shell/terminal/command-hook 入口必须复用 `analyzeShellCommandFailClosed` 与 `ShellCommandAnalyzer` capability。allow 只能来自单命令、无 redirect/env/dynamic/compound 且 flags 通过正向证明的 AST；旧 regex/token resolver 只能收紧。parser exception、invalid adapter result、复杂度上限和未知结构必须在 spawn 前转 Ask 或 deny，禁止降级为字符串首词 allowlist。
 - 新增权限来源通过 `PermissionRuleLayerInput.source` 由可信 composition root 注入，不得让 project/local rule 内容填写自己的 trust。规则解析后保留 source、candidate 和 precedence；任何新策略层都要覆盖 `deny > ask > allow`、同 action trust 顺序、引号混淆、命令边界和低信任层不可放宽测试。
 - 新工具必须兼容 Runner 两阶段批量预检：schema、Guard、PreToolUse、workspace 和 Permission 在副作用前完成；批次中任一失败不得让其他调用先执行。PermissionRequest Hook 的 `allow` 不能替代用户审批，updated input 必须触发整批重新判权。
-- Permission interaction 只能公开 v2 安全摘要和稳定 option ID。fingerprint、normalize 后参数、规则 trace/explanation 与一次性凭据只能进入私有 PermissionRequestStore/Diagnostics；不得新增 renderer 或 runtime event 字段泄漏这些数据。
+- Permission interaction 只能公开安全摘要和稳定 option ID。fingerprint、normalize 后参数、规则 trace/explanation 与一次性凭据只能进入私有 PermissionRequestStore/Diagnostics；不得新增 renderer 或 runtime event 字段泄漏这些数据。
 - Permission allow 与 OS containment 必须分开建模。新的命令入口复用 `OwnedProcessRunner` 与 `ProcessContainmentReceipt`；不得直接 `spawn`/`exec` 后声称 sandboxed。`run_command` 一律使用 required，backend unavailable/error/unsupported 或 runner 返回 `unsandboxed` 时 fail closed；如其他只读诊断入口确需 preferred，必须独立建模、记录真实 receipt，不能借此放宽 `run_command`。
 - 扩展 sandbox backend 时同步 capability probe、固定 argv/profile 生成、stateRoot 隐藏、workspace 外读写、symlink、子进程、network 和 backend-missing 测试。profile/helper 不接受 renderer、模型或远程配置提供的命令、路径模板或 argv。
 - 联网工具把外部内容视为不可信输入，不把网页或 MCP 返回值当作系统指令。
@@ -108,7 +108,7 @@ flowchart LR
 
 - 确定事件是 UI 投影，不是领域权威事实。
 - Payload 有界且可序列化，包含 session 归属和去重顺序；不得默认携带原始 prompt、secret 或未经筛选的工具输入/输出。
-- 新的异步边界优先提供 request / attempt / task / parent task / tool call correlation ID 和稳定 idempotency key；V2 writer 仍须遵守 feature flag 迁移边界。
+- 新的异步边界优先提供 request / attempt / task / parent task / tool call correlation ID 和稳定 idempotency key；writer 必须直接遵守当前统一契约。
 - 诊断事件标记 `visibility=diagnostic`，只进入本机诊断回放，不能进入模型上下文。
 - 同步 Core union、main bridge、renderer `types.ts`、reducer / handler、`useRuntime`。
 - 同时测试 live、replay、bootstrap、重复 event 和切换 session。

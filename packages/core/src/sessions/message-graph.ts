@@ -5,6 +5,7 @@ import {
   lstatSync,
   mkdirSync,
   readFileSync,
+  renameSync,
   statSync,
   writeFileSync,
 } from 'node:fs'
@@ -13,9 +14,12 @@ import { nowIsoUtc8 } from '../memory/time-utc8'
 
 type Row = Record<string, unknown>
 
-const SIDECAR_SCHEMA = 'cairn.message-graph-event.v2' as const
-const MAX_SIDECAR_BYTES = 16 * 1024 * 1024
-const MAX_SIDECAR_EVENTS = 50_000
+const MESSAGE_GRAPH_EVENT_SCHEMA = 'cairn.message-graph-event' as const
+const PREVIOUS_MESSAGE_GRAPH_EVENT_SCHEMA =
+  'cairn.message-graph-event.v2' as const
+const MESSAGE_GRAPH_SCHEMA = 'cairn.message-graph' as const
+const MAX_GRAPH_BYTES = 16 * 1024 * 1024
+const MAX_GRAPH_EVENTS = 50_000
 
 export type MessageNodeStatus = 'partial' | 'committed' | 'tombstoned'
 
@@ -30,7 +34,7 @@ export interface MessageGraphNode {
   createdAt: string
   updatedAt: string
   tombstoneReason: string | null
-  legacy: Row
+  history: Row
 }
 
 export interface MessageCompactBoundary {
@@ -82,7 +86,7 @@ export interface PromptQueueRecord {
 }
 
 export interface MessageGraphSnapshot {
-  schemaVersion: 'cairn.message-graph.v2'
+  schemaVersion: typeof MESSAGE_GRAPH_SCHEMA
   revision: string
   leafId: string | null
   nodes: MessageGraphNode[]
@@ -92,11 +96,11 @@ export interface MessageGraphSnapshot {
 }
 
 export interface MessageGraphStoreOptions {
-  legacyRows?: Row[]
+  historyRows?: Row[]
 }
 
 interface GraphEvent {
-  schemaVersion: typeof SIDECAR_SCHEMA
+  schemaVersion: typeof MESSAGE_GRAPH_EVENT_SCHEMA
   seq: number
   eventId: string
   type:
@@ -115,6 +119,8 @@ interface GraphEvent {
   reason?: string
   leafId?: string | null
   boundary?: MessageCompactBoundary
+  history?: Row
+  /** Read compatibility for events written before the graph became canonical. */
   legacy?: Row
   prompt?: PromptQueueRecord
   promptId?: string
@@ -133,13 +139,14 @@ export class MessageGraphStore {
 
   constructor(sessionDir: string, opts: MessageGraphStoreOptions = {}) {
     this.sessionDir = sessionDir
-    this.path = join(sessionDir, 'message_graph.v2.jsonl')
-    this.ensureSidecar()
+    this.path = join(sessionDir, 'message_graph.jsonl')
+    this.migratePreviousGraphFile()
+    this.ensureGraphFile()
     this.replay()
-    const legacyRows = Array.isArray(opts.legacyRows) ? opts.legacyRows : []
-    if (this.nodes.size === 0 && legacyRows.some(isLegacyMessageRow))
-      this.bootstrapLegacy(legacyRows)
-    this.reconcile(legacyRows)
+    const historyRows = Array.isArray(opts.historyRows) ? opts.historyRows : []
+    if (this.nodes.size === 0 && historyRows.some(isHistoryMessageRow))
+      this.bootstrapHistory(historyRows)
+    this.reconcile(historyRows)
   }
 
   beginMessage(input: {
@@ -148,7 +155,7 @@ export class MessageGraphStore {
     role: string
     content: unknown
     turnId?: string | null
-    legacy?: Row | null
+    history?: Row | null
   }): MessageGraphNode {
     const id = cleanId(input.id) || randomUUID()
     if (this.nodes.has(id)) throw new Error(`duplicate message id: ${id}`)
@@ -169,7 +176,7 @@ export class MessageGraphStore {
       createdAt: now,
       updatedAt: now,
       tombstoneReason: null,
-      legacy: input.legacy ? jsonSafeRow(input.legacy) : {},
+      history: input.history ? jsonSafeRow(input.history) : {},
     }
     this.appendEvent({ type: 'node_added', node })
     return cloneNode(node)
@@ -177,7 +184,7 @@ export class MessageGraphStore {
 
   commitMessage(
     nodeId: string,
-    opts: { historySeq?: number | null; legacy?: Row | null } = {},
+    opts: { historySeq?: number | null; history?: Row | null } = {},
   ): MessageGraphNode {
     const node = this.requiredNode(nodeId)
     if (node.status === 'tombstoned')
@@ -188,7 +195,7 @@ export class MessageGraphStore {
       type: 'node_committed',
       nodeId: node.id,
       ...(historySeq === null ? {} : { historySeq }),
-      ...(opts.legacy ? { legacy: normalizedLegacyRow(opts.legacy) } : {}),
+      ...(opts.history ? { history: normalizedHistoryRow(opts.history) } : {}),
     })
     return cloneNode(this.requiredNode(node.id))
   }
@@ -200,7 +207,7 @@ export class MessageGraphStore {
     content: unknown
     turnId?: string | null
     historySeq?: number | null
-    legacy?: Row | null
+    history?: Row | null
   }): MessageGraphNode {
     const node = this.beginMessage(input)
     return this.commitMessage(node.id, { historySeq: input.historySeq })
@@ -372,7 +379,7 @@ export class MessageGraphStore {
   }
 
   project(leafId: string | null = this.leafId): Row[] {
-    return projectMessageGraphToLegacy(this.snapshot(), { leafId })
+    return projectMessageGraphToHistory(this.snapshot(), { leafId })
   }
 
   snapshot(): MessageGraphSnapshot {
@@ -383,7 +390,7 @@ export class MessageGraphStore {
     const prompts = [...this.prompts.values()].map(clonePrompt)
     const diagnostics = this.diagnostics.map((item) => ({ ...item }))
     return {
-      schemaVersion: 'cairn.message-graph.v2',
+      schemaVersion: MESSAGE_GRAPH_SCHEMA,
       revision: digest({
         leafId: this.leafId,
         nodes,
@@ -399,11 +406,11 @@ export class MessageGraphStore {
     }
   }
 
-  reconcile(legacyRows: Row[]): void {
+  reconcile(historyRows: Row[]): void {
     const byMessageId = new Map<string, Row>()
-    for (const row of legacyRows) {
+    for (const row of historyRows) {
       const id = cleanId(row.message_id)
-      if (id && isLegacyMessageRow(row)) byMessageId.set(id, row)
+      if (id && isHistoryMessageRow(row)) byMessageId.set(id, row)
     }
     for (const node of [...this.nodes.values()]) {
       if (node.status !== 'partial') continue
@@ -411,7 +418,7 @@ export class MessageGraphStore {
       if (landed) {
         this.commitMessage(node.id, {
           historySeq: positiveIntOrNull(landed.seq),
-          legacy: landed,
+          history: landed,
         })
       } else {
         this.tombstoneMessage(node.id, 'orphan_partial')
@@ -419,14 +426,25 @@ export class MessageGraphStore {
     }
   }
 
-  private ensureSidecar(): void {
+  private migratePreviousGraphFile(): void {
+    const previousPath = join(this.sessionDir, 'message_graph.v2.jsonl')
+    if (existsSync(this.path) || !existsSync(previousPath)) return
+    const stat = lstatSync(previousPath)
+    if (stat.isSymbolicLink() || !stat.isFile())
+      throw new Error('previous message graph must be a regular file')
+    if (stat.size > MAX_GRAPH_BYTES)
+      throw new Error('previous message graph exceeds capacity')
+    renameSync(previousPath, this.path)
+  }
+
+  private ensureGraphFile(): void {
     mkdirSync(this.sessionDir, { recursive: true })
     if (existsSync(this.path)) {
       const stat = lstatSync(this.path)
       if (stat.isSymbolicLink() || !stat.isFile())
         throw new Error('message graph sidecar must be a regular file')
-      if (stat.size > MAX_SIDECAR_BYTES)
-        throw new Error('message graph sidecar exceeds capacity')
+      if (stat.size > MAX_GRAPH_BYTES)
+        throw new Error('message graph exceeds capacity')
       return
     }
     writeFileSync(this.path, '', { encoding: 'utf8', flag: 'wx' })
@@ -439,7 +457,7 @@ export class MessageGraphStore {
     for (let index = 0; index < lines.length; index += 1) {
       const text = lines[index]!.trim()
       if (!text) continue
-      if (accepted >= MAX_SIDECAR_EVENTS) {
+      if (accepted >= MAX_GRAPH_EVENTS) {
         this.addDiagnostic(
           'event_limit_exceeded',
           index + 1,
@@ -473,8 +491,8 @@ export class MessageGraphStore {
     }
   }
 
-  private bootstrapLegacy(rows: Row[]): void {
-    const projected = projectLegacyHistoryToGraph(rows, {
+  private bootstrapHistory(rows: Row[]): void {
+    const projected = projectHistoryToMessageGraph(rows, {
       sessionId: this.sessionDir,
     })
     for (const node of projected.nodes)
@@ -488,17 +506,17 @@ export class MessageGraphStore {
   private appendEvent(
     input: Omit<GraphEvent, 'schemaVersion' | 'seq' | 'eventId' | 'ts'>,
   ): void {
-    if (statSync(this.path).size >= MAX_SIDECAR_BYTES)
+    if (statSync(this.path).size >= MAX_GRAPH_BYTES)
       throw new Error('message graph sidecar exceeds capacity')
     const event: GraphEvent = {
-      schemaVersion: SIDECAR_SCHEMA,
+      schemaVersion: MESSAGE_GRAPH_EVENT_SCHEMA,
       seq: this.nextSeq,
       eventId: randomUUID(),
       ts: nowIsoUtc8(),
       ...jsonSafe(input),
     } as GraphEvent
     const line = `${JSON.stringify(event)}\n`
-    if (statSync(this.path).size + Buffer.byteLength(line) > MAX_SIDECAR_BYTES)
+    if (statSync(this.path).size + Buffer.byteLength(line) > MAX_GRAPH_BYTES)
       throw new Error('message graph sidecar exceeds capacity')
     appendFileSync(this.path, line, 'utf8')
     this.nextSeq += 1
@@ -534,8 +552,9 @@ export class MessageGraphStore {
       if (!node || node.status === 'tombstoned') return false
       node.status = 'committed'
       node.historySeq = positiveIntOrNull(event.historySeq)
-      if (event.legacy && isRecord(event.legacy))
-        node.legacy = normalizedLegacyRow(event.legacy)
+      const history = event.history ?? event.legacy
+      if (history && isRecord(history))
+        node.history = normalizedHistoryRow(history)
       node.updatedAt = event.ts
       this.leafId = node.id
       return true
@@ -613,7 +632,7 @@ export class MessageGraphStore {
   }
 }
 
-export function projectLegacyHistoryToGraph(
+export function projectHistoryToMessageGraph(
   rows: Row[],
   opts: { sessionId: string },
 ): MessageGraphSnapshot {
@@ -624,7 +643,7 @@ export function projectLegacyHistoryToGraph(
     const row = rows[index]!
     if (row.type === 'compact_event') {
       compactBoundaries.push({
-        id: `legacy-boundary-${digest({ sessionId: opts.sessionId, index, row }).slice(0, 24)}`,
+        id: `history-boundary-${digest({ sessionId: opts.sessionId, index, row }).slice(0, 24)}`,
         parentLeafId: parentId,
         compactedUntilHistorySeq: nonNegativeInt(row.seq),
         compactionId: cleanId(row.compaction_id),
@@ -632,11 +651,11 @@ export function projectLegacyHistoryToGraph(
       })
       continue
     }
-    if (!isLegacyMessageRow(row)) continue
-    const legacy = normalizedLegacyRow(row)
+    if (!isHistoryMessageRow(row)) continue
+    const history = normalizedHistoryRow(row)
     const id: string =
       cleanId(row.message_id) ||
-      `legacy-${digest({ sessionId: opts.sessionId, index, parentId, legacy }).slice(0, 32)}`
+      `history-${digest({ sessionId: opts.sessionId, index, parentId, history }).slice(0, 32)}`
     const node: MessageGraphNode = {
       id,
       parentId,
@@ -648,13 +667,13 @@ export function projectLegacyHistoryToGraph(
       createdAt: String(row.ts ?? ''),
       updatedAt: String(row.ts ?? ''),
       tombstoneReason: null,
-      legacy,
+      history,
     }
     nodes.push(node)
     parentId = id
   }
   const snapshot: MessageGraphSnapshot = {
-    schemaVersion: 'cairn.message-graph.v2',
+    schemaVersion: MESSAGE_GRAPH_SCHEMA,
     revision: '',
     leafId: parentId,
     nodes,
@@ -666,7 +685,7 @@ export function projectLegacyHistoryToGraph(
   return snapshot
 }
 
-export function projectMessageGraphToLegacy(
+export function projectMessageGraphToHistory(
   snapshot: MessageGraphSnapshot,
   opts: { leafId?: string | null } = {},
 ): Row[] {
@@ -683,7 +702,7 @@ export function projectMessageGraphToLegacy(
     cursor = node.parentId
   }
   return chain.reverse().map((node) => {
-    if (Object.keys(node.legacy).length) return jsonSafeRow(node.legacy)
+    if (Object.keys(node.history).length) return jsonSafeRow(node.history)
     const row: Row = { role: node.role, content: jsonSafe(node.content) }
     if (node.historySeq !== null) row.seq = node.historySeq
     if (node.turnId) row.turn_id = node.turnId
@@ -692,7 +711,12 @@ export function projectMessageGraphToLegacy(
 }
 
 function normalizeEvent(value: unknown): GraphEvent | null {
-  if (!isRecord(value) || value.schemaVersion !== SIDECAR_SCHEMA) return null
+  if (!isRecord(value)) return null
+  if (
+    value.schemaVersion !== MESSAGE_GRAPH_EVENT_SCHEMA &&
+    value.schemaVersion !== PREVIOUS_MESSAGE_GRAPH_EVENT_SCHEMA
+  )
+    return null
   const type = String(value.type ?? '')
   if (
     ![
@@ -709,7 +733,10 @@ function normalizeEvent(value: unknown): GraphEvent | null {
     return null
   const seq = positiveIntOrNull(value.seq)
   if (!seq || !cleanId(value.eventId)) return null
-  return jsonSafe(value) as unknown as GraphEvent
+  return {
+    ...(jsonSafe(value) as unknown as GraphEvent),
+    schemaVersion: MESSAGE_GRAPH_EVENT_SCHEMA,
+  }
 }
 
 function normalizeNode(value: unknown): MessageGraphNode | null {
@@ -732,7 +759,11 @@ function normalizeNode(value: unknown): MessageGraphNode | null {
     tombstoneReason: value.tombstoneReason
       ? safeReason(value.tombstoneReason)
       : null,
-    legacy: isRecord(value.legacy) ? jsonSafeRow(value.legacy) : {},
+    history: isRecord(value.history)
+      ? jsonSafeRow(value.history)
+      : isRecord(value.legacy)
+        ? jsonSafeRow(value.legacy)
+        : {},
   }
 }
 
@@ -799,13 +830,13 @@ function normalizePromptState(value: unknown): PromptQueueState | null {
     : null
 }
 
-function normalizedLegacyRow(row: Row): Row {
+function normalizedHistoryRow(row: Row): Row {
   const out = jsonSafeRow(row)
   delete out.message_id
   return out
 }
 
-function isLegacyMessageRow(row: Row): boolean {
+function isHistoryMessageRow(row: Row): boolean {
   return (
     typeof row.role === 'string' &&
     'content' in row &&

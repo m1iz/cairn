@@ -59,8 +59,8 @@ Cairn 区分两个互不重叠的根目录概念：
     <session-id>/
       meta.jsonl
       history.jsonl
-      message_graph.v2.jsonl # append-only message/branch/prompt queue sidecar
-      runtime/events.jsonl # 兼容平面 V1 / EventEnvelope V2 的 renderer 回放日志
+      message_graph.jsonl # append-only message/branch/prompt queue graph
+      runtime/events.jsonl # EventEnvelope 与 renderer projection 回放日志
       _checkpoint.json
       turn-changes/       # 活动/暂停 turn 的私有变更基线与归因账本
       prompt-snapshots/
@@ -149,9 +149,9 @@ Code Graph 最多索引 200 个受支持文件、累计 5 MiB、单文件 5 MiB�
 
 ### 桌面工作台状态与终端
 
-`memory/sidebar_state.json` 在原有左侧项目/会话折叠和排序字段之外保存 `right_workspace` V3：`workbenchOpen`、520–960px 的 `width`、`filesTreeWidth` 与 `launcher | review | terminal | files` 当前 pane。Environment 在桌面宽屏由布局规则常驻，不再保存可关闭偏好；打开工作区时原位替代，关闭后恢复。旧 V1/V2 状态在读取时迁移，已有 Review/Terminal/Files pane 和宽度继续保留。
+`memory/sidebar_state.json` 在原有左侧项目/会话折叠和排序字段之外保存当前 `right_workspace`：`workbenchOpen`、520–960px 的 `width`、`filesTreeWidth` 与 `launcher | review | terminal | files` 当前 pane。Environment 在桌面宽屏由布局规则常驻，不再保存可关闭偏好；打开工作区时原位替代，关闭后恢复。旧状态在读取时迁移，已有 Review/Terminal/Files pane 和宽度继续保留。
 
-活动或暂停用户任务的 `turn-changes/<session>/<executionId>.json` 只保存归因所需的受控基线，不把文件正文写入聊天或 runtime event。Ask、Permission、Plan 审批与明确继续共享原 `executionId`；普通新请求建立新账本。受管文件工具成功后，Core 相对任务起点计算净创建、修改、删除、重命名、二进制与 `+/-` 行数；恢复原状的文件退出集合。任务终态后删除基线正文，只保留有界 V2 `turn_change_snapshot` 公开统计。已证明只读的 Shell 不触碰账本，只有成功且无法精确归因的 workspace 写入才降为 `partial`，不能伪造总数。
+活动或暂停用户任务的 `turn-changes/<session>/<executionId>.json` 只保存归因所需的受控基线，不把文件正文写入聊天或 runtime event。Ask、Permission、Plan 审批与明确继续共享原 `executionId`；普通新请求建立新账本。受管文件工具成功后，Core 相对任务起点计算净创建、修改、删除、重命名、二进制与 `+/-` 行数；恢复原状的文件退出集合。任务终态后删除基线正文，只保留有界 `turn_change_snapshot` 公开统计。已证明只读的 Shell 不触碰账本，只有成功且无法精确归因的 workspace 写入才降为 `partial`，不能伪造总数。
 
 `control/plan-execution-settlements.json` 保存 Plan 执行动作的私有 prepared/applied 事务，`control/core-action.key` 只用于本机 Core 签名。记录绑定 interaction、session、Plan、Step、审批代次和验证 requirement；不会把签名密钥、完整诊断或文件正文暴露给 renderer。启动恢复会幂等重放未完成结算，已写入 Plan metadata 的 receipt 防止同一动作重复生效。
 
@@ -169,9 +169,9 @@ Code Graph 最多索引 200 个受支持文件、累计 5 MiB、单文件 5 MiB�
 
 `queued` 表示 handler 尚未被调用，启动时可用同一 identity恢复一次；`running` 可能已经产生非幂等副作用，绝不自动 replay。Scheduler 会用 `task_id` 只读检查 Task terminal：可证明 completed/failed/cancelled/interrupted 时只补齐 Scheduler receipt，否则收敛为 `interrupted`。完成 Task 与写 Scheduler terminal 之间的崩溃因此不会触发第二次 Agent effect。`latest` 和 `catch-up-one` 的启动补跑同样每个 Job 最多一个；`skip` 只写聚合 receipt并移动到未来触发点。
 
-`history.jsonl` 继续是旧安装和现有模型上下文读取的兼容事实源，升级时不原地重写。`message_graph.v2.jsonl` 是逐 session、append-only 的 V2 sidecar：节点先写 `partial`，对应 V1 行成功落盘后再写 `committed`；写入失败、取消、模型失败或插话替代则写 `tombstoned`。启动时，带相同 `message_id` 的 V1 行可确认已经落盘的 partial，其余孤儿 partial 被 tombstone。sidecar 还保存显式 leaf、compact boundary，以及 queued/running/interjected/completed/cancelled prompt 状态。
+`ConversationStore` 是会话写入边界。`history.jsonl` 保存模型上下文热段及归档投影，`message_graph.jsonl` 保存逐 session、append-only 的消息关系和交互状态。节点先写 `partial`，对应 History 行成功落盘后再写 `committed`；写入失败、取消、模型失败或插话替代则写 `tombstoned`。启动时，带相同 `message_id` 的 History 行可确认已经落盘的 partial，其余孤儿 partial 被 tombstone。Message Graph 还保存显式 leaf、compact boundary，以及 queued/running/interjected/completed/cancelled prompt 状态。旧的版本化图文件在首次打开会原子迁移到当前文件名。
 
-Sidecar 只接受 regular file，拒绝 symlink，当前上限为 16 MiB / 50,000 个有效事件；损坏行被隔离并生成不回显原文的诊断。V1→V2→V1 投影保持 legacy 行内容，compact boundary 可回到压缩前捕获的精确 leaf。不要手工删除单条 tombstone 或重排 sidecar sequence；排障时应备份整个 session 目录。
+Message Graph 只接受 regular file，拒绝 symlink，当前上限为 16 MiB / 50,000 个有效事件；损坏行被隔离并生成不回显原文的诊断。History 与 Message Graph 的双向投影保持 History 行内容，compact boundary 可回到压缩前捕获的精确 leaf。不要手工删除单条 tombstone 或重排 graph sequence；排障时应备份整个 session 目录。
 
 项目源码目录（用户在 UI 里选择的 build 项目路径）只允许保留：
 

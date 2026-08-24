@@ -42,9 +42,7 @@ describe('ConversationStore (test_conversation_store.py)', () => {
   })
 
   it('round-trips history rows, checkpoints, and turn ids', () => {
-    const store = new ConversationStore(
-      join(tmp('cairn-session-round-'), 's1'),
-    )
+    const store = new ConversationStore(join(tmp('cairn-session-round-'), 's1'))
     store.appendHistory('user', 'hi', { extra: { turn_id: 't1' } })
     store.appendHistory('assistant', 'hello', { extra: { turn_id: 't1' } })
     store.appendHistory('user', 'hidden', {
@@ -104,7 +102,7 @@ describe('ConversationStore (test_conversation_store.py)', () => {
     })
   })
 
-  it('writes new history through the V2 message graph sidecar without changing V1 replay', () => {
+  it('writes history and message graph state through one ConversationStore', () => {
     const store = new ConversationStore(
       join(tmp('cairn-session-message-graph-'), 's1'),
     )

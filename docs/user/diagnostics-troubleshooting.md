@@ -16,7 +16,7 @@
 | 模型未配置或认证失败                   | 设置 → 模型中的协议、API Base、模型 ID 和 API Key；输入框中的当前模型                                                    |
 | 模型偶发重试或长时间无响应             | owner session 的 `model_attempt_*` 诊断事件、错误分类、Retry-After 与总 deadline；不会暗中切换模型                       |
 | Prompt 缓存突然失效                    | `Prompt Cache Break` 行的 expected/unexpected、reason、首个 section/message 和 stable hash                               |
-| 子代理取消后仍像在运行                 | 对应 `task_started` / terminal V2 事件、Task record revision 和 parent turn 是否已取消                                   |
+| 子代理取消后仍像在运行                 | 对应 `task_started` / terminal 事件、Task record revision 和 parent turn 是否已取消                                      |
 | 子代理输出显示被截断                   | `stateRoot/tasks/<task-id>/output.meta.json` 的 limit / dropped bytes；不要手工扩大或替换 output                         |
 | 命令取消后仍有子进程                   | `Owned Process Runtime` 行、`stateRoot/processes/receipts.v1.json` 的 owner/status/identity；不要直接 kill 复用 PID      |
 | 模型能回复但工具失败                   | 当前权限模式、Ask/Plan 卡片、workspace 和工具输入                                                                        |
@@ -138,9 +138,9 @@ Model、MCP、local config 和 Hooks 使用原子写或损坏保留策略。无�
 
 会话事实位于 `stateRoot/sessions/<id>/`。Goal 的 `events.jsonl` 是权威账本，snapshot 和 index 可以重建。
 
-会话目录中的 `history.jsonl` 是兼容历史，`message_graph.v2.jsonl` 保存消息父链、当前 leaf、compact boundary、partial tombstone 和 prompt queue 状态。插话后看到 `message_tombstoned reason=interjected`、随后出现新的 assistant response 是正常收口；`orphan_partial` 表示启动恢复时发现 V1 中没有对应落盘行的半成品。不要为了隐藏旧 partial 而手工删 sidecar 行，否则会破坏 sequence、分支和 V1 双向投影。
+会话目录中的 `history.jsonl` 保存模型上下文热段，`message_graph.jsonl` 保存消息父链、当前 leaf、compact boundary、partial tombstone 和 prompt queue 状态。插话后看到 `message_tombstoned reason=interjected`、随后出现新的 assistant response 是正常收口；`orphan_partial` 表示启动恢复时发现 History 中没有对应落盘行的半成品。不要为了隐藏旧 partial 而手工删 graph 行，否则会破坏 sequence、分支和 History 投影。
 
-若消息长期停在“已排队”，按同一 `prompt_id` 检查 `prompt_queued` 后是否出现 `prompt_dequeued`、`prompt_interjected` 或 `prompt_cancelled`，再检查 owner actor 是否仍 running。取消与排队竞态中，未消费的 interjection 应 cancelled，独立 queue command 应继续保留；两者一起消失属于缺陷。Sidecar 达到 16 MiB / 50,000 event 上限会 fail closed，应先完整备份 session 再处理，而不是截断正在使用的文件。
+若消息长期停在“已排队”，按同一 `prompt_id` 检查 `prompt_queued` 后是否出现 `prompt_dequeued`、`prompt_interjected` 或 `prompt_cancelled`，再检查 owner actor 是否仍 running。取消与排队竞态中，未消费的 interjection 应 cancelled，独立 queue command 应继续保留；两者一起消失属于缺陷。Message Graph 达到 16 MiB / 50,000 event 上限会 fail closed，应先完整备份 session 再处理，而不是截断正在使用的文件。
 
 出现恢复问题时：
 
@@ -169,7 +169,7 @@ Task metadata 中的 `agent_definition_revision` 和 `agent_source_id/kind/trust
 
 在 session 的 `runtime/events.jsonl` 中，任意 `tool_run_queued` 都应按同一个 `toolCallId` 对应且只对应一个 `tool_run_completed`、`tool_run_failed` 或 `tool_run_cancelled`。流式模型撤回调用时出现 `reason=not_in_final_response` 的 cancelled tombstone 是正常收敛，不是丢数据；父 turn 取消时，尚未开始的队列项也应有 cancelled 终态。
 
-如果同一 ID 没有终态或出现多个终态，先保留整个 session 目录和相关 Task artifact，再导出 envelope V2 replay 进行对账，不要手工补写 JSONL。正常调度中，并发安全工具可以同时运行；不安全或独占工具必须与其他调用零重叠。看到独占工具跨越另一个工具的 started/terminal 区间，说明调度屏障已被破坏，应作为 Core 缺陷处理，而不是重试 UI。
+如果同一 ID 没有终态或出现多个终态，先保留整个 session 目录和相关 Task artifact，再导出 envelope replay 进行对账，不要手工补写 JSONL。正常调度中，并发安全工具可以同时运行；不安全或独占工具必须与其他调用零重叠。看到独占工具跨越另一个工具的 started/terminal 区间，说明调度屏障已被破坏，应作为 Core 缺陷处理，而不是重试 UI。
 
 ## 开发模式检查
 

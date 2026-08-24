@@ -23,7 +23,7 @@
 
 - Chat 移除顶部“对话 / 正在办差 · 模型”标题栏；Environment 在桌面宽屏常驻，Review、Terminal 或 Files 以 520–960px 宽工作区原位替代，并支持窄屏抽屉/全屏和布局状态恢复。
 - 删除已退役的桥接接入模块及其 API、运行事件、诊断和界面投影；旧安装私有文件不会被读取、迁移或自动删除。
-- 模型配置统一为 schema v2：可保存多个标准接口模型，全局只激活一个。
+- 模型配置统一为当前 schema：可保存多个标准接口模型，全局只激活一个。
 - Renderer 的映射 Core API 调用统一通过 `api/http.ts` 的桌面 Core bridge；普通浏览器不是受支持运行模式。
 - Core runtime event 类型与 renderer 投影共用明确契约。
 - Composer 的模型 / 模式菜单逻辑收敛到共享 helper。

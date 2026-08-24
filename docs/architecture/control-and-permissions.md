@@ -37,7 +37,7 @@ flowchart TD
   Decision -->|"拒绝"| Deny["返回稳定拒绝结果"]
 ```
 
-Control schema v2 只持久化以上三个内部值。加载 v1 时，`accept_edits` 原子迁移为 `smart_auto`，`auto` 原子迁移为 `full_access`，Plan 的 `previous_mode` 同步迁移。兼容命令和旧 API 参数仍接受旧值，但返回与后续持久化都使用 v2 值。
+当前 Control schema 只持久化以上三个内部值。加载旧状态时，`accept_edits` 原子迁移为 `smart_auto`，`auto` 原子迁移为 `full_access`，Plan 的 `previous_mode` 同步迁移。兼容命令和旧 API 参数仍接受旧值，但返回与后续持久化都使用当前值。
 
 用户规则和确定性拒绝优先于模式。`full_access` 关闭的是 Permission Ask，不是 Core 安全边界；路径操作在执行前仍必须 canonicalize，并受 workspace allow / deny 规则限制。
 

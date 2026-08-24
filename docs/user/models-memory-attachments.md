@@ -3,7 +3,7 @@
 > 文档状态：Active<br>
 > 面向读者：配置模型或管理本地上下文的用户<br>
 > 最后核验：2026-07-21<br>
-> 事实源：ModelConfig v2、Memory/Project stores、AttachmentStore、设置页
+> 事实源：ModelConfig、Memory/Project stores、AttachmentStore、设置页
 
 ## 模型配置
 
