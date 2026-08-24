@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { CairnError } from '../errors'
+import { portableGoalWorkspace } from './scope'
 import {
   DEFAULT_GOAL_GUARD_POLICY,
   goalSummary,
@@ -15,6 +16,10 @@ const CREATED_AT = '2026-07-15T10:00:00.000Z'
 
 function workspace(): string {
   return join(process.cwd(), '.goal-test-workspaces', 'models')
+}
+
+function normalizedWorkspace(value = workspace()): string {
+  return portableGoalWorkspace(value)
 }
 
 function criterion(
@@ -55,7 +60,7 @@ describe('Goal models', () => {
         sessionId: 'session-1',
         mode: 'build',
         projectId: 'project-1',
-        workspaceRoot: root,
+        workspaceRoot: normalizedWorkspace(root),
       },
       contract: { acceptanceCriteria: [criterion()] },
       now: CREATED_AT,
@@ -69,7 +74,7 @@ describe('Goal models', () => {
         sessionId: 'session-1',
         mode: 'build',
         projectId: 'project-1',
-        workspaceRoot: root,
+        workspaceRoot: normalizedWorkspace(root),
       },
       contract: {
         outcome: 'ship the Goal domain',
@@ -210,7 +215,7 @@ describe('Goal models', () => {
       },
       now: CREATED_AT,
     })
-    expect(chat.scope.workspaceRoot).toBe(root)
+    expect(chat.scope.workspaceRoot).toBe(normalizedWorkspace(root))
     expect(chat.scope.projectFingerprint).toMatch(/^[a-f0-9]{64}$/)
 
     const otherChat = newGoalRecord({
@@ -310,8 +315,12 @@ describe('Goal models', () => {
       now: CREATED_AT,
     })
 
-    expect(created.scope.workspaceRoot).toBe(workspaceWithTrailingSpace)
-    expect(parsed.scope.workspaceRoot).toBe(workspaceWithTrailingSpace)
+    expect(created.scope.workspaceRoot).toBe(
+      normalizedWorkspace(workspaceWithTrailingSpace),
+    )
+    expect(parsed.scope.workspaceRoot).toBe(
+      normalizedWorkspace(workspaceWithTrailingSpace),
+    )
     expect(created.scope.projectFingerprint).not.toBe(
       withoutTrailingSpace.scope.projectFingerprint,
     )

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, lstatSync, realpathSync } from 'node:fs'
+import { devNull } from 'node:os'
 import { lstat, mkdir } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import type {
@@ -1092,7 +1093,7 @@ export class SoftGitRewindService {
         HOME: scratchRoot,
         XDG_CONFIG_HOME: scratchRoot,
         GIT_CONFIG_NOSYSTEM: '1',
-        GIT_CONFIG_GLOBAL: '/dev/null',
+        GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : devNull,
         GIT_TERMINAL_PROMPT: '0',
         GIT_PAGER: 'cat',
         LC_ALL: 'C',
@@ -1343,7 +1344,7 @@ function normalizeManagedPaths(paths: readonly string[]): string[] {
 
 function canonicalDirectory(path: string): string {
   try {
-    return realpathSync(resolve(path))
+    return realpathSync.native(resolve(path))
   } catch {
     throw new SoftGitRewindError(
       'workspace_missing',

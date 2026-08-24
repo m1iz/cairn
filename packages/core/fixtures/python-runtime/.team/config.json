@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "team_name": "python-runtime-fixture",
+  "members": [
+    {
+      "name": "reviewer",
+      "role": "reviewer",
+      "agent_type": "general",
+      "status": "offline",
+      "created_at": 1750000000,
+      "updated_at": 1750000000,
+      "last_error": null
+    }
+  ]
+}

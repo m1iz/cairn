@@ -717,7 +717,8 @@ function repository(): {
   const root = mkdtempSync(join(tmpdir(), 'cairn-soft-git-'))
   const stateRoot = join(root, 'state')
   const workspace = join(root, 'workspace')
-  execFileSync('mkdir', ['-p', stateRoot, workspace])
+  mkdirSync(stateRoot, { recursive: true })
+  mkdirSync(workspace, { recursive: true })
   git(workspace, 'init', '--quiet')
   writeFileSync(join(workspace, 'a.txt'), 'before\n')
   git(workspace, 'add', '--', 'a.txt')
@@ -735,9 +736,12 @@ function repository(): {
   return {
     stateRoot,
     workspace,
-    gitExecutable: execFileSync('/usr/bin/which', ['git'], {
-      encoding: 'utf8',
-    }).trim(),
+    gitExecutable:
+      process.platform === 'win32'
+        ? 'git'
+        : execFileSync('/usr/bin/which', ['git'], {
+            encoding: 'utf8',
+          }).trim(),
     baseHead: git(workspace, 'rev-parse', 'HEAD'),
   }
 }
@@ -789,7 +793,14 @@ function git(workspace: string, ...args: string[]): string {
   return execFileSync('git', args, {
     cwd: workspace,
     encoding: 'utf8',
-    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: 'Cairn Test',
+      GIT_AUTHOR_EMAIL: 'test@example.invalid',
+      GIT_COMMITTER_NAME: 'Cairn Test',
+      GIT_COMMITTER_EMAIL: 'test@example.invalid',
+      GIT_TERMINAL_PROMPT: '0',
+    },
   }).trim()
 }
 

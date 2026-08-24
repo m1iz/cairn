@@ -7,13 +7,21 @@ import type {
   ProcessContainmentPolicy,
 } from '../environment/sandbox'
 import { OwnedProcessRuntime } from '../processes/runtime'
+import { canonicalizeExistingPath } from '../util/paths'
 import { LspSupervisor } from './lsp-supervisor'
 
 const roots: string[] = []
 
 afterEach(async () => {
   await Promise.all(
-    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+    roots.splice(0).map((root) =>
+      rm(root, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 50,
+      }),
+    ),
   )
 })
 
@@ -82,7 +90,7 @@ describe('LspSupervisor OwnedProcess integration', () => {
       expect.objectContaining({
         mode: 'required',
         network: 'deny',
-        readOnlyRoots: [expect.stringContaining('/workspace')],
+        readOnlyRoots: [canonicalizeExistingPath(workspaceRoot)],
       }),
     ])
 

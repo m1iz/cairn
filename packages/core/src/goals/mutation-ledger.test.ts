@@ -1109,8 +1109,18 @@ function markerRecoveryCrashChild(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(
-      join(process.cwd(), '..', '..', 'node_modules', '.bin', 'vite-node'),
-      ['src/goals/mutation-recovery-crash-child.ts'],
+      process.execPath,
+      [
+        join(
+          process.cwd(),
+          '..',
+          '..',
+          'node_modules',
+          'vite-node',
+          'vite-node.mjs',
+        ),
+        'src/goals/mutation-recovery-crash-child.ts',
+      ],
       {
         cwd: process.cwd(),
         env: {

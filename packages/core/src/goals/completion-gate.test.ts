@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { relativePortable } from '../util/paths'
 import { CoreGoalBlockerCauseWriter } from '../agent/goal-blocker-cause-writer-internal'
 import { CoreGoalBlockerFactIssuer } from '../agent/goal-blocker-fact-internal'
 import { createAuthorizedGoalCompletionGate } from '../agent/goal-completion-gate-internal'
@@ -1227,7 +1228,7 @@ describe('GoalCompletionGate.complete', () => {
       .filter((path) =>
         readFileSync(path, 'utf8').includes('.commitCompletion('),
       )
-      .map((path) => path.replace(`${process.cwd()}/`, ''))
+      .map((path) => relativePortable(process.cwd(), path))
 
     expect(callers).toEqual([])
   })
@@ -1239,7 +1240,7 @@ describe('GoalCompletionGate.complete', () => {
           'const gate = new GoalCompletionGate(',
         ),
       )
-      .map((path) => path.replace(`${process.cwd()}/`, ''))
+      .map((path) => relativePortable(process.cwd(), path))
 
     expect(callers).toEqual(['src/agent/goal-completion-gate-internal.ts'])
   })

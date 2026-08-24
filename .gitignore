@@ -85,6 +85,13 @@ pnpm-debug.log*
 /packages/*/memory/
 /packages/*/sessions/
 
+# Versioned, secret-free compatibility fixtures intentionally mirror runtime
+# filenames that are ignored everywhere else.
+!/packages/core/fixtures/python-runtime/model_config.json
+!/packages/core/fixtures/python-runtime/mcp_config.json
+
 # Agent Team 运行期状态（队友配置 / inbox / 独立 thread）
 .team/
 /packages/*/.team/
+!/packages/core/fixtures/python-runtime/.team/
+!/packages/core/fixtures/python-runtime/.team/**

@@ -989,12 +989,13 @@ describe('PermissionPipeline v2 permission modes', () => {
   it('allows a compound sequence when every segment is read-only', () => {
     const workspace = mkdtempSync(join(tmpdir(), 'cairn-safe-read-'))
     const target = join(workspace, 'strikeforce.html')
+    const shellTarget = target.replace(/\\/g, '/')
     writeFileSync(target, '<html>\n<script></script>\n</html>\n')
     const command =
-      `grep -c '</html>' ${target} && ` +
-      `grep -c '</script>' ${target} && ` +
-      `wc -l ${target} && ` +
-      `echo ---tail--- && tail -4 ${target}`
+      `grep -c '</html>' ${shellTarget} && ` +
+      `grep -c '</script>' ${shellTarget} && ` +
+      `wc -l ${shellTarget} && ` +
+      `echo ---tail--- && tail -4 ${shellTarget}`
 
     try {
       expect(

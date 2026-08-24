@@ -311,7 +311,7 @@ describe('signed ToolCatalog', () => {
   it('ships an immutable catalog covering every planned tool id', () => {
     const bundled = loadBundledToolCatalog()
     expect(bundled.revision).toBe(
-      '3e12b926a9e9e32d3de284dbb6ec2f101ea9912a4f744deda856c0a78048d2d5',
+      '50e2211857b4533aff820e59c0bc97fdd6a6d3f4abf6f4496d6e4d8f96709376',
     )
     expect(bundled.catalog.tools.map((tool) => tool.id)).toEqual([
       'cargo',

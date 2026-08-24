@@ -1,0 +1,13 @@
+{
+  "defaults": {
+    "read_only": true
+  },
+  "servers": {
+    "legacy_reader": {
+      "enabled": true,
+      "transport": "stdio",
+      "command": "${PY_TOOL}",
+      "args": ["-m", "legacy_reader"]
+    }
+  }
+}

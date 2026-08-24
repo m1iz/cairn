@@ -1,11 +1,12 @@
-import { mkdtempSync, readFileSync, realpathSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { TaskManager } from '../tasks/manager'
 import { TaskStatus } from '../tasks/models'
 import { TaskRuntimeRegistry } from '../tasks/runtime'
 import type { EnvironmentProcessRunner } from '../environment/process-runner'
+import { canonicalizeExistingPath } from '../util/paths'
 import {
   GitWorktreeSubagentWorkspaceProvider,
   SubagentCapacityError,
@@ -91,7 +92,11 @@ describe('SubagentSupervisor', () => {
         env: { PATH: '/usr/bin' },
       }),
     })
-    const expectedTarget = join(realpathSync(worktreeRoot), 'subagent_123')
+    const expectedTarget = join(
+      canonicalizeExistingPath(worktreeRoot),
+      'subagent_123',
+    )
+    const expectedSourceRoot = resolve('/repo')
 
     const lease = await provider.acquire({
       taskId: 'subagent_123',
@@ -112,15 +117,15 @@ describe('SubagentSupervisor', () => {
         })),
     ).toEqual([
       {
-        cwd: '/repo',
+        cwd: expectedSourceRoot,
         args: ['worktree', 'add', '--detach', expectedTarget, 'HEAD'],
       },
       {
-        cwd: '/repo',
+        cwd: expectedSourceRoot,
         args: ['worktree', 'remove', '--force', expectedTarget],
       },
       {
-        cwd: '/repo',
+        cwd: expectedSourceRoot,
         args: ['worktree', 'prune'],
       },
     ])
@@ -151,7 +156,10 @@ describe('SubagentSupervisor', () => {
       }),
     }
     const first = new GitWorktreeSubagentWorkspaceProvider(options)
-    const expectedTarget = join(realpathSync(worktreeRoot), 'subagent_crashed')
+    const expectedTarget = join(
+      canonicalizeExistingPath(worktreeRoot),
+      'subagent_crashed',
+    )
     await first.acquire({
       taskId: 'subagent_crashed',
       sessionId: 'session_1',
