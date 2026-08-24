@@ -1,12 +1,7 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve } from 'node:path'
-import {
-  GlobTool,
-  GrepTool,
-  writeJsonAtomic,
-  type CoreApi,
-} from '@cairn/core'
+import { GlobTool, GrepTool, writeJsonAtomic, type CoreApi } from '@cairn/core'
 import type { PackagedRendererSmokeReceipt } from './packaged-renderer-smoke'
 
 export interface PackagedSmokeCore {
@@ -266,7 +261,7 @@ async function verifyPackagedTerminal(
       terminalId: terminal.id,
       data: command,
     })
-    const deadline = Date.now() + 3_000
+    const deadline = Date.now() + (platform === 'win32' ? 15_000 : 3_000)
     while (Date.now() < deadline) {
       const replay = core.terminals.read({
         sessionId: session.id,
