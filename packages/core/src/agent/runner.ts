@@ -86,7 +86,7 @@ import type {
   HookEventName,
   HookRuntimeRunOptions,
 } from '../hooks'
-import * as runtimeEvents from './runtime-events'
+import * as runtimeEvents from '../runtime/events'
 import {
   applyRepeatedRefusalNudge,
   buildMaxTurnsSummary,

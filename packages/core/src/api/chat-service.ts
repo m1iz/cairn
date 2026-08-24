@@ -11,7 +11,7 @@ import {
 } from '../sessions/title'
 import type { SessionEntry } from '../sessions/store'
 import type { SchedulerAgentTurnPayload } from '../scheduler/executor'
-import { CallbackHarnessHost } from '../v2/adapters/callback-harness-host'
+import { CallbackHarnessHost } from '../agent/harness-host'
 
 export type MainlineEventSink = (
   event: Record<string, unknown>,

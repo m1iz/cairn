@@ -1,5 +1,3 @@
-import type { SessionActorPort } from '../v2/contracts/session'
-
 export type SessionRuntimeCommandState =
   'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
 
@@ -92,9 +90,7 @@ interface InterjectionReceipt<
   onState?: (item: SessionInterjection<TPayload>) => void | Promise<void>
 }
 
-export class SessionRuntimeActor<
-  TBindings,
-> implements SessionActorPort<TBindings> {
+export class SessionRuntimeActor<TBindings> {
   readonly sessionId: string
   readonly bindings: TBindings
   private readonly commandReceiptLimit: number

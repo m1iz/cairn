@@ -1,6 +1,3 @@
-/** Compatibility facade for the v2 turn machine. */
-import { TurnMachine, turnPhaseRuntimeEvent } from '../v2/harness/turn-machine'
-
 export enum TurnPhase {
   STARTED = 'started',
   CHECKPOINT = 'checkpoint',
@@ -28,17 +25,17 @@ export interface TurnPhaseEvent {
 }
 
 export class TurnState {
-  private readonly machine: TurnMachine
+  private readonly _turnId: string | null
+  private _iteration = 0
+  private _sequence = 0
+  private _phase: TurnPhase | string = TurnPhase.STARTED
 
   constructor(opts?: { turnId?: string | null }) {
-    this.machine = new TurnMachine({
-      turnId: opts?.turnId ?? null,
-      initialPhase: TurnPhase.STARTED,
-    })
+    this._turnId = opts?.turnId ?? null
   }
 
   get turnId(): string | null {
-    return this.machine.snapshot().turnId
+    return this._turnId
   }
 
   set turnId(turnId: string | null) {
@@ -47,30 +44,49 @@ export class TurnState {
   }
 
   get iteration(): number {
-    return this.machine.snapshot().iteration
+    return this._iteration
   }
 
   get sequence(): number {
-    return this.machine.snapshot().sequence
+    return this._sequence
   }
 
   get phase(): TurnPhase {
-    return this.machine.snapshot().phase as TurnPhase
+    return this._phase as TurnPhase
   }
 
   startIteration(): number {
-    return this.machine.startIteration()
+    this._iteration += 1
+    return this._iteration
   }
 
   transition(
     phase: TurnPhase | string,
     opts?: { detail?: Record<string, unknown> | null },
   ): TurnPhaseEvent {
-    const event = this.machine.transition(String(phase), opts?.detail ?? {})
+    this._phase = String(phase)
+    this._sequence += 1
+    const detail = structuredClone(opts?.detail ?? {})
+    const event = {
+      phase: this._phase,
+      sequence: this._sequence,
+      iteration: this._iteration,
+      turnId: this._turnId,
+      detail,
+    }
     return {
       ...event,
-      detail: { ...event.detail },
-      toRuntimeEvent: () => turnPhaseRuntimeEvent(event),
+      detail: structuredClone(detail),
+      toRuntimeEvent: () => ({
+        event: 'turn_phase',
+        phase: event.phase,
+        sequence: event.sequence,
+        iteration: event.iteration,
+        ...(event.turnId ? { turn_id: event.turnId } : {}),
+        ...(Object.keys(event.detail).length
+          ? { detail: structuredClone(event.detail) }
+          : {}),
+      }),
     }
   }
 }

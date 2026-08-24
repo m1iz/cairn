@@ -21,7 +21,7 @@ import {
 import type { TeamConfigPayload } from './store'
 import { TeamReadInboxTool, TeamSendMessageTool } from './tools'
 import type { HookAggregateDecision } from '../hooks/models'
-import { CallbackHarnessHost } from '../v2/adapters/callback-harness-host'
+import { CallbackHarnessHost } from '../agent/harness-host'
 
 const ROLE_AGENT_TYPES: Record<string, string> = {
   coder: 'implementation_engineer',

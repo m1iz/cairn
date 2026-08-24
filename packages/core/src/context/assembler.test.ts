@@ -71,6 +71,16 @@ describe('ContextAssembler', () => {
       ]),
     )
   })
+
+  it('includes all sections in source order when no plan exists', () => {
+    const assembled = new ContextAssembler().assemble({
+      sections: [section('one', 'One'), section('two', 'Two')],
+    })
+
+    expect(assembled.prompt).toBe('One\n\n---\n\nTwo')
+    expect(assembled.rendered).toHaveLength(2)
+    expect(assembled.omitted).toEqual([])
+  })
 })
 
 function section(name: string, content: string): ContextSection {

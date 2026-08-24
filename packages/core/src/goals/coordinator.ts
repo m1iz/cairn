@@ -6,8 +6,7 @@ import { isGoalTerminal } from './models'
 import { GoalProgressGuard, type GoalProgressSnapshot } from './progress-guard'
 import type { GoalStore } from './store'
 import { assertGoalTransition } from './validation'
-import type { HarnessHost } from '../v2/contracts/harness-host'
-import { CallbackHarnessHost } from '../v2/adapters/callback-harness-host'
+import { CallbackHarnessHost, type HarnessHost } from '../agent/harness-host'
 
 export interface GoalCycleReceipt {
   readonly goalId: string

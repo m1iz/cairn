@@ -330,7 +330,6 @@ function appendFileRiskSignals(signals: string[], path: string): void {
     [
       [
         'packages/core/src/runtime/',
-        'packages/core/src/agent/runtime-events',
         'desktop/src/renderer/src/runtime/',
         'agent/runtime/',
         '/runtime/',

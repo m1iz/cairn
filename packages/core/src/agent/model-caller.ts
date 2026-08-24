@@ -18,10 +18,10 @@ import {
   usdToNanos,
 } from '../model/execution-policy'
 import { SamplingCoordinator } from '../sampling/coordinator'
-import * as runtimeEvents from './runtime-events'
-import type { ModelCompletion, ModelMessage } from '../v2/contracts/model'
-import { CurrentProviderModelPort } from '../v2/model/current-provider-adapter'
-import { ModelAttemptExecutor } from '../v2/model/model-attempt-executor'
+import * as runtimeEvents from '../runtime/events'
+import type { ModelCompletion, ModelMessage } from '../model/contracts'
+import { ProviderModelPort } from '../model/provider-adapter'
+import { ModelAttemptExecutor } from '../model/attempt-executor'
 import {
   costBoundMaxTokens,
   createModelPolicyTurnState,
@@ -30,14 +30,14 @@ import {
   type ModelCallPolicy,
   type ModelCallTarget,
   type ModelPolicyTurnState,
-} from '../v2/model/model-execution-policy'
+} from '../model/call-policy'
 
 export {
   createModelPolicyTurnState,
   type ModelCallPolicy,
   type ModelCallTarget,
   type ModelPolicyTurnState,
-} from '../v2/model/model-execution-policy'
+} from '../model/call-policy'
 
 export type StreamEmitter = (
   event: Record<string, unknown>,
@@ -282,7 +282,7 @@ export class ModelCaller {
         reasoningEffort: opts.reasoningEffort,
         ...(opts.signal ? { signal: opts.signal } : {}),
       },
-      port: new CurrentProviderModelPort(opts.provider),
+      port: new ProviderModelPort(opts.provider),
       recoverRequest: (error) => opts.provider.recoverSamplingRequest(error),
       model: opts.model,
       provider: opts.providerName,

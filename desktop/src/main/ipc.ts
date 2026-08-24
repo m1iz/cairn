@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import {
   coreOperationKeys,
-  createCurrentCoreOperationDispatcher,
+  createCoreOperationDispatcher,
   invokeCoreOperation,
   type CoreApi,
   type CoreIpcErrorEnvelope,
@@ -27,7 +27,7 @@ export function registerCoreIpc(
   operationKeys: readonly CoreOperationKey[] = coreOperationKeys(),
   opts: { authorize?: IpcAuthorizer } = {},
 ): void {
-  const dispatcher = createCurrentCoreOperationDispatcher(coreApi)
+  const dispatcher = createCoreOperationDispatcher(coreApi)
   for (const key of [...operationKeys].sort()) {
     ipcMain.handle(channelForCoreOperation(key), async (event, ...args) => {
       try {

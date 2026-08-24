@@ -663,21 +663,21 @@ export const CORE_OPERATION_REGISTRY = {
   'control.answerInteraction': operation(
     z.tuple([idSchema, dictSchema, controlResumeSchema.optional()]),
     (api, [id, answers, options]) =>
-      api.interactions.answer(id, answers, options),
+      api.control.answerInteraction(id, answers, options),
   ),
   'control.approvePlan': operation(
     z.tuple([idSchema, controlResumeSchema.optional()]),
-    (api, [id, options]) => api.interactions.approve(id, options),
+    (api, [id, options]) => api.control.approvePlan(id, options),
   ),
   'control.cancelInteraction': operation(z.tuple([idSchema]), (api, [id]) =>
-    api.interactions.cancel(id),
+    api.control.cancelInteraction(id),
   ),
   'control.commentPlan': operation(
     z.tuple([idSchema, z.string(), controlResumeSchema.optional()]),
     (api, [id, comment, options]) =>
-      api.interactions.comment(id, comment, options),
+      api.control.commentPlan(id, comment, options),
   ),
-  'control.get': operation(z.tuple([]), (api) => api.interactions.get()),
+  'control.get': operation(z.tuple([]), (api) => api.control.get()),
   'control.setPermissionMode': operation(
     z.tuple([
       z.enum([
@@ -688,10 +688,10 @@ export const CORE_OPERATION_REGISTRY = {
         'auto',
       ]),
     ]),
-    (api, [mode]) => api.interactions.setPermissionMode(mode),
+    (api, [mode]) => api.control.setPermissionMode(mode),
   ),
   'control.setMode': operation(z.tuple([z.string()]), (api, [mode]) =>
-    api.interactions.setMode(mode),
+    api.control.setMode(mode),
   ),
   'diagnostics.get': operation(z.tuple([]), (api) => api.diagnostics.get()),
   'environment.cancelInstall': operation(

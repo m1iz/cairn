@@ -38,9 +38,9 @@ import {
   type ProviderSpec,
 } from '../../providers/registry'
 import type { ProfileOnboardingActionResult } from '../../sessions/onboarding'
-import { CurrentProviderModelPort } from '../../v2/model/current-provider-adapter'
-import { ModelGateway } from '../../v2/model/model-gateway'
-import type { ModelPort } from '../../v2/model/model-port'
+import { ProviderModelPort } from '../../model/provider-adapter'
+import { ModelGateway } from '../../model/gateway'
+import type { ModelPort } from '../../model/port'
 
 type Dict = Record<string, any>
 
@@ -345,7 +345,7 @@ export class CoreModelService {
     const gateway = this.deps.modelGateway ?? new ModelGateway()
     const port =
       this.deps.createModelPort?.(snapshot) ??
-      new CurrentProviderModelPort(snapshot.provider)
+      new ProviderModelPort(snapshot.provider)
     return gateway.probe(
       {
         kind,

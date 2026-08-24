@@ -7,14 +7,11 @@ import { SAFETY_REFUSAL_PREFIX } from './builtin'
 import { isToolErrorText, ToolResultObj } from './base'
 import type { ToolRegistry } from './registry'
 import { TurnPaused } from '../control/exceptions'
-import * as runtimeEvents from '../agent/runtime-events'
+import * as runtimeEvents from '../runtime/events'
 import { CancelledTaskError } from '../runtime/active'
-import type { ToolLifecycleState } from '../v2/tools/tool-lifecycle'
-import {
-  initialToolLifecycle,
-  transitionToolLifecycle,
-} from '../v2/tools/tool-lifecycle'
-import { planToolExecution } from '../v2/tools/tool-planner'
+import type { ToolLifecycleState } from './lifecycle'
+import { initialToolLifecycle, transitionToolLifecycle } from './lifecycle'
+import { planToolExecution } from './planner'
 
 export type StreamEmitter = (
   event: Record<string, unknown>,

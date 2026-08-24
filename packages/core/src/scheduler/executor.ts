@@ -15,8 +15,7 @@ import {
 } from './models'
 import type { SchedulerRunContext } from './service'
 import { runInSchedulerRun } from './tool'
-import type { HarnessHost } from '../v2/contracts/harness-host'
-import { CallbackHarnessHost } from '../v2/adapters/callback-harness-host'
+import { CallbackHarnessHost, type HarnessHost } from '../agent/harness-host'
 
 export interface SchedulerAgentTurnPayload {
   job: SchedulerJob

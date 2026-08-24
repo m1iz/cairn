@@ -94,12 +94,11 @@ import type {
   CommandInvocationResult,
   CommandInvocationSource,
 } from '../commands/types'
-import { CurrentInteractionAdapter } from '../v2/interaction/current-interaction-adapter'
 import {
-  CurrentRuntimeEventRepository,
-  CurrentRuntimeEventRepositoryFactory,
-} from '../v2/adapters/current-runtime-event-repository'
-import { CurrentSessionRepository } from '../v2/adapters/current-session-repository'
+  RuntimeEventRepository,
+  RuntimeEventRepositoryFactory,
+} from '../runtime/event-repository'
+import { SessionRepository } from '../sessions/repository'
 
 type StreamEmitter = (event: Record<string, unknown>) => void | Promise<void>
 type Dict = Record<string, unknown>
@@ -165,9 +164,8 @@ export class CoreApi {
   readonly terminalService: TerminalService
   readonly sessionTransitionService: SessionTransitionService
   readonly commandPlatform: CommandPlatform
-  readonly interactions: import('../v2/contracts/interaction').InteractionPort
-  readonly runtimeEventRepositories: CurrentRuntimeEventRepositoryFactory
-  readonly sessionRepository: CurrentSessionRepository
+  readonly runtimeEventRepositories: RuntimeEventRepositoryFactory
+  readonly sessionRepository: SessionRepository
 
   private constructor(
     root: string,
@@ -179,10 +177,8 @@ export class CoreApi {
   ) {
     this.root = resolve(root)
     this.loop = loop
-    this.runtimeEventRepositories = new CurrentRuntimeEventRepositoryFactory()
-    this.sessionRepository = new CurrentSessionRepository(
-      this.loop.sessionStore,
-    )
+    this.runtimeEventRepositories = new RuntimeEventRepositoryFactory()
+    this.sessionRepository = new SessionRepository(this.loop.sessionStore)
     this.planService = new CorePlanService(this.loop.controlManager.planStore)
     this.paths = loop.paths
     this.attachmentStore = new AttachmentStore(this.paths.stateRoot)
@@ -411,7 +407,6 @@ export class CoreApi {
       this.mainline,
       (event, options) => this.emitRuntime(event, options),
     )
-    this.interactions = new CurrentInteractionAdapter(this.control)
     this.chatService = new ChatService(this.mainline)
     this.goalService = new GoalService({
       goalStore: this.loop.goalStore,
@@ -2109,7 +2104,7 @@ export class CoreApi {
         ? this.runtimeEventRepositories.openSession(
             this.sessionRepository.sessionDirectory(targetSessionId),
           )
-        : new CurrentRuntimeEventRepository(this.loop.runtimeStore)
+        : new RuntimeEventRepository(this.loop.runtimeStore)
     const payload = store.append(event, { sessionId: targetSessionId || null })
     const sink = opts.emit ?? this.loop.eventSink
     if (sink) await sink(payload)

@@ -1,7 +1,5 @@
 import type { ContextSection } from '../agent/context-builder'
 import type { PromptContextPlan } from '../prompts/manifest'
-import type { ContextDecision, ContextFragment } from '../v2/contracts/context'
-import { ContextAssemblerV2 } from '../v2/context/context-assembler'
 
 export interface ContextAssemblyInput {
   sections: ContextSection[]
@@ -24,15 +22,78 @@ export interface ContextAssembly {
 
 export class ContextAssembler {
   assemble(input: ContextAssemblyInput): ContextAssembly {
-    const result = new ContextAssemblerV2().assemble({
-      fragments: input.sections.map(toFragment),
-      decisions: input.contextPlan?.items.map(toDecision) ?? null,
-      omissions: input.contextPlan?.omitted,
-    })
+    const sectionsById = new Map(
+      input.sections.map((section) => [sectionId(section.name), section]),
+    )
+    const included: ContextSection[] = []
+    const rendered: ContextAssemblyEntry[] = []
+    const omitted: ContextAssemblyEntry[] = []
+
+    if (input.contextPlan) {
+      const plannedIds = new Set<string>()
+      for (const item of input.contextPlan.items) {
+        plannedIds.add(item.id)
+        const section = sectionsById.get(item.id)
+        const entry: ContextAssemblyEntry = {
+          id: item.id,
+          kind: item.kind,
+          source: section?.source ?? item.source,
+          reason: item.reason,
+          ...(section ? { sectionName: section.name } : {}),
+        }
+        if (item.action === 'include') {
+          if (section) included.push(section)
+          rendered.push(entry)
+        } else {
+          omitted.push(entry)
+        }
+      }
+
+      for (const section of input.sections) {
+        const id = sectionId(section.name)
+        if (!plannedIds.has(id)) {
+          omitted.push({
+            id,
+            kind: section.name,
+            source: section.source,
+            reason: 'not_in_context_plan',
+            sectionName: section.name,
+          })
+        }
+      }
+
+      for (const omission of input.contextPlan.omitted) {
+        if (
+          !omitted.some(
+            (entry) =>
+              entry.kind === omission.kind &&
+              entry.source === omission.source &&
+              entry.reason === omission.reason,
+          )
+        ) {
+          omitted.push({
+            id: `omitted:${omission.kind}:${omission.source}`,
+            ...omission,
+          })
+        }
+      }
+    } else {
+      for (const section of input.sections) {
+        included.push(section)
+        rendered.push({
+          id: sectionId(section.name),
+          kind: section.name,
+          source: section.source,
+          reason: 'included_without_context_plan',
+          sectionName: section.name,
+        })
+      }
+    }
+
     return {
-      prompt: result.prompt,
-      rendered: result.rendered.map(toCompatibilityEntry),
-      omitted: result.omitted.map(toCompatibilityEntry),
+      prompt: included.map((section) => section.content).join('\n\n---\n\n'),
+      rendered,
+      omitted,
     }
   }
 
@@ -46,37 +107,4 @@ export class ContextAssembler {
 
 function sectionId(name: string): string {
   return `section:${name}`
-}
-
-function toFragment(section: ContextSection): ContextFragment {
-  return {
-    id: sectionId(section.name),
-    kind: section.name,
-    source: section.source,
-    content: section.content,
-  }
-}
-
-function toDecision(item: PromptContextPlan['items'][number]): ContextDecision {
-  return {
-    id: item.id,
-    kind: item.kind,
-    source: item.source,
-    action: item.action,
-    reason: item.reason,
-  }
-}
-
-function toCompatibilityEntry(
-  entry: import('../v2/contracts/context').ContextAssemblyEntry,
-): ContextAssemblyEntry {
-  return {
-    id: entry.id,
-    kind: entry.kind,
-    source: entry.source,
-    reason: entry.reason,
-    ...(entry.fragmentId
-      ? { sectionName: entry.fragmentId.replace(/^section:/, '') }
-      : {}),
-  }
 }

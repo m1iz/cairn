@@ -19,7 +19,7 @@ import {
   bindRunnerGoalRecordingContext,
   type RunnerGoalRecordingHost,
 } from '../agent/runner-goal-recording'
-import { CallbackHarnessHost } from '../v2/adapters/callback-harness-host'
+import { CallbackHarnessHost } from '../agent/harness-host'
 
 export interface RoutedDispatchRunnerFactoryOptions {
   modelRouter: Pick<ModelRouter, 'route'>

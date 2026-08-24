@@ -7,6 +7,22 @@ import type {
 
 type EventPayload = Record<string, unknown>
 
+const MAX_RUNTIME_TOOL_OUTPUT_CHARS = 12_000
+
+export function compactRuntimeToolOutput(value: string): {
+  output: string
+  output_truncated?: boolean
+} {
+  const text = String(value ?? '')
+  if (text.length <= MAX_RUNTIME_TOOL_OUTPUT_CHARS) return { output: text }
+  return {
+    output:
+      text.slice(0, MAX_RUNTIME_TOOL_OUTPUT_CHARS) +
+      `\n\n[truncated runtime tool output: ${text.length - MAX_RUNTIME_TOOL_OUTPUT_CHARS} chars omitted]`,
+    output_truncated: true,
+  }
+}
+
 export function runtimeEvent(
   event: string,
   payload: EventPayload = {},
@@ -156,6 +172,16 @@ export function userMessage(opts: {
     source: opts.source ?? null,
     scheduler: opts.scheduler ?? null,
     ui_hidden: opts.uiHidden ? true : null,
+  })
+}
+
+export function messageTombstoned(opts: {
+  reason: 'interjected' | 'cancelled' | 'model_failed'
+  contentChars: number
+}): EventPayload {
+  return runtimeEvent('message_tombstoned', {
+    reason: opts.reason,
+    content_chars: Math.max(0, Math.trunc(opts.contentChars)),
   })
 }
 

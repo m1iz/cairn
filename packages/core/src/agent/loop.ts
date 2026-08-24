@@ -210,7 +210,7 @@ import {
   type SessionEntry,
 } from '../sessions/store'
 import { buildDispatchRunnerFactory } from '../subagents/dispatch-runner'
-import { CallbackHarnessHost } from '../v2/adapters/callback-harness-host'
+import { CallbackHarnessHost } from './harness-host'
 import { SubagentRegistry } from '../subagents/registry'
 import {
   GitWorktreeSubagentWorkspaceProvider,

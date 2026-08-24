@@ -47,7 +47,7 @@ import {
   GOAL_MANUAL_EVIDENCE_QUESTION_ID,
 } from '../control/goal-manual-evidence'
 import { CODE_GRAPH_PARSER_REVISION } from '../code-intelligence/models'
-import { CallbackHarnessHost } from '../v2/adapters/callback-harness-host'
+import { CallbackHarnessHost } from './harness-host'
 
 const TEMPLATES_DIR = join(__dirname, '..', '..', '..', '..', 'templates')
 

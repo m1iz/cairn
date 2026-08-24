@@ -5,7 +5,7 @@
  */
 import type { ToolCallRequest } from '../providers/base'
 import { ToolResultObj } from '../tools/base'
-import * as runtimeEvents from './runtime-events'
+import * as runtimeEvents from '../runtime/events'
 import { summarizeToolResult } from './runner-helpers'
 
 export function toolIntentThought(
