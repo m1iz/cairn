@@ -223,7 +223,7 @@ describe('Core operation registry', () => {
     ).toThrow()
   })
 
-  it('exposes only typed schema-v2 model mutations', () => {
+  it('exposes only typed model mutations', () => {
     expect(coreOperationKeys()).toEqual(
       expect.arrayContaining([
         'model.saveEntry',

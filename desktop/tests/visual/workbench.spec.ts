@@ -489,8 +489,8 @@ test('model editor discovers candidates and retains a custom model id', async ({
   await expect(
     reasoning.getByRole('option', { name: 'xhigh', exact: true }),
   ).toHaveCount(1)
-  await modelId.fill('private-model-v2')
-  await expect(modelId).toHaveValue('private-model-v2')
+  await modelId.fill('private-model-custom')
+  await expect(modelId).toHaveValue('private-model-custom')
   await expect(reasoning).toBeDisabled()
   await expect(page.getByRole('button', { name: '保存模型' })).toBeEnabled()
 })

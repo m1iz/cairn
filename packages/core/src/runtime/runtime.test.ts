@@ -294,9 +294,9 @@ describe('runtime events (test_runtime_events.py)', () => {
 describe('RuntimeEventStore (test_runtime_events.py)', () => {
   it('writes canonical envelopes, projects wire events, and dedupes idempotency keys across restart', () => {
     const sessionRoot = join(
-      tmp('cairn-runtime-envelope-v2-'),
+      tmp('cairn-runtime-envelope-current-'),
       'sessions',
-      'session_v2',
+      'session_current',
     )
     const store = new RuntimeEventStore(sessionRoot, {
       sessionDirOverride: true,
@@ -323,7 +323,7 @@ describe('RuntimeEventStore (test_runtime_events.py)', () => {
     expect(first).toMatchObject({
       event: 'tool_run_started',
       seq: 1,
-      session_id: 'session_v2',
+      session_id: 'session_current',
       turn_id: 'turn_1',
       request_id: 'req_1',
       attempt_id: 'attempt_1',
@@ -339,7 +339,7 @@ describe('RuntimeEventStore (test_runtime_events.py)', () => {
       schemaVersion: 2,
       eventId: first.event_id,
       idempotencyKey: 'tool:call_1:started',
-      sessionId: 'session_v2',
+      sessionId: 'session_current',
       sequence: 1,
       visibility: 'user',
       type: 'tool_run_started',

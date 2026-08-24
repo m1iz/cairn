@@ -988,7 +988,7 @@ describe('write_file overwrite nudge (2026-07-05 B2a)', () => {
 
     const second = await tool.execute({
       path: join(root, 'a.html'),
-      content: '<html>v2 全量重写</html>',
+      content: '<html>全量重写后的内容</html>',
     })
     expect(second).toContain('已整体覆盖既有文件')
     expect(second).toContain('edit_file')

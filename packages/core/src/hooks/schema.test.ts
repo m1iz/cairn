@@ -6,16 +6,19 @@ type ParseResult = {
   config: Dict
   diagnostics: Array<{ code: string; path: string; message: string }>
 }
-type ParseV2 = (raw: unknown, opts?: { sourceKind?: string }) => ParseResult
-type SerializeV2 = (config: Dict) => Dict
+type ParseCurrent = (
+  raw: unknown,
+  opts?: { sourceKind?: string },
+) => ParseResult
+type SerializeCurrent = (config: Dict) => Dict
 type ParseOutput = (
   eventName: string,
   raw: unknown,
 ) => { output: Dict | null; diagnostics: Array<{ code: string }> }
 
-async function v2Api(): Promise<{
-  parse: ParseV2
-  serialize: SerializeV2
+async function currentApi(): Promise<{
+  parse: ParseCurrent
+  serialize: SerializeCurrent
   parseOutput: ParseOutput
   defaultConfig: () => Dict
 }> {
@@ -28,8 +31,8 @@ async function v2Api(): Promise<{
   expect(module.parseHookOutput).toBeTypeOf('function')
   expect(module.defaultHooksConfig).toBeTypeOf('function')
   return {
-    parse: module.parseHooksConfig as ParseV2,
-    serialize: module.serializeHooksConfig as SerializeV2,
+    parse: module.parseHooksConfig as ParseCurrent,
+    serialize: module.serializeHooksConfig as SerializeCurrent,
     parseOutput: module.parseHookOutput as ParseOutput,
     defaultConfig: module.defaultHooksConfig as () => Dict,
   }
@@ -93,7 +96,7 @@ describe('hooks foundation contracts', () => {
   })
 
   it('parses matcher groups containing all four persistent handler types', async () => {
-    const { parse } = await v2Api()
+    const { parse } = await currentApi()
     const parsed = parse({
       version: 2,
       enabled: true,
@@ -176,7 +179,7 @@ describe('hooks foundation contracts', () => {
   })
 
   it('migrates legacy flat entries into deterministic one-handler groups', async () => {
-    const { parse } = await v2Api()
+    const { parse } = await currentApi()
     const first = parse({
       version: 1,
       hooks: {
@@ -230,7 +233,7 @@ describe('hooks foundation contracts', () => {
   })
 
   it('reports path diagnostics for duplicate ids and invalid source policy', async () => {
-    const { parse } = await v2Api()
+    const { parse } = await currentApi()
     const parsed = parse(
       {
         version: 2,
@@ -274,7 +277,7 @@ describe('hooks foundation contracts', () => {
   })
 
   it('validates outputs against the active event capabilities', async () => {
-    const { parseOutput } = await v2Api()
+    const { parseOutput } = await currentApi()
 
     const preTool = parseOutput('PreToolUse', {
       decision: 'allow',
@@ -307,7 +310,7 @@ describe('hooks foundation contracts', () => {
   })
 
   it('serializes normalized config deterministically and round-trips it', async () => {
-    const { parse, serialize } = await v2Api()
+    const { parse, serialize } = await currentApi()
     const parsed = parse({
       version: 2,
       hooks: {
@@ -336,7 +339,7 @@ describe('hooks foundation contracts', () => {
   })
 
   it('uses safe deterministic defaults', async () => {
-    const { defaultConfig, parse } = await v2Api()
+    const { defaultConfig, parse } = await currentApi()
     const config = defaultConfig()
 
     expect(config).toMatchObject({

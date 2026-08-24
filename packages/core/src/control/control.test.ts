@@ -3,7 +3,7 @@
  * 移植 Python:
  *  - tests/unit/test_control.py (ControlManager-level：不含 AgentRunner 的用例)
  *  - tests/unit/test_plan_decision_policy.py (PlanDecisionPolicy)
- *  - tests/unit/test_permission_pipeline_v2.py::test_high_risk_in_approved_plan_still_requires_approval (PE-13)
+ *  - migrated permission pipeline: high-risk approved-plan commands still require approval (PE-13)
  *  - tests/unit/test_plan_quality_gate.py (ProposePlanTool 集成)
  *  - tests/unit/test_plan_verification_matrix.py::test_all_required_legacy_commands_must_pass_before_completion
  *  - tests/unit/test_plan_execution_state.py::test_todo_store_syncs_from_plan_steps (TodoStore)
@@ -637,7 +637,7 @@ describe('ControlManager (test_control.py)', () => {
     expect(manager.payload().mode).toBe('plan')
 
     const revised = manager.createPlan({
-      title: '实现 Ask v2',
+      title: '实现 Ask 交互',
       summary: '加入 CLI',
       planMarkdown: '# Plan\n\n- Build CLI',
       assumptions: [],
@@ -1055,9 +1055,9 @@ describe('PlanDecisionPolicy (test_plan_decision_policy.py)', () => {
   })
 })
 
-// ── PE-13: test_permission_pipeline_v2.py::test_high_risk_in_approved_plan_still_requires_approval ──
+// ── PE-13: high-risk commands in approved plans still require approval ──
 
-describe('PermissionManager PE-13 (test_permission_pipeline_v2.py)', () => {
+describe('PermissionManager PE-13 approved-plan high-risk commands', () => {
   it('high-risk command in approved plan still requires approval; a plan token may approve one ordinary shell command', async () => {
     const manager = new ControlManager(tmp('cairn-pe13-'))
     // 注入一个 token 消费者：始终返回 token（模拟已批准计划）

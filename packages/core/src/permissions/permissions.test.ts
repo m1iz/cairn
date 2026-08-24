@@ -1,6 +1,6 @@
 /**
  * 权限管线/策略契约 (MIG-CTRL-014/015/016/017)。
- * 移植 Python: tests/unit/test_permissions.py (policy 部分) + tests/unit/test_permission_pipeline_v2.py (pipeline 部分)。
+ * 覆盖权限 policy 与 permission pipeline 的统一 TypeScript 实现。
  * 注: PE-13 (高风险即使有 plan token 仍审批) 在 control.test.ts 经 ControlManager.assessPermission 验证。
  */
 import { describe, expect, it } from 'vitest'
@@ -334,9 +334,9 @@ describe('PermissionPolicy (test_permissions.py)', () => {
   })
 })
 
-// ── from test_permission_pipeline_v2.py ──
+// ── Permission pipeline ──
 
-describe('PermissionPipeline (test_permission_pipeline_v2.py)', () => {
+describe('PermissionPipeline', () => {
   it('returns rule + trace for high-risk command', () => {
     const decision = run('git push origin main')
     expect(decision.requiresApproval).toBe(true)
@@ -944,7 +944,7 @@ describe('PermissionPipeline (test_permission_pipeline_v2.py)', () => {
   })
 })
 
-describe('PermissionPipeline v2 permission modes', () => {
+describe('PermissionPipeline permission modes', () => {
   it('asks before ordinary writes in ask_before_edit mode', () => {
     const decision = new PermissionPipeline().assess(
       'write_file',

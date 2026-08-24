@@ -176,7 +176,7 @@ describe('ask interaction model', () => {
     })
   })
 
-  it('renders permission v2 operation summaries without private diagnostics', () => {
+  it('renders permission operation summaries without private diagnostics', () => {
     const presentation = askHistoryPresentation(
       ask({
         context: '内部上下文不应成为权限详情',

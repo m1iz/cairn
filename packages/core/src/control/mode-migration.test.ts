@@ -6,10 +6,10 @@ import { controlStateFromDict } from './models'
 import { ControlStore } from './store'
 
 function tempRoot(): string {
-  return mkdtempSync(join(tmpdir(), 'cairn-control-mode-v2-'))
+  return mkdtempSync(join(tmpdir(), 'cairn-control-mode-migration-'))
 }
 
-describe('Control permission mode v2 migration', () => {
+describe('Control permission mode migration', () => {
   it.each([
     ['ask_before_edit', 'ask_before_edit'],
     ['accept_edits', 'smart_auto'],

@@ -410,7 +410,7 @@ describe('Goal models', () => {
     expectGoalCode(
       () =>
         parseGoalRecord({
-          schemaVersion: 'cairn.goal.v2',
+          schemaVersion: 'cairn.goal.unsupported',
           scope: { workspaceRoot: secretRoot },
         }),
       'goal_schema_version_unsupported',

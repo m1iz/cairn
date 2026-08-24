@@ -52,7 +52,7 @@ describe('GoalBlockerFactStore', () => {
     expect(fixture.facts.inspect(advanced)).toBeNull()
 
     const raw = JSON.parse(readFileSync(fixture.facts.path, 'utf8'))
-    raw.facts[fixture.goal.id].evidenceVersion = 'forged:v2'
+    raw.facts[fixture.goal.id].evidenceVersion = 'forged:other'
     writeFileSync(fixture.facts.path, JSON.stringify(raw, null, 2), 'utf8')
     expect(fixture.facts.inspect(fixture.goal)).toBeNull()
   })

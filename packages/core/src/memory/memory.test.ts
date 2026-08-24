@@ -351,7 +351,7 @@ describe('MemoryVersionStore (test_memory_versions.py)', () => {
     const v1 = store.snapshotPath(memoryFile, { reason: 'first' })
     expect(v1).not.toBeNull()
     expect(v1!.target).toBe('memory')
-    writeFileSync(memoryFile, 'v2\n', 'utf8')
+    writeFileSync(memoryFile, 'second revision\n', 'utf8')
     store.snapshotPath(memoryFile, { reason: 'second' })
 
     expect(store.list().length).toBe(2)
@@ -372,8 +372,8 @@ describe('MemoryVersionStore (test_memory_versions.py)', () => {
       join(root, 'USER.local.md'),
     )
     const v1 = store.snapshotPath(memoryFile)
-    const v2 = store.snapshotPath(memoryFile)
-    expect(v1!.id).toBe(v2!.id)
+    const secondSnapshot = store.snapshotPath(memoryFile)
+    expect(v1!.id).toBe(secondSnapshot!.id)
     expect(store.list().length).toBe(1)
   })
 
