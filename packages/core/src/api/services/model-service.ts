@@ -360,8 +360,7 @@ export class CoreModelService {
     entryId: string,
     forceVision = false,
   ): ProviderSnapshot {
-    if (!forceVision)
-      return buildProviderSnapshot(config, { modelOverride: entryId })
+    if (!forceVision) return buildProviderSnapshot(config, { entryId })
     const entry = findEntry(config, entryId)
     if (!entry) throw new Error(`model entry not found: ${entryId}`)
     const updated = upsertModelEntryConfig(config, {
@@ -369,7 +368,7 @@ export class CoreModelService {
       capabilityOverrides: { ...entry.capabilityOverrides, vision: true },
     })
     return buildProviderSnapshot(updated, {
-      modelOverride: entryId,
+      entryId,
     })
   }
 

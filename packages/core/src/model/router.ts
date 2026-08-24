@@ -60,20 +60,13 @@ export interface ModelRoute {
 
 export class ModelRouter {
   readonly root: string
-  readonly modelOverride: string | null
   readonly availability: ModelAvailability
   readonly active: ProviderSnapshot
   readonly executionPolicy: ModelRoute['executionPolicy']
   private readonly routeCounts = new Map<string, number>()
 
-  constructor(
-    root: string,
-    config: ModelConfig,
-    modelOverride?: string | null,
-  ) {
+  constructor(root: string, config: ModelConfig) {
     this.root = resolve(root)
-    // modelOverride 只保留构造签名兼容；全局 activeModelId 是唯一运行时选择。
-    this.modelOverride = modelOverride ?? null
     this.availability = modelAvailability(config)
     this.active = activeEntry(config)
       ? buildProviderSnapshot(config)
@@ -143,17 +136,15 @@ export function roughTokenEstimate(text: string): number {
 // ── snapshot 装配（对齐 `build_provider_snapshot`）──
 
 export interface SnapshotArgs {
-  modelOverride?: string | null
-  /** @deprecated 单模型运行时忽略 role。 */
-  role?: ModelRole
+  entryId?: string | null
 }
 
 export function buildProviderSnapshot(
   config: ModelConfig,
   args: SnapshotArgs = {},
 ): ProviderSnapshot {
-  const modelOverride = args.modelOverride ?? null
-  const entry = resolveActiveEntry(config, modelOverride)
+  const entryId = args.entryId ?? null
+  const entry = resolveActiveEntry(config, entryId)
   const spec = findByName(entry.provider) ?? fallbackSpec(entry.provider)
   const modelId = entry.modelId
   const apiKey = entry.apiKey
@@ -276,7 +267,7 @@ function buildExecutionPolicy(
     fallback:
       hasFallback && policy.fallback.entryId
         ? buildProviderSnapshot(config, {
-            modelOverride: policy.fallback.entryId,
+            entryId: policy.fallback.entryId,
           })
         : null,
     triggerOn: [...policy.fallback.triggerOn],
@@ -313,15 +304,13 @@ function snapshotApiBase(
 
 function resolveActiveEntry(
   config: ModelConfig,
-  modelOverride: string | null,
+  entryId: string | null,
 ): ModelEntry {
-  const entry = modelOverride
-    ? findEntry(config, modelOverride)
-    : activeEntry(config)
+  const entry = entryId ? findEntry(config, entryId) : activeEntry(config)
   if (!entry)
     throw new Error(
-      modelOverride
-        ? `Model entry not found: ${modelOverride}`
+      entryId
+        ? `Model entry not found: ${entryId}`
         : 'No active model entry is configured',
     )
   return entry

@@ -332,7 +332,6 @@ export interface AgentLoopCreateOptions {
   userFile?: string | null
   promptProfile?: PromptProfile | string | null
   modelRouter?: LoopModelRouter | null
-  modelOverride?: string | null
   initializeMcp?: boolean
   eventSink?: StreamEmitter | null
   permissionRules?: PermissionRuleInput[] | null
@@ -529,7 +528,6 @@ export class AgentLoop {
   private activeRunner!: AgentRunner
   history: Msg[] = []
   private readonly ownsModelRouter: boolean
-  private readonly modelOverride: string | null
   private readonly enableFirstRunOnboarding: boolean
   private schedulerAgentTurnSubmitter:
     ((payload: SchedulerAgentTurnPayload) => Promise<string>) | null = null
@@ -582,7 +580,6 @@ export class AgentLoop {
     this.registry.setRoot(this.paths.stateRoot)
     this.modelRouter = modelRouter
     this.ownsModelRouter = !opts.modelRouter
-    this.modelOverride = opts.modelOverride ?? null
     this.enableFirstRunOnboarding = Boolean(opts.enableFirstRunOnboarding)
     this.sharedMemory = sharedMemory
     this.profileOnboarding = new ProfileOnboardingCoordinator({
@@ -1156,11 +1153,7 @@ export class AgentLoop {
       const modelConfig = await loadModelConfig(paths.stateRoot, {
         create: true,
       })
-      modelRouter = new ModelRouter(
-        paths.stateRoot,
-        modelConfig,
-        opts.modelOverride ?? null,
-      )
+      modelRouter = new ModelRouter(paths.stateRoot, modelConfig)
     }
     const loop = new AgentLoop(
       {
@@ -2982,7 +2975,6 @@ export class AgentLoop {
     this.modelRouter = new ModelRouter(
       this.paths.stateRoot,
       await loadModelConfig(this.paths.stateRoot, { create: true }),
-      this.modelOverride,
     )
     for (const actor of this.sessionRuntimes.listActors()) {
       actor.bindings.runner = this.buildMainRunner(actor.bindings)
