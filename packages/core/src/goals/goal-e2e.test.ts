@@ -63,79 +63,83 @@ afterEach(() => {
 })
 
 describe('Goal mode deterministic E2E', () => {
-  it('runs Contract -> Plan awaiting -> CoreApi approval -> Goal coordinator resume through the real model loop', async () => {
-    const root = temp('goal-e2e-plan-control-')
-    writeFileSync(join(root, 'README.md'), '# Goal Plan fixture\n', 'utf8')
-    const events: Record<string, unknown>[] = []
-    const provider = new GoalPlanProvider()
-    const api = await CoreApi.create({
-      root,
-      stateRoot: join(root, 'state'),
-      templatesDir: TEMPLATES_DIR,
-      modelRouter: fakeRouter(provider),
-      processSandbox: passThroughProcessSandbox(),
-      initializeMcp: false,
-      eventSink: (event) => {
-        events.push(event)
-      },
-    })
-    const session = api.sessions.create({
-      title: 'Goal Plan control',
-      mode: 'build',
-      project_path: root,
-    })
-    api.sessions.activate(String(session.id))
+  it(
+    'runs Contract -> Plan awaiting -> CoreApi approval -> Goal coordinator resume through the real model loop',
+    async () => {
+      const root = temp('goal-e2e-plan-control-')
+      writeFileSync(join(root, 'README.md'), '# Goal Plan fixture\n', 'utf8')
+      const events: Record<string, unknown>[] = []
+      const provider = new GoalPlanProvider()
+      const api = await CoreApi.create({
+        root,
+        stateRoot: join(root, 'state'),
+        templatesDir: TEMPLATES_DIR,
+        modelRouter: fakeRouter(provider),
+        processSandbox: passThroughProcessSandbox(),
+        initializeMcp: false,
+        eventSink: (event) => {
+          events.push(event)
+        },
+      })
+      const session = api.sessions.create({
+        title: 'Goal Plan control',
+        mode: 'build',
+        project_path: root,
+      })
+      api.sessions.activate(String(session.id))
 
-    const started = await api.goals.start({
-      outcome: 'Approve and resume a durable Goal Plan.',
-      sessionId: String(session.id),
-    })
-    await settleGoal(api, started.goal.id)
-    const pending = api.loop.controlManager.store.load().pending
-    expect(pending).toMatchObject({ kind: 'plan', status: 'waiting' })
-    expect(pending?.meta).toMatchObject({
-      goal_id: started.goal.id,
-      goal_session_id: String(session.id),
-    })
-    expect(await api.loop.goalStore.get(started.goal.id)).toMatchObject({
-      status: 'active',
-      runtime: {
-        phase: 'awaiting_user',
-        pendingInteractionId: pending?.id,
-        currentPlanId: null,
-      },
-    })
+      const started = await api.goals.start({
+        outcome: 'Approve and resume a durable Goal Plan.',
+        sessionId: String(session.id),
+      })
+      await settleGoal(api, started.goal.id)
+      const pending = api.loop.controlManager.store.load().pending
+      expect(pending).toMatchObject({ kind: 'plan', status: 'waiting' })
+      expect(pending?.meta).toMatchObject({
+        goal_id: started.goal.id,
+        goal_session_id: String(session.id),
+      })
+      expect(await api.loop.goalStore.get(started.goal.id)).toMatchObject({
+        status: 'active',
+        runtime: {
+          phase: 'awaiting_user',
+          pendingInteractionId: pending?.id,
+          currentPlanId: null,
+        },
+      })
 
-    await api.control.approvePlan(String(pending?.id), { uiHidden: true })
-    await settleGoal(api, started.goal.id)
-    const resumed = await api.loop.goalStore.get(started.goal.id)
-    expect(resumed).toMatchObject({
-      status: 'active',
-      runtime: {
-        phase: 'paused',
-        currentPlanId: String(pending?.meta.plan_id),
-        pendingInteractionId: null,
-        pauseReason: 'no_new_evidence',
-      },
-    })
-    expect(provider.calls).toBeGreaterThanOrEqual(5)
-    expect(events.map((event) => event.event)).toEqual(
-      expect.arrayContaining([
-        'goal_created',
-        'goal_runtime_update',
-        'goal_paused',
-      ]),
-    )
-    expect(
-      events
-        .filter((event) => String(event.event).startsWith('goal_'))
-        .every((event) => event.session_id === String(session.id)),
-    ).toBe(true)
-    await api.goals.resume(started.goal.id)
-    await settleGoal(api, started.goal.id)
-    expect(events.map((event) => event.event)).toContain('goal_resumed')
-    await api.close()
-  }, e2eTimeout(15_000))
+      await api.control.approvePlan(String(pending?.id), { uiHidden: true })
+      await settleGoal(api, started.goal.id)
+      const resumed = await api.loop.goalStore.get(started.goal.id)
+      expect(resumed).toMatchObject({
+        status: 'active',
+        runtime: {
+          phase: 'paused',
+          currentPlanId: String(pending?.meta.plan_id),
+          pendingInteractionId: null,
+          pauseReason: 'no_new_evidence',
+        },
+      })
+      expect(provider.calls).toBeGreaterThanOrEqual(5)
+      expect(events.map((event) => event.event)).toEqual(
+        expect.arrayContaining([
+          'goal_created',
+          'goal_runtime_update',
+          'goal_paused',
+        ]),
+      )
+      expect(
+        events
+          .filter((event) => String(event.event).startsWith('goal_'))
+          .every((event) => event.session_id === String(session.id)),
+      ).toBe(true)
+      await api.goals.resume(started.goal.id)
+      await settleGoal(api, started.goal.id)
+      expect(events.map((event) => event.event)).toContain('goal_resumed')
+      await api.close()
+    },
+    e2eTimeout(15_000),
+  )
 
   it('keeps background Goal control and runtime ownership on session A when the user switches to session B', async () => {
     const root = temp('goal-e2e-session-switch-')
@@ -192,214 +196,219 @@ describe('Goal mode deterministic E2E', () => {
     await api.close()
   }, 15_000)
 
-  it('automatically reaches manual verification and independent reviewer through production Control and runner paths', async () => {
-    const root = temp('goal-e2e-verification-orchestration-')
-    const events: Record<string, unknown>[] = []
-    const provider = new GoalReviewerAwareProvider()
-    const api = await CoreApi.create({
-      root,
-      stateRoot: join(root, 'state'),
-      templatesDir: TEMPLATES_DIR,
-      modelRouter: fakeRouter(provider),
-      processSandbox: passThroughProcessSandbox(),
-      initializeMcp: false,
-      eventSink: (event) => {
-        events.push(event)
-      },
-    })
-    const session = api.sessions.create({
-      title: 'Goal verification orchestration',
-      mode: 'build',
-      project_path: root,
-    })
-    api.sessions.activate(String(session.id))
-    const created = await api.loop.goalStore.create(
-      newGoalRecord({
-        id: 'goal_e2e_verification_orchestration',
-        outcome: 'Reach every trusted verification issuer.',
-        scope: api.loop.goalScopeForSession(session as never),
-        now: T0,
-      }),
-    )
-    const locked = await api.loop.goalStore.append(created.id, {
-      type: 'goal_updated',
-      record: GoalContractValidator.lock(
-        created,
-        {
-          inScope: ['manual and reviewer production orchestration'],
-          outOfScope: [],
-          constraints: ['Keep execution inside the owner workspace.'],
-          acceptanceCriteria: [
-            {
-              id: 'AC-1',
-              description: 'The user explicitly confirms the visible result.',
-              required: true,
-              verification: {
-                kind: 'manual',
-                requirement: 'Explicit user confirmation',
-              },
-            },
-            {
-              id: 'AC-2',
-              description: 'An independent reviewer runs a real command.',
-              required: true,
-              verification: {
-                kind: 'reviewer',
-                requirement: 'Independent command-backed review',
-              },
-            },
-          ],
-          escalationConditions: [],
+  it(
+    'automatically reaches manual verification and independent reviewer through production Control and runner paths',
+    async () => {
+      const root = temp('goal-e2e-verification-orchestration-')
+      const events: Record<string, unknown>[] = []
+      const provider = new GoalReviewerAwareProvider()
+      const api = await CoreApi.create({
+        root,
+        stateRoot: join(root, 'state'),
+        templatesDir: TEMPLATES_DIR,
+        modelRouter: fakeRouter(provider),
+        processSandbox: passThroughProcessSandbox(),
+        initializeMcp: false,
+        eventSink: (event) => {
+          events.push(event)
         },
-        T1,
-      ),
-      expectedLastEventSeq: created.lastEventSeq,
-    })
-    api.loop.controlManager.setActiveGoalPlanContext(locked)
-    api.loop.controlManager.setRuntimeScope(locked.scope)
-    api.loop.controlManager.setMode('smart_auto')
-    api.loop.controlManager.setMode('plan')
-    const planInteraction = api.loop.controlManager.createPlan({
-      title: 'Verification orchestration Plan',
-      summary: 'Exercise manual and reviewer issuers.',
-      planMarkdown: '# Plan\n\n- Prepare the verification state.\n- Verify it.',
-      riskLevel: 'low',
-      steps: [
-        {
-          id: 'step_1',
-          title: 'Prepare verification state',
-          description: 'The implementation is ready for verification.',
-          commands: [READ_CWD_COMMAND],
-          acceptance: ['Verification can run.'],
-        },
-      ],
-    })
-    api.loop.controlManager.approve(planInteraction.id)
-    const approvedPlan = api.loop.controlManager.planStore.get(
-      String(planInteraction.meta.plan_id),
-    )!
-    const completedAt = approvedPlan.updatedAt + 1
-    const plan = api.loop.controlManager.planStore.save({
-      ...approvedPlan,
-      status: PlanStatus.COMPLETED,
-      updatedAt: completedAt,
-      completedAt,
-      steps: approvedPlan.steps.map((step) => ({
-        ...step,
-        status: PlanStepStatus.DONE,
-      })),
-    })
-    expect(
-      api.loop.controlManager.recordPlanVerificationResult({
-        planId: plan.id,
-        stepId: 'step_1',
-        result: {
-          requirement_id: 'cmd_1',
-          tool_call_id: 'plan_verification_pwd',
-          command: READ_CWD_COMMAND,
-          passed: true,
-          exit_code: 0,
-          summary: 'The bounded Plan verification command passed.',
-        },
-      }),
-    ).not.toBeNull()
-    const executing = await api.loop.goalStore.append(locked.id, {
-      type: 'goal_updated',
-      expectedLastEventSeq: locked.lastEventSeq,
-      record: assertGoalTransition(locked, {
-        ...locked,
-        runtime: {
-          ...locked.runtime,
-          phase: 'executing',
-          currentPlanId: plan.id,
-        },
-        updatedAt: T2,
-      }),
-    })
-
-    await api.loop.goalCoordinator.start(executing.id)
-    await within(
-      settleGoal(api, executing.id),
-      e2eTimeout(5_000),
-      'manual verification interaction was not reached',
-    )
-    const manual = api.loop.controlManager.store.load().pending
-    expect(manual?.meta.goal_manual_evidence_request).toMatchObject({
-      goal_id: executing.id,
-      criterion_id: 'AC-1',
-    })
-
-    await api.control.answerInteraction(String(manual?.id), {
-      [GOAL_MANUAL_EVIDENCE_QUESTION_ID]: {
-        choice: GOAL_MANUAL_EVIDENCE_PASS_LABEL,
-      },
-    })
-    await within(
-      settleGoal(api, executing.id),
-      e2eTimeout(8_000),
-      'reviewer-backed Goal cycle did not settle',
-    )
-
-    const evidence = await api.loop.goalEvidenceLedger.listEvidence(
-      executing.id,
-    )
-    expect(evidence).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          criterionId: 'AC-1',
-          verdict: 'pass',
-          recorder: 'user',
+      })
+      const session = api.sessions.create({
+        title: 'Goal verification orchestration',
+        mode: 'build',
+        project_path: root,
+      })
+      api.sessions.activate(String(session.id))
+      const created = await api.loop.goalStore.create(
+        newGoalRecord({
+          id: 'goal_e2e_verification_orchestration',
+          outcome: 'Reach every trusted verification issuer.',
+          scope: api.loop.goalScopeForSession(session as never),
+          now: T0,
         }),
-        expect.objectContaining({
-          criterionId: 'AC-2',
-          verdict: 'pass',
-          recorder: 'reviewer',
-          independent: true,
+      )
+      const locked = await api.loop.goalStore.append(created.id, {
+        type: 'goal_updated',
+        record: GoalContractValidator.lock(
+          created,
+          {
+            inScope: ['manual and reviewer production orchestration'],
+            outOfScope: [],
+            constraints: ['Keep execution inside the owner workspace.'],
+            acceptanceCriteria: [
+              {
+                id: 'AC-1',
+                description: 'The user explicitly confirms the visible result.',
+                required: true,
+                verification: {
+                  kind: 'manual',
+                  requirement: 'Explicit user confirmation',
+                },
+              },
+              {
+                id: 'AC-2',
+                description: 'An independent reviewer runs a real command.',
+                required: true,
+                verification: {
+                  kind: 'reviewer',
+                  requirement: 'Independent command-backed review',
+                },
+              },
+            ],
+            escalationConditions: [],
+          },
+          T1,
+        ),
+        expectedLastEventSeq: created.lastEventSeq,
+      })
+      api.loop.controlManager.setActiveGoalPlanContext(locked)
+      api.loop.controlManager.setRuntimeScope(locked.scope)
+      api.loop.controlManager.setMode('smart_auto')
+      api.loop.controlManager.setMode('plan')
+      const planInteraction = api.loop.controlManager.createPlan({
+        title: 'Verification orchestration Plan',
+        summary: 'Exercise manual and reviewer issuers.',
+        planMarkdown:
+          '# Plan\n\n- Prepare the verification state.\n- Verify it.',
+        riskLevel: 'low',
+        steps: [
+          {
+            id: 'step_1',
+            title: 'Prepare verification state',
+            description: 'The implementation is ready for verification.',
+            commands: [READ_CWD_COMMAND],
+            acceptance: ['Verification can run.'],
+          },
+        ],
+      })
+      api.loop.controlManager.approve(planInteraction.id)
+      const approvedPlan = api.loop.controlManager.planStore.get(
+        String(planInteraction.meta.plan_id),
+      )!
+      const completedAt = approvedPlan.updatedAt + 1
+      const plan = api.loop.controlManager.planStore.save({
+        ...approvedPlan,
+        status: PlanStatus.COMPLETED,
+        updatedAt: completedAt,
+        completedAt,
+        steps: approvedPlan.steps.map((step) => ({
+          ...step,
+          status: PlanStepStatus.DONE,
+        })),
+      })
+      expect(
+        api.loop.controlManager.recordPlanVerificationResult({
+          planId: plan.id,
+          stepId: 'step_1',
+          result: {
+            requirement_id: 'cmd_1',
+            tool_call_id: 'plan_verification_pwd',
+            command: READ_CWD_COMMAND,
+            passed: true,
+            exit_code: 0,
+            summary: 'The bounded Plan verification command passed.',
+          },
         }),
-      ]),
-    )
-    expect(provider.reviewerCommands).toBe(1)
-    const finalGateEvent = events
-      .filter((event) => event.event === 'goal_gate_evaluated')
-      .at(-1)
-    expect(finalGateEvent).toMatchObject({
-      passed: true,
-      reason_codes: [],
-    })
-    expect(events.map((event) => event.event)).toEqual(
-      expect.arrayContaining([
-        'goal_evidence_recorded',
-        'goal_gate_evaluated',
-        'goal_completed',
-      ]),
-    )
-    const replay = api.runtime.replay({
-      sessionId: String(session.id),
-      afterSeq: 0,
-      compact: false,
-    })
-    expect(replay.events.map((event) => event.event)).toEqual(
-      expect.arrayContaining([
-        'goal_evidence_recorded',
-        'goal_gate_evaluated',
-        'goal_completed',
-      ]),
-    )
-    expect(
-      replay.events
-        .filter((event) => String(event.event).startsWith('goal_'))
-        .every((event) => event.session_id === String(session.id)),
-    ).toBe(true)
-    const summary = await api.goals.get(executing.id)
-    expect(summary.acceptance.criteria).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: 'AC-1', verdict: 'pass' }),
-        expect.objectContaining({ id: 'AC-2', verdict: 'pass' }),
-      ]),
-    )
-    expect(summary.status).toBe('completed')
-    await api.close()
-  }, e2eTimeout(20_000))
+      ).not.toBeNull()
+      const executing = await api.loop.goalStore.append(locked.id, {
+        type: 'goal_updated',
+        expectedLastEventSeq: locked.lastEventSeq,
+        record: assertGoalTransition(locked, {
+          ...locked,
+          runtime: {
+            ...locked.runtime,
+            phase: 'executing',
+            currentPlanId: plan.id,
+          },
+          updatedAt: T2,
+        }),
+      })
+
+      await api.loop.goalCoordinator.start(executing.id)
+      await within(
+        settleGoal(api, executing.id),
+        e2eTimeout(5_000),
+        'manual verification interaction was not reached',
+      )
+      const manual = api.loop.controlManager.store.load().pending
+      expect(manual?.meta.goal_manual_evidence_request).toMatchObject({
+        goal_id: executing.id,
+        criterion_id: 'AC-1',
+      })
+
+      await api.control.answerInteraction(String(manual?.id), {
+        [GOAL_MANUAL_EVIDENCE_QUESTION_ID]: {
+          choice: GOAL_MANUAL_EVIDENCE_PASS_LABEL,
+        },
+      })
+      await within(
+        settleGoal(api, executing.id),
+        e2eTimeout(8_000),
+        'reviewer-backed Goal cycle did not settle',
+      )
+
+      const evidence = await api.loop.goalEvidenceLedger.listEvidence(
+        executing.id,
+      )
+      expect(evidence).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            criterionId: 'AC-1',
+            verdict: 'pass',
+            recorder: 'user',
+          }),
+          expect.objectContaining({
+            criterionId: 'AC-2',
+            verdict: 'pass',
+            recorder: 'reviewer',
+            independent: true,
+          }),
+        ]),
+      )
+      expect(provider.reviewerCommands).toBe(1)
+      const finalGateEvent = events
+        .filter((event) => event.event === 'goal_gate_evaluated')
+        .at(-1)
+      expect(finalGateEvent).toMatchObject({
+        passed: true,
+        reason_codes: [],
+      })
+      expect(events.map((event) => event.event)).toEqual(
+        expect.arrayContaining([
+          'goal_evidence_recorded',
+          'goal_gate_evaluated',
+          'goal_completed',
+        ]),
+      )
+      const replay = api.runtime.replay({
+        sessionId: String(session.id),
+        afterSeq: 0,
+        compact: false,
+      })
+      expect(replay.events.map((event) => event.event)).toEqual(
+        expect.arrayContaining([
+          'goal_evidence_recorded',
+          'goal_gate_evaluated',
+          'goal_completed',
+        ]),
+      )
+      expect(
+        replay.events
+          .filter((event) => String(event.event).startsWith('goal_'))
+          .every((event) => event.session_id === String(session.id)),
+      ).toBe(true)
+      const summary = await api.goals.get(executing.id)
+      expect(summary.acceptance.criteria).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'AC-1', verdict: 'pass' }),
+          expect.objectContaining({ id: 'AC-2', verdict: 'pass' }),
+        ]),
+      )
+      expect(summary.status).toBe('completed')
+      await api.close()
+    },
+    e2eTimeout(20_000),
+  )
 
   it('repairs failed command evidence, preserves the failure, and completes through real stores and Gate', async () => {
     const f = await completionFixture('goal_e2e_repair')
