@@ -51,6 +51,12 @@ jobs:
         run: npm --prefix desktop run lint
       - name: Build Desktop
         run: npm --prefix desktop run build
+      - name: Smoke native terminal on Windows
+        if: runner.os == 'Windows'
+        run: npm --prefix desktop run terminal:smoke
+      - name: Package and smoke Desktop on Windows
+        if: runner.os == 'Windows'
+        run: npm --prefix desktop run package:verify
 
   windows-test-ratchet:
     name: Windows test ratchet
@@ -71,8 +77,8 @@ jobs:
           node scripts/verify-vitest-baseline.mjs
           --cwd packages/core
           --vitest ../../node_modules/vitest/vitest.mjs
-          --min-passed 2200
-          --max-failed 15
+          --min-passed 2219
+          --max-failed 0
           --max-skipped 19
           --max-runtime-errors 0
       - name: Reject Desktop regressions beyond the captured baseline
@@ -105,7 +111,7 @@ jobs:
           --cwd packages/core
           --vitest ../../node_modules/vitest/vitest.mjs
           --min-passed 2220
-          --max-failed 9
+          --max-failed 0
           --max-skipped 5
           --max-runtime-errors 0
       - name: Reject Desktop regressions beyond the captured UI baseline
