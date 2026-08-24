@@ -79,7 +79,7 @@ Runner 对同一模型响应里的工具调用先做完整预检，再产生任�
 
 Permission decision 只回答“Core 是否授权尝试这个 effect”，不等于操作系统已经把进程隔离。`run_command` 在获准后还要经过 `OsSandboxController`：macOS 使用系统 Seatbelt (`sandbox-exec`)，Linux 使用已通过 user-namespace probe 的 `bwrap`，Windows 当前明确报告 `windows-unsupported`。每次执行都产生独立 containment receipt，包含实际 backend、capability status、filesystem/network/process-tree 能力和 policy hash；receipt 不含 profile 原文、HOME 或完整 PATH。`OwnedProcessRunner` 在 spawn 前提交 receipt；提交失败时不启动进程，避免先产生副作用再丢失 containment 事实。
 
-所有 `run_command` 都把 OS containment 设为 required。backend 缺失、probe 失败、平台不支持或 runner 返回 `unsandboxed` receipt 时，Core 在接受命令结果前 fail closed，并返回 containment 错误，不会把权限批准或“只读”分类伪装成 sandbox。当前 sandbox 只允许 workspace 和每次执行的私有临时目录写入，隐藏/拒绝 `stateRoot`，阻断 workspace 外读写、symlink/子进程逃逸和网络；读取系统运行库与受控 PATH root 只读放行。
+`run_command` 按已证明的 effect 选择 containment：Shell AST 能严格证明只读的命令使用 `preferred`；backend 缺失时可以带明确的 `unsandboxed` receipt 运行，不能伪装成 sandbox。无法证明只读或可能写入的命令始终使用 `required`，backend 缺失、probe 失败、平台不支持、`denied` 或 `unsandboxed` receipt 都会在接受结果前 fail closed。当前可用 sandbox 只允许 workspace 和每次执行的私有临时目录写入，隐藏/拒绝 `stateRoot`，阻断 workspace 外读写、symlink/子进程逃逸和网络；读取系统运行库与受控 PATH root 只读放行。
 
 Linux 的生产 backend 当前只有 bwrap：probe 不只检查文件存在，还实际启动最小 namespace。直接 Landlock 需要经过审核的 native helper，当前未随包提供，因此 capability matrix 把它视为“尚无实现”，不能用 kernel 版本推测 available。Windows 同理保留 Job Object + ACL 研究项，但在实现、攻击测试和 package receipt 完成前保持 unsupported。
 

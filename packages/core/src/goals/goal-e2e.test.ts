@@ -25,6 +25,7 @@ import { LLMProvider, type ChatArgs, type LLMResponse } from '../providers/base'
 import { TaskManager } from '../tasks/manager'
 import { ToolResultObj } from '../tools/base'
 import { ToolRegistry } from '../tools/registry'
+import { passThroughProcessSandbox } from '../test-fixtures/process-sandbox'
 import { GoalBlockerFactStore } from './blocker-facts'
 import {
   GoalEvidenceLedger,
@@ -49,6 +50,7 @@ const T1 = '2026-07-15T08:01:00.000Z'
 const T2 = '2026-07-15T08:02:00.000Z'
 const T3 = '2026-07-15T08:03:00.000Z'
 const roots: string[] = []
+const READ_CWD_COMMAND = process.platform === 'win32' ? 'cd' : 'pwd'
 
 afterEach(() => {
   for (const root of roots.splice(0))
@@ -66,6 +68,7 @@ describe('Goal mode deterministic E2E', () => {
       stateRoot: join(root, 'state'),
       templatesDir: TEMPLATES_DIR,
       modelRouter: fakeRouter(provider),
+      processSandbox: passThroughProcessSandbox(),
       initializeMcp: false,
       eventSink: (event) => {
         events.push(event)
@@ -193,6 +196,7 @@ describe('Goal mode deterministic E2E', () => {
       stateRoot: join(root, 'state'),
       templatesDir: TEMPLATES_DIR,
       modelRouter: fakeRouter(provider),
+      processSandbox: passThroughProcessSandbox(),
       initializeMcp: false,
       eventSink: (event) => {
         events.push(event)
@@ -260,7 +264,7 @@ describe('Goal mode deterministic E2E', () => {
           id: 'step_1',
           title: 'Prepare verification state',
           description: 'The implementation is ready for verification.',
-          commands: ['pwd'],
+          commands: [READ_CWD_COMMAND],
           acceptance: ['Verification can run.'],
         },
       ],
@@ -287,7 +291,7 @@ describe('Goal mode deterministic E2E', () => {
         result: {
           requirement_id: 'cmd_1',
           tool_call_id: 'plan_verification_pwd',
-          command: 'pwd',
+          command: READ_CWD_COMMAND,
           passed: true,
           exit_code: 0,
           summary: 'The bounded Plan verification command passed.',
@@ -993,6 +997,7 @@ async function createApi(
     stateRoot,
     templatesDir: TEMPLATES_DIR,
     modelRouter: fakeRouter(provider),
+    processSandbox: passThroughProcessSandbox(),
     initializeMcp: false,
     eventSink,
   })
@@ -1159,7 +1164,9 @@ class GoalReviewerAwareProvider extends LLMProvider {
     if (!reviewer) return response('Continue the Goal verification lifecycle.')
     if (this.reviewerCommands === 0) {
       this.reviewerCommands += 1
-      return toolResponse('reviewer_pwd', 'run_command', { command: 'pwd' })
+      return toolResponse('reviewer_pwd', 'run_command', {
+        command: READ_CWD_COMMAND,
+      })
     }
     this.reviewerFinals += 1
     return response(
@@ -1169,8 +1176,8 @@ class GoalReviewerAwareProvider extends LLMProvider {
         JSON.stringify({
           passed: true,
           summary: 'The independent command completed successfully.',
-          commands: ['pwd'],
-          command_evidence: [{ command: 'pwd', exit_code: 0 }],
+          commands: [READ_CWD_COMMAND],
+          command_evidence: [{ command: READ_CWD_COMMAND, exit_code: 0 }],
         }),
         '```',
       ].join('\n'),

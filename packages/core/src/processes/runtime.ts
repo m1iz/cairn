@@ -187,7 +187,14 @@ export class OwnedProcessRuntime implements OwnedProcessRunner {
     this.sandbox =
       opts.sandbox ?? new OsSandboxController({ platform: this.platform })
     this.now = opts.now ?? (() => new Date())
-    this.bootMarker = opts.bootMarker ?? systemBootMarker
+    if (opts.bootMarker) this.bootMarker = opts.bootMarker
+    else {
+      // A running process cannot survive an OS reboot, so the boot marker is
+      // immutable for this runtime. Windows otherwise launches PowerShell for
+      // every short-lived child merely to rediscover the same value.
+      const bootMarker = systemBootMarker()
+      this.bootMarker = () => bootMarker
+    }
     this.processIdentity = opts.processIdentity ?? stableProcessStartIdentity
     this.isPidAlive = opts.pidAlive ?? pidIsAlive
     this.killProcessTree =

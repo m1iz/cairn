@@ -121,9 +121,13 @@ export function stableProcessStartIdentity(
           '-NoProfile',
           '-NonInteractive',
           '-Command',
-          `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CreationDate.ToFileTimeUtc()`,
+          `$processInfo = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($null -ne $processInfo) { $processInfo.StartTime.ToFileTimeUtc() }`,
         ],
-        { encoding: 'utf8', timeout: 2_000 },
+        {
+          encoding: 'utf8',
+          timeout: 2_000,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
       ).trim()
       return /^\d+$/.test(value)
         ? {

@@ -8,7 +8,7 @@ import {
 } from 'node:fs'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   ApplyPatchTool,
@@ -32,6 +32,7 @@ import type { ProcessContainmentController } from './environment/sandbox'
 import { PublicHttpError, type PublicHttpRequest } from './network/public-http'
 import { WebFetch, type WebFetchClient } from './tools/web-fetch'
 import type { CodeGraphFileEvent } from './code-intelligence/models'
+import { canonicalizeExistingPath } from './util/paths'
 
 let dir: string
 beforeEach(() => {
@@ -65,6 +66,12 @@ function testOwnedProcessRunner(): OwnedProcessRunner {
     }),
   }
   return new NodeOwnedProcessRunner({ sandbox })
+}
+
+function nodeScriptCommand(scriptPath: string): string {
+  // CI and the test temp root use whitespace-free paths. Keeping the Windows
+  // command unquoted avoids cmd.exe /S stripping the first and last quote.
+  return `${process.execPath} ${scriptPath}`
 }
 
 describe('WebFetch', () => {
@@ -584,9 +591,15 @@ describe('RunCommand structured results', () => {
   it.each(['Error: command cancelled', 'Error: spawn unavailable'])(
     'keeps zero-exit stdout collision %j successful',
     async (stdout) => {
-      const result = await new RunCommand(dir).execute({
-        command: `printf '%s' '${stdout}'`,
-      })
+      const scriptPath = join(dir, `stdout-${stdout.length}.cjs`)
+      writeFileSync(
+        scriptPath,
+        `process.stdout.write(${JSON.stringify(stdout)})`,
+      )
+      const command = nodeScriptCommand(scriptPath)
+      const result = await new RunCommand(dir, {
+        ownedRunner: testOwnedProcessRunner(),
+      }).execute({ command })
 
       expect(result).toMatchObject({
         modelContent: stdout,
@@ -620,7 +633,7 @@ describe('RunCommand structured results', () => {
   it('does not infer mapResult failure from user-visible stdout text', () => {
     const result = new RunCommand(dir).mapResult('Error: command cancelled', {
       root: dir,
-      workspaceRoot: realpathSync(dir),
+      workspaceRoot: canonicalizeExistingPath(realpathSync(dir)),
       arguments: { command: "printf 'Error: command cancelled'" },
     })
 
@@ -676,7 +689,7 @@ describe('RunCommand OS containment contract', () => {
     expect(requests).toHaveLength(1)
     expect(requests[0]!.containment).toMatchObject({
       mode: 'required',
-      workspaceRoot: realpathSync(dir),
+      workspaceRoot: canonicalizeExistingPath(realpathSync(dir)),
       network: 'deny',
     })
     expect(result).toMatchObject({
@@ -693,7 +706,7 @@ describe('RunCommand OS containment contract', () => {
     expect(existsSync(target)).toBe(false)
   })
 
-  it('fails closed when a required command runner returns an unsandboxed receipt', async () => {
+  it('allows a proven read-only command with an explicit unsandboxed receipt', async () => {
     const requests: OwnedProcessRequest[] = []
     const runner: OwnedProcessRunner = {
       capability: () => ({
@@ -731,10 +744,10 @@ describe('RunCommand OS containment contract', () => {
       command: 'pwd',
     })
 
-    expect(requests[0]!.containment.mode).toBe('required')
+    expect(requests[0]!.containment.mode).toBe('preferred')
     expect(result).toMatchObject({
-      modelContent: expect.stringContaining('OS sandbox unavailable'),
-      isError: true,
+      modelContent: expect.stringContaining(basename(dir)),
+      isError: false,
       metadata: {
         containment: {
           decision: 'unsandboxed',
@@ -750,7 +763,12 @@ describe('RunCommand cancellation', () => {
   it('stops a running shell command when the turn abort signal fires', async () => {
     const r = new RunCommand(dir, { ownedRunner: testOwnedProcessRunner() })
     const controller = new AbortController()
-    const command = `"${process.execPath}" -e "setTimeout(() => console.log('should-not-finish'), 300)"`
+    const scriptPath = join(dir, 'cancel-command.cjs')
+    writeFileSync(
+      scriptPath,
+      "setTimeout(() => process.stdout.write('should-not-finish'), 300)",
+    )
+    const command = nodeScriptCommand(scriptPath)
     const pending = r.execute({ command }, {
       root: dir,
       arguments: { command },
@@ -789,7 +807,12 @@ describe('RunCommand execution environment snapshot', () => {
       { PROCESS_ONLY_SECRET: 'captured-but-not-whitelisted' },
     )
     try {
-      const command = `"${process.execPath}" -e "process.stdout.write([process.env.PATH, process.env.HOME, process.env.PROCESS_ONLY_SECRET].map((value) => value || '').join('|'))"`
+      const scriptPath = join(dir, 'print-environment.cjs')
+      writeFileSync(
+        scriptPath,
+        "process.stdout.write([process.env.PATH ?? '', process.env.HOME ?? '', process.env.PROCESS_ONLY_SECRET ?? ''].join('|'))",
+      )
+      const command = nodeScriptCommand(scriptPath)
       const output = await new RunCommand(dir, {
         ownedRunner: testOwnedProcessRunner(),
       }).execute(

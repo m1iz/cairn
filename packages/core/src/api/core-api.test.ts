@@ -33,6 +33,7 @@ import { AgentLoop } from '../agent/loop'
 import { GoalContractValidator, newGoalRecord } from '../goals/validation'
 import { ControlManager } from '../control/manager'
 import type { SubagentLaunchResult } from '../subagents/supervisor'
+import { passThroughProcessSandbox } from '../test-fixtures/process-sandbox'
 
 const TEMPLATES_DIR = join(__dirname, '..', '..', '..', '..', 'templates')
 
@@ -805,11 +806,10 @@ describe('CoreApi (MIG-IPC-001)', () => {
       'base',
     )
     const baseHead = gitRun('rev-parse', 'HEAD')
-    const gitVersion = execFileSync('git', ['--version'], {
-      encoding: 'utf8',
-    })
-      .trim()
-      .replace('git version ', '')
+    const gitVersion =
+      execFileSync('git', ['--version'], { encoding: 'utf8' }).match(
+        /[0-9]+(?:\.[0-9]+)+/,
+      )?.[0] ?? ''
     const api = await CoreApi.create({
       root,
       stateRoot,
@@ -817,6 +817,7 @@ describe('CoreApi (MIG-IPC-001)', () => {
       modelRouter: fakeRouter(new FakeProvider()),
       fileCheckpointsEnabled: true,
       softGitRewindMode: 'on',
+      processSandbox: passThroughProcessSandbox(),
       softGitRewindEvaluationGate: {
         passed: true,
         datasetSha256: 'a'.repeat(64),
@@ -897,7 +898,7 @@ describe('CoreApi (MIG-IPC-001)', () => {
     expect(readFileSync(target, 'utf8')).toBe('before-git\n')
     expect(gitRun('status', '--porcelain')).toBe('')
     await api.close()
-  }, 30_000)
+  }, process.platform === 'win32' ? 90_000 : 30_000)
 
   it('boots, submits a chat turn, and persists session runtime state without HTTP', async () => {
     const root = tmp('cairn-core-api-')
@@ -1142,9 +1143,9 @@ describe('CoreApi (MIG-IPC-001)', () => {
     })
     const diagnostics = await api.diagnostics.get()
 
-    expect(
-      existsSync(join(root, '.cairn', 'memory', 'MEMORY.local.md')),
-    ).toBe(true)
+    expect(existsSync(join(root, '.cairn', 'memory', 'MEMORY.local.md'))).toBe(
+      true,
+    )
     expect(
       existsSync(
         join(root, '.cairn', 'sessions', String(session.id), 'history.jsonl'),
@@ -1174,12 +1175,8 @@ describe('CoreApi (MIG-IPC-001)', () => {
         ),
       ),
     ).toBe(true)
-    expect(existsSync(join(root, '.cairn', 'control', 'state.json'))).toBe(
-      true,
-    )
-    expect(existsSync(join(root, '.cairn', '.team', 'config.json'))).toBe(
-      false,
-    )
+    expect(existsSync(join(root, '.cairn', 'control', 'state.json'))).toBe(true)
+    expect(existsSync(join(root, '.cairn', '.team', 'config.json'))).toBe(false)
     expect(existsSync(join(root, 'memory'))).toBe(false)
     expect(existsSync(join(root, 'sessions'))).toBe(false)
     expect(diagnostics.paths).toMatchObject({

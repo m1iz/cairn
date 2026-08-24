@@ -37,6 +37,7 @@ import type {
   OwnedProcessResult,
   OwnedProcessRunner,
 } from '../environment/process-runner'
+import { passThroughOwnedProcessRunner } from '../test-fixtures/process-sandbox'
 import {
   GoalEvidenceLedger,
   GoalObservationRecorder,
@@ -824,11 +825,16 @@ describe('Tool Goal evidence policy allowlist', () => {
   it('classifies a real non-zero run_command from structured process status', async () => {
     const root = await mkdtemp(join(tmpdir(), 'cairn-command-nonzero-'))
     const registry = new ToolRegistry(root)
-    registry.register(new RunCommand(root))
+    registry.register(
+      new RunCommand(root, { ownedRunner: passThroughOwnedProcessRunner() }),
+    )
 
     await expect(
       registry.executeResult('run_command', {
-        command: "printf '2 tests failed' >&2; exit 3",
+        command:
+          process.platform === 'win32'
+            ? 'echo 2 tests failed 1>&2 & exit /b 3'
+            : "printf '2 tests failed' >&2; exit 3",
       }),
     ).resolves.toMatchObject({
       isError: true,
@@ -840,11 +846,16 @@ describe('Tool Goal evidence policy allowlist', () => {
   it('does not treat legal zero-exit output beginning with Error: as failure', async () => {
     const root = await mkdtemp(join(tmpdir(), 'cairn-command-prefix-'))
     const registry = new ToolRegistry(root)
-    registry.register(new RunCommand(root))
+    registry.register(
+      new RunCommand(root, { ownedRunner: passThroughOwnedProcessRunner() }),
+    )
 
     await expect(
       registry.executeResult('run_command', {
-        command: "printf 'Error: legal diagnostic text'",
+        command:
+          process.platform === 'win32'
+            ? 'echo Error: legal diagnostic text'
+            : "printf 'Error: legal diagnostic text'",
       }),
     ).resolves.toMatchObject({
       isError: false,
@@ -856,16 +867,22 @@ describe('Tool Goal evidence policy allowlist', () => {
   it('uses real child-process exit codes for silent false and exit 7 failures', async () => {
     const root = await mkdtemp(join(tmpdir(), 'cairn-command-exit-'))
     const registry = new ToolRegistry(root)
-    registry.register(new RunCommand(root))
+    registry.register(
+      new RunCommand(root, { ownedRunner: passThroughOwnedProcessRunner() }),
+    )
 
     await expect(
-      registry.executeResult('run_command', { command: 'false' }),
+      registry.executeResult('run_command', {
+        command: process.platform === 'win32' ? 'exit /b 1' : 'false',
+      }),
     ).resolves.toMatchObject({
       isError: true,
       metadata: { exitCode: 1 },
     })
     await expect(
-      registry.executeResult('run_command', { command: 'exit 7' }),
+      registry.executeResult('run_command', {
+        command: process.platform === 'win32' ? 'exit /b 7' : 'exit 7',
+      }),
     ).resolves.toMatchObject({
       isError: true,
       metadata: { exitCode: 7 },
@@ -875,11 +892,16 @@ describe('Tool Goal evidence policy allowlist', () => {
   it('keeps stderr, signal, and non-numeric operational failures safely failed', async () => {
     const root = await mkdtemp(join(tmpdir(), 'cairn-command-errors-'))
     const registry = new ToolRegistry(root)
-    registry.register(new RunCommand(root))
+    registry.register(
+      new RunCommand(root, { ownedRunner: passThroughOwnedProcessRunner() }),
+    )
 
     await expect(
       registry.executeResult('run_command', {
-        command: "printf 'bad stderr' >&2; exit 7",
+        command:
+          process.platform === 'win32'
+            ? 'echo bad stderr 1>&2 & exit /b 7'
+            : "printf 'bad stderr' >&2; exit 7",
       }),
     ).resolves.toMatchObject({
       isError: true,
@@ -890,7 +912,12 @@ describe('Tool Goal evidence policy allowlist', () => {
     const signal = new AbortController()
     const pending = registry.executeResult(
       'run_command',
-      { command: 'sleep 5' },
+      {
+        command:
+          process.platform === 'win32'
+            ? 'ping 127.0.0.1 -n 6 > nul'
+            : 'sleep 5',
+      },
       { signal: signal.signal },
     )
     setTimeout(() => signal.abort(), 10)

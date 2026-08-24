@@ -9,7 +9,7 @@ import {
 } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, posix } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { OsSandboxController, type ProcessContainmentPolicy } from './sandbox'
 import { NodeOwnedProcessRunner } from './process-runner'
@@ -30,8 +30,8 @@ function policy(workspaceRoot = '/workspace'): ProcessContainmentPolicy {
   return {
     mode: 'required',
     workspaceRoot,
-    stateRoot: join(workspaceRoot, '.cairn'),
-    tempRoot: join(workspaceRoot, '.tmp'),
+    stateRoot: posix.join(workspaceRoot, '.cairn'),
+    tempRoot: posix.join(workspaceRoot, '.tmp'),
     readOnlyRoots: ['/runtime/bin'],
     network: 'deny',
   }
@@ -125,9 +125,7 @@ describe('NodeOwnedProcessRunner containment', () => {
   it.runIf(runnable)(
     'blocks outside read/write, state-root access, symlink escape, child escape, and network while allowing workspace writes',
     async () => {
-      const workspace = mkdtempSync(
-        join(tmpdir(), 'cairn-sandbox-workspace-'),
-      )
+      const workspace = mkdtempSync(join(tmpdir(), 'cairn-sandbox-workspace-'))
       const outside = mkdtempSync(join(tmpdir(), 'cairn-sandbox-outside-'))
       cleanup.push(workspace, outside)
       const stateRoot = join(workspace, '.cairn')

@@ -34,6 +34,7 @@ import { GoalGateMutationLedger } from '../goals/mutation-ledger'
 import { PlanStatus, PlanStepStatus, type PlanRecord } from '../plans/models'
 import { ToolResultObj } from '../tools/base'
 import { GOAL_REVIEWER_WAIVER_APPROVE_LABEL } from '../control/plan-verification'
+import { passThroughProcessSandbox } from '../test-fixtures/process-sandbox'
 import {
   GOAL_PERMISSION_BLOCKER_DENIED_LABEL,
   GOAL_PERMISSION_BLOCKER_QUESTION_ID,
@@ -2280,7 +2281,9 @@ describe('AgentLoop (MIG-CORE-011)', () => {
           {
             id: 'call_pwd',
             name: 'run_command',
-            arguments: { command: 'pwd' },
+            arguments: {
+              command: process.platform === 'win32' ? 'cd' : 'pwd',
+            },
           },
         ],
         finishReason: 'tool_calls',
@@ -2292,6 +2295,7 @@ describe('AgentLoop (MIG-CORE-011)', () => {
       stateRoot: join(root, '.cairn'),
       templatesDir: TEMPLATES_DIR,
       modelRouter: fakeRouter(provider),
+      processSandbox: passThroughProcessSandbox(),
     })
     const project = loop.projectStore.resolve(projectRoot)
     const buildSession = loop.sessionStore.create('Build project', {

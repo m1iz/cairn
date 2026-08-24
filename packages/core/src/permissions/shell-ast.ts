@@ -807,6 +807,9 @@ function isReadonlyArgv(
     return argv
       .slice(1)
       .every((argument) => argument === '-L' || argument === '-P')
+  // `cd` without arguments prints the current directory in cmd.exe. Keep the
+  // proof deliberately narrow: accepting a path would mutate shell state.
+  if (head === 'cd') return argv.length === 1
   if (head === 'ls')
     return argv
       .slice(1)

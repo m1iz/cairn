@@ -149,9 +149,17 @@ describe('AST-backed command risk corpus', () => {
     'git branch --list feature/*',
     'ls -la',
     'pwd -P',
+    'cd',
   ])('keeps a narrow positively-proven read-only subset: %s', (command) => {
     expect(isReadonlyCommand(command)).toBe(true)
   })
+
+  it.each(['cd ..', 'cd /d C:\\', 'cd workspace'])(
+    'does not treat directory-changing cd as read-only: %s',
+    (command) => {
+      expect(isReadonlyCommand(command)).toBe(false)
+    },
+  )
 })
 
 describe('Git command security matrix', () => {

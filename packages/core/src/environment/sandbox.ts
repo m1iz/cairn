@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { dirname, resolve } from 'node:path'
-import { canonicalizeExistingPath, isPathWithin } from '../util/paths'
+import { dirname, posix, win32 } from 'node:path'
+import { canonicalizeExistingPath } from '../util/paths'
 
 export type ProcessContainmentMode = 'required' | 'preferred'
 export type ProcessNetworkPolicy = 'deny' | 'allow'
@@ -131,7 +131,7 @@ export class OsSandboxController implements ProcessContainmentController {
     args: string[],
     rawPolicy: ProcessContainmentPolicy,
   ): PreparedContainedProcess {
-    const policy = normalizePolicy(rawPolicy)
+    const policy = normalizePolicy(rawPolicy, this.platform)
     const capability = this.capability()
     const policyHash = containmentPolicyHash(policy)
     if (capability.status !== 'available') {
@@ -332,16 +332,19 @@ function sandboxedReceipt(
 
 function normalizePolicy(
   policy: ProcessContainmentPolicy,
+  platform: NodeJS.Platform,
 ): ProcessContainmentPolicy {
-  const workspaceRoot = canonicalRoot(policy.workspaceRoot)
-  const stateRoot = policy.stateRoot ? canonicalRoot(policy.stateRoot) : null
-  const tempRoot = canonicalRoot(policy.tempRoot)
+  const workspaceRoot = canonicalRoot(policy.workspaceRoot, platform)
+  const stateRoot = policy.stateRoot
+    ? canonicalRoot(policy.stateRoot, platform)
+    : null
+  const tempRoot = canonicalRoot(policy.tempRoot, platform)
   const readOnlyRoots = uniqueRoots(
-    policy.readOnlyRoots.map(canonicalRoot),
+    policy.readOnlyRoots.map((root) => canonicalRoot(root, platform)),
   ).filter(
     (root) =>
-      !isPathWithin(workspaceRoot, root) &&
-      !(stateRoot && isPathWithin(root, stateRoot)),
+      !pathIsWithin(workspaceRoot, root, platform) &&
+      !(stateRoot && pathIsWithin(root, stateRoot, platform)),
   )
   return {
     mode: policy.mode,
@@ -353,8 +356,27 @@ function normalizePolicy(
   }
 }
 
-function canonicalRoot(path: string): string {
-  return canonicalizeExistingPath(resolve(path))
+function canonicalRoot(path: string, platform: NodeJS.Platform): string {
+  const pathApi = platform === 'win32' ? win32 : posix
+  const resolved = pathApi.resolve(path)
+  return platform === process.platform
+    ? canonicalizeExistingPath(resolved)
+    : resolved
+}
+
+function pathIsWithin(
+  path: string,
+  parent: string,
+  platform: NodeJS.Platform,
+): boolean {
+  const pathApi = platform === 'win32' ? win32 : posix
+  const rel = pathApi.relative(pathApi.resolve(parent), pathApi.resolve(path))
+  return (
+    rel === '' ||
+    (rel !== '..' &&
+      !rel.startsWith(`..${pathApi.sep}`) &&
+      !pathApi.isAbsolute(rel))
+  )
 }
 
 function macosSeatbeltProfile(
@@ -362,7 +384,9 @@ function macosSeatbeltProfile(
   pathExists: (path: string) => boolean,
 ): string {
   const readRoots = uniqueRoots([
-    ...MACOS_SYSTEM_READ_ROOTS.filter(pathExists).map(canonicalRoot),
+    ...MACOS_SYSTEM_READ_ROOTS.filter(pathExists).map((root) =>
+      canonicalRoot(root, 'darwin'),
+    ),
     ...policy.readOnlyRoots,
   ])
   const workspaceFilter = seatbeltRootFilter(
@@ -402,19 +426,21 @@ function linuxBwrapArgs(
   ]
   if (policy.network === 'deny') out.push('--unshare-net')
   out.push('--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp')
-  const executableRoot = canonicalRoot(dirname(executable))
+  const executableRoot = canonicalRoot(dirname(executable), 'linux')
   const readRoots = uniqueRoots([
-    ...LINUX_SYSTEM_READ_ROOTS.filter(pathExists).map(canonicalRoot),
+    ...LINUX_SYSTEM_READ_ROOTS.filter(pathExists).map((root) =>
+      canonicalRoot(root, 'linux'),
+    ),
     ...policy.readOnlyRoots,
     executableRoot,
   ]).filter(
     (root) =>
-      !isPathWithin(policy.workspaceRoot, root) &&
-      !isPathWithin(root, policy.workspaceRoot),
+      !pathIsWithin(policy.workspaceRoot, root, 'linux') &&
+      !pathIsWithin(root, policy.workspaceRoot, 'linux'),
   )
   for (const root of readRoots) out.push('--ro-bind', root, root)
   out.push('--bind', policy.workspaceRoot, policy.workspaceRoot)
-  if (!isPathWithin(policy.tempRoot, policy.workspaceRoot))
+  if (!pathIsWithin(policy.tempRoot, policy.workspaceRoot, 'linux'))
     out.push('--bind', policy.tempRoot, policy.tempRoot)
   if (policy.stateRoot && pathExists(policy.stateRoot))
     out.push('--tmpfs', policy.stateRoot)
@@ -448,7 +474,7 @@ function seatbeltString(value: string): string {
 }
 
 function seatbeltRootFilter(root: string, stateRoot: string | null): string {
-  if (!stateRoot || !isPathWithin(stateRoot, root))
+  if (!stateRoot || !pathIsWithin(stateRoot, root, 'darwin'))
     return `(subpath ${seatbeltString(root)})`
   return `(require-all (subpath ${seatbeltString(root)}) (require-not (subpath ${seatbeltString(stateRoot)})))`
 }

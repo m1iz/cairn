@@ -469,6 +469,9 @@ export class RunCommand extends Tool {
     }
     let outcome: RunCommandExecutionOutcome
     let containment: ProcessContainmentReceipt | null = null
+    const containmentMode = this.isReadOnly({ command })
+      ? 'preferred'
+      : 'required'
     try {
       const snapshotEnv = ctx?.executionEnvironment?.env
       const env: Record<string, string> = snapshotEnv
@@ -515,7 +518,7 @@ export class RunCommand extends Tool {
           onContainment: async (receipt) =>
             await emitContainmentReceipt(ctx, receipt),
           containment: {
-            mode: 'required',
+            mode: containmentMode,
             workspaceRoot: cwdDecision.realPath,
             stateRoot:
               ctx?.root && !pathsEqual(ctx.root, cwdDecision.realPath)
@@ -529,7 +532,9 @@ export class RunCommand extends Tool {
         containment = owned.containment
         if (
           owned.status === 'containment_unavailable' ||
-          containment.decision !== 'sandboxed'
+          containment.decision === 'denied' ||
+          (containmentMode === 'required' &&
+            containment.decision !== 'sandboxed')
         ) {
           const content = `Error: OS sandbox unavailable; command was not started (${containment.backend}: ${containment.reason || containment.capabilityStatus})`
           return this.policyFailureResult(command, content, containment)
@@ -569,7 +574,8 @@ export class RunCommand extends Tool {
       const rel = relative(this.workspace, absolute)
       if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel))
         continue
-      if (!out.includes(rel)) out.push(rel)
+      const portable = rel.split(sep).join('/')
+      if (!out.includes(portable)) out.push(portable)
     }
     return out
   }
@@ -691,7 +697,9 @@ function ownedProcessOutcome(
   if (result.status === 'timeout') {
     error.code = 'ETIMEDOUT'
     error.killed = true
-  } else if (result.exitCode !== null) error.code = result.exitCode
+  } else if (result.status === 'completed' && result.exitCode !== null) {
+    error.code = result.exitCode
+  }
   if (result.signal) error.signal = result.signal
   return { stdout: result.stdout, stderr: result.stderr, error }
 }

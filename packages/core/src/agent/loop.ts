@@ -143,7 +143,10 @@ import {
   ExecutionEnvironmentService,
   type ExecutionEnvironment,
 } from '../environment/snapshot'
-import { OsSandboxController } from '../environment/sandbox'
+import {
+  OsSandboxController,
+  type ProcessContainmentController,
+} from '../environment/sandbox'
 import { OwnedProcessRuntime } from '../processes/runtime'
 import {
   migrateLegacyStateRoot,
@@ -319,6 +322,8 @@ export interface AgentLoopCreateOptions {
   initializeMcp?: boolean
   eventSink?: StreamEmitter | null
   permissionRules?: PermissionRuleInput[] | null
+  /** Trusted-host injection for containment integration tests and native hosts. */
+  processSandbox?: ProcessContainmentController
   /** Beta，默认关闭；开启后仅捕获受管文件工具的 before/after。 */
   fileCheckpointsEnabled?: boolean
   /** Experimental soft Git rewind remains off unless a verified gate enables mutation. */
@@ -455,7 +460,7 @@ export class AgentLoop {
   readonly environmentCatalog: LoadedToolCatalog
   readonly environmentProbe: EnvironmentProbe
   readonly executionEnvironmentService: ExecutionEnvironmentService
-  readonly processSandbox: OsSandboxController
+  readonly processSandbox: ProcessContainmentController
   readonly processRuntime: OwnedProcessRuntime
   readonly taskManager: TaskManager
   readonly taskRuntime: TaskRuntimeRegistry
@@ -660,7 +665,7 @@ export class AgentLoop {
       probe: this.environmentProbe,
       env: () => process.env,
     })
-    this.processSandbox = new OsSandboxController()
+    this.processSandbox = opts.processSandbox ?? new OsSandboxController()
     this.processRuntime = new OwnedProcessRuntime(this.paths.stateRoot, {
       sandbox: this.processSandbox,
     })
