@@ -1,6 +1,11 @@
 appId: com.cairn.agent.desktop
 productName: Cairn
 
+# Native dependencies are installed before packaging and validated by
+# terminal:smoke. Rebuilding here would require a platform compiler toolchain
+# even though node-pty ships the Electron-compatible prebuilt binaries we pack.
+npmRebuild: false
+
 directories:
   output: dist
 

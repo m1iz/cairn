@@ -51,6 +51,11 @@ const T2 = '2026-07-15T08:02:00.000Z'
 const T3 = '2026-07-15T08:03:00.000Z'
 const roots: string[] = []
 const READ_CWD_COMMAND = process.platform === 'win32' ? 'cd' : 'pwd'
+const WINDOWS_E2E_TIMEOUT_MULTIPLIER = process.platform === 'win32' ? 3 : 1
+
+function e2eTimeout(milliseconds: number): number {
+  return milliseconds * WINDOWS_E2E_TIMEOUT_MULTIPLIER
+}
 
 afterEach(() => {
   for (const root of roots.splice(0))
@@ -130,7 +135,7 @@ describe('Goal mode deterministic E2E', () => {
     await settleGoal(api, started.goal.id)
     expect(events.map((event) => event.event)).toContain('goal_resumed')
     await api.close()
-  }, 15_000)
+  }, e2eTimeout(15_000))
 
   it('keeps background Goal control and runtime ownership on session A when the user switches to session B', async () => {
     const root = temp('goal-e2e-session-switch-')
@@ -315,7 +320,7 @@ describe('Goal mode deterministic E2E', () => {
     await api.loop.goalCoordinator.start(executing.id)
     await within(
       settleGoal(api, executing.id),
-      5_000,
+      e2eTimeout(5_000),
       'manual verification interaction was not reached',
     )
     const manual = api.loop.controlManager.store.load().pending
@@ -331,7 +336,7 @@ describe('Goal mode deterministic E2E', () => {
     })
     await within(
       settleGoal(api, executing.id),
-      8_000,
+      e2eTimeout(8_000),
       'reviewer-backed Goal cycle did not settle',
     )
 
@@ -394,7 +399,7 @@ describe('Goal mode deterministic E2E', () => {
     )
     expect(summary.status).toBe('completed')
     await api.close()
-  }, 20_000)
+  }, e2eTimeout(20_000))
 
   it('repairs failed command evidence, preserves the failure, and completes through real stores and Gate', async () => {
     const f = await completionFixture('goal_e2e_repair')

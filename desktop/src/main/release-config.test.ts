@@ -103,6 +103,7 @@ describe('desktop release packaging (MIG-REL-001)', () => {
     expect(config).toContain('runtime-defaults')
     expect(config).toContain('beforePack: scripts/before-pack.cjs')
     expect(config).toContain('afterPack: scripts/after-pack.cjs')
+    expect(config).toMatch(/^npmRebuild: false$/m)
     expect(config).toContain('runtime-defaults-manifest.json')
     expect(config).toContain('!node_modules{,/**/*}')
     expect(config).toContain('node_modules/typescript/package.json')
