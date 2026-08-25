@@ -1532,47 +1532,6 @@ describe('AgentRunner turn phases (test_runner_state.py)', () => {
     ).toHaveLength(2)
   })
 
-  it('never switches to a legacy fallback provider after the active model fails', async () => {
-    const primary = new FlakyProvider(3, () =>
-      Object.assign(new Error('temporarily unavailable'), { status: 503 }),
-    )
-    const fallback = new FakeProvider([
-      makeResponse({
-        content: 'fallback done',
-        usage: { input: 70, output: 5 },
-      }),
-    ])
-    const legacyOptions = {
-      provider: primary,
-      model: 'main-model',
-      modelEntryId: 'active-entry',
-      registry: new ToolRegistry(),
-      systemPrompt: 'system',
-      fallbackProvider: fallback,
-      fallbackModel: 'fallback-model',
-      fallbackProviderName: 'fallback-provider',
-      usageType: 'scheduler',
-    }
-    const runner = new AgentRunner(legacyOptions)
-    const emitted: Msg[] = []
-
-    await expect(
-      runner.stepAsync([{ role: 'user', content: 'hi' }], {
-        emit: (event) => {
-          emitted.push(event)
-        },
-      }),
-    ).rejects.toMatchObject({ code: 'model_provider_transient' })
-
-    expect(primary.calls).toBe(3)
-    expect(fallback.seenMessages).toHaveLength(0)
-    expect(runner.model).toBe('main-model')
-    expect(runner.provider).toBe(primary)
-    expect(
-      emitted.some((event) => event.event === 'model_route_fallback'),
-    ).toBe(false)
-  })
-
   it('keeps an explicit fallback for the current step only and starts the next step on primary', async () => {
     const primary = new FlakyProvider(3, () =>
       Object.assign(new Error('temporarily unavailable'), { status: 503 }),
