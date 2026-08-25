@@ -33,13 +33,17 @@ describe('DesktopChromeBar menus', () => {
     )!
     fileButton.click()
     await Promise.resolve()
-    expect(container!.querySelector('.desktop-chrome-menu-popover')).not.toBeNull()
+    expect(
+      container!.querySelector('.desktop-chrome-menu-popover'),
+    ).not.toBeNull()
 
     container!
       .querySelector('.desktop-chrome-bar')!
       .dispatchEvent(new MouseEvent('mouseleave'))
     await Promise.resolve()
-    expect(container!.querySelector('.desktop-chrome-menu-popover')).not.toBeNull()
+    expect(
+      container!.querySelector('.desktop-chrome-menu-popover'),
+    ).not.toBeNull()
 
     document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
     await Promise.resolve()

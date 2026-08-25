@@ -456,8 +456,7 @@ export function applyChatProjectionEvent(
       assistant.streaming = false
       assistant.terminalReason = 'interrupted'
     }
-    if (interruptedTurnId)
-      runtime.resumeTurnTargets.delete(interruptedTurnId)
+    if (interruptedTurnId) runtime.resumeTurnTargets.delete(interruptedTurnId)
     state.currentAssistantId = null
   }
 

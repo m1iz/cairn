@@ -1200,9 +1200,9 @@ describe('useRuntime IPC runtime path', () => {
     expect(runtime.editAndResubmit('turn-old', 'stale edited request')).toBe(
       false,
     )
-    expect(calls.some(([operation]) => operation === 'chat.editAndResubmit')).toBe(
-      false,
-    )
+    expect(
+      calls.some(([operation]) => operation === 'chat.editAndResubmit'),
+    ).toBe(false)
   })
 
   it('ignores the cancelled chat.submit rejection after stopActive has interrupted the UI', async () => {

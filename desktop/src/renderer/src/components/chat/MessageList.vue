@@ -30,10 +30,7 @@ const emit = defineEmits<{
   continueExecution: []
   openReview: [paths: string[]]
   editMessage: [message: Extract<ChatMessage, { role: 'user' }>]
-  submitEdit: [
-    message: Extract<ChatMessage, { role: 'user' }>,
-    content: string,
-  ]
+  submitEdit: [message: Extract<ChatMessage, { role: 'user' }>, content: string]
   cancelEdit: []
 }>()
 const scroller = ref<HTMLElement | null>(null)

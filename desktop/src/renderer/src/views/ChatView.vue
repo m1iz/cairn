@@ -382,8 +382,7 @@ const editableInterruptedTurnId = computed(() => {
 
 watch(editableInterruptedTurnId, (turnId) => {
   const editingTurnId = editingInterrupted.value?.turn_id
-  if (editingTurnId && editingTurnId !== turnId)
-    editingInterrupted.value = null
+  if (editingTurnId && editingTurnId !== turnId) editingInterrupted.value = null
 })
 
 function editInterruptedMessage(message: UserMessage): void {
@@ -397,10 +396,7 @@ function submitComposer(payload: string | ChatSendPayload): void {
 }
 
 function submitInterruptedEdit(message: UserMessage, content: string): void {
-  if (
-    !message.turn_id ||
-    message.turn_id !== editingInterrupted.value?.turn_id
-  )
+  if (!message.turn_id || message.turn_id !== editingInterrupted.value?.turn_id)
     return
   if (
     ctx.editAndResubmit(message.turn_id, {
