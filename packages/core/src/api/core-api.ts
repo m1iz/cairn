@@ -3,6 +3,7 @@
  * 进程内核心 API 门面，替代 aiohttp routes；Electron main 进程持有此单例，
  * renderer 后续通过 IPC 调用这些方法。
  */
+import { randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { DRAFT_SESSION_PREFIX } from '../sessions/constants'
 import { dirname, join, resolve } from 'node:path'
@@ -645,6 +646,41 @@ export class CoreApi {
       })
       return result
     },
+    editAndResubmit: async (opts: {
+      sessionId: string
+      replacedTurnId: string
+      content: string
+      displayContent?: string | null
+      clientMessageId?: string | null
+      turnId?: string | null
+    }) => {
+      const sessionId = String(opts.sessionId ?? '').trim()
+      const replacedTurnId = String(opts.replacedTurnId ?? '').trim()
+      const content = String(opts.content ?? '').trim()
+      if (!sessionId || !replacedTurnId || !content)
+        throw new CoreMutationGuardError(
+          409,
+          '会话、原轮次和修改后的消息不能为空。',
+        )
+      const turnId =
+        String(opts.turnId ?? '').trim() ||
+        randomUUID().replace(/-/g, '').slice(0, 16)
+      const preserved = await this.loop.prepareEditedTurn({
+        sessionId,
+        replacedTurnId,
+        newTurnId: turnId,
+      })
+      return await this.chatService.submit({
+        content,
+        displayContent: opts.displayContent ?? content,
+        clientMessageId: opts.clientMessageId ?? turnId,
+        turnId,
+        sessionId,
+        attachmentIds: preserved.attachmentIds,
+        requestedSkills: preserved.requestedSkills,
+        source: 'chat',
+      })
+    },
     listQueuedPrompts: (opts: { sessionId: string }) =>
       this.chatService.listQueuedPrompts(opts),
     manageQueuedPrompt: (opts: {
@@ -656,15 +692,22 @@ export class CoreApi {
       opts: {
         taskId?: string | null
         kind?: 'turn' | 'scheduler' | 'team' | 'watchlist' | 'goal' | null
+        sessionId?: string | null
+        turnId?: string | null
       } = {},
     ) => {
+      const scopedSessionId =
+        String(opts.sessionId ?? '').trim() ||
+        (!opts.taskId ? this.loop.activeSessionId : null)
       const goalTasks = this.loop.activeTasks
         .list()
         .filter(
           (task) =>
             task.kind === 'goal' &&
             (!opts.taskId || task.id === opts.taskId) &&
-            (!opts.kind || opts.kind === 'goal'),
+            (!opts.kind || opts.kind === 'goal') &&
+            (!scopedSessionId || task.session_id === scopedSessionId) &&
+            (!opts.turnId || task.turn_id === opts.turnId),
         )
       for (const task of goalTasks) {
         await this.goalService.pause(
@@ -676,8 +719,19 @@ export class CoreApi {
       const cancelled = this.loop.activeTasks.cancel({
         taskId: opts.taskId ?? null,
         kind: opts.kind ?? null,
+        sessionId: scopedSessionId,
+        turnId: opts.turnId ?? null,
       })
-      return { cancelled, active: this.loop.activeTasks.list() }
+      const completed = await Promise.all(
+        cancelled.map((task) =>
+          this.loop.settleCancelledTurn(task, 'user_stop'),
+        ),
+      )
+      return {
+        cancelled,
+        completed: cancelled.filter((_, index) => completed[index]),
+        active: this.loop.activeTasks.list(),
+      }
     },
   }
 

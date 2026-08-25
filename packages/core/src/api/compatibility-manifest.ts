@@ -7,8 +7,8 @@ import type { RuntimeEvent } from '../runtime/types'
  * accidental rename, addition, or removal fail loudly at the public boundary.
  */
 export const CORE_OPERATION_COMPATIBILITY = Object.freeze({
-  count: 154,
-  sha256: '3ead1412425cbcd73f46314f13e6a1c6a7c0cf18e06ae27b0ab878540cecce74',
+  count: 155,
+  sha256: 'ee7566d5aca231cc7e1b4648548bdde2be45ab66805a00541287a4b96ad0b6fd',
 })
 
 /** External runtime event names consumed by the desktop projection. */
@@ -71,6 +71,7 @@ export const RUNTIME_EVENT_NAMES = [
   'ready',
   'record_degraded',
   'runtime_task_cancelled',
+  'conversation_branch_selected',
   'scheduler_job_update',
   'scheduler_run_cancelled',
   'scheduler_run_done',
@@ -118,6 +119,6 @@ export const RUNTIME_EVENT_NAMES = [
 ] as const satisfies readonly RuntimeEvent['event'][]
 
 export const RUNTIME_EVENT_COMPATIBILITY = Object.freeze({
-  count: 102,
-  sha256: '2539b5358945cc54492877932ae4c43029ea155565bf4723005d0d5cea2ded6a',
+  count: 103,
+  sha256: '63255b7e871d5b2a04ace055efa467c880e0aee253e2552fdc14135951f53b48',
 })

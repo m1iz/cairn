@@ -19,6 +19,7 @@ import type {
   ChatSendPayload,
   ModelConfigPayload,
   QueuedPromptItem,
+  UserMessage,
 } from '../types'
 import { activeGoalForSession } from '../runtime/selectors'
 import { isTerminalGoal, type GoalCardAction } from '../runtime/goalRender'
@@ -30,6 +31,13 @@ const composer = ref<{
   focusInput: () => void
   restoreDraft: (payload: ChatSendPayload) => void
 } | null>(null)
+const editingInterrupted = ref<UserMessage | null>(null)
+watch(
+  () => ctx.sessionId.value,
+  () => {
+    editingInterrupted.value = null
+  },
+)
 const rightWorkspace = ref<{
   openReview: (paths?: string[]) => void
   openPane: (pane: 'review' | 'terminal' | 'files') => void
@@ -353,6 +361,62 @@ async function editQueuedPrompt(item: QueuedPromptItem): Promise<void> {
     composer.value?.setDraft(item.content)
 }
 
+const editableInterruptedTurnId = computed(() => {
+  const messages = ctx.messages.value
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!
+    if (message.role !== 'user') continue
+    if (!message.turn_id) return null
+    const assistant = messages
+      .slice(index + 1)
+      .find(
+        (item) => item.role === 'assistant' && item.turn_id === message.turn_id,
+      )
+    return assistant?.role === 'assistant' &&
+      assistant.terminalReason === 'interrupted'
+      ? message.turn_id
+      : null
+  }
+  return null
+})
+
+watch(editableInterruptedTurnId, (turnId) => {
+  const editingTurnId = editingInterrupted.value?.turn_id
+  if (editingTurnId && editingTurnId !== turnId)
+    editingInterrupted.value = null
+})
+
+function editInterruptedMessage(message: UserMessage): void {
+  if (!message.turn_id || message.turn_id !== editableInterruptedTurnId.value)
+    return
+  editingInterrupted.value = message
+}
+
+function submitComposer(payload: string | ChatSendPayload): void {
+  ctx.submitFromComposer(payload)
+}
+
+function submitInterruptedEdit(message: UserMessage, content: string): void {
+  if (
+    !message.turn_id ||
+    message.turn_id !== editingInterrupted.value?.turn_id
+  )
+    return
+  if (
+    ctx.editAndResubmit(message.turn_id, {
+      content,
+      displayContent: content,
+      attachments: message.attachments || [],
+      requestedSkills: [],
+    })
+  )
+    editingInterrupted.value = null
+}
+
+function cancelInterruptedEdit(): void {
+  editingInterrupted.value = null
+}
+
 async function interjectQueuedPrompt(item: QueuedPromptItem): Promise<void> {
   await ctx.manageQueuedPrompt(item.id, 'interject')
 }
@@ -371,8 +435,13 @@ async function cancelQueuedPrompt(item: QueuedPromptItem): Promise<void> {
             :messages="ctx.messages.value"
             :plans="ctx.planProjection.plans"
             :turn-changes="turnChanges"
+            :editable-turn-id="editableInterruptedTurnId"
+            :editing-turn-id="editingInterrupted?.turn_id"
             @continue-execution="ctx.submitFromComposer('继续执行')"
             @open-review="openTaskReview"
+            @edit-message="editInterruptedMessage"
+            @submit-edit="submitInterruptedEdit"
+            @cancel-edit="cancelInterruptedEdit"
           />
 
           <div class="chat-bottom-stack">
@@ -448,52 +517,55 @@ async function cancelQueuedPrompt(item: QueuedPromptItem): Promise<void> {
               :interaction="activeBottomControl.interaction"
             />
             <div class="composer-wrap">
-              <Composer
-                v-show="!activeBottomControl"
-                ref="composer"
-                :busy="composerBusy"
-                :interaction-blocked="Boolean(pendingInteraction)"
-                :queue-occupied="Boolean(ctx.queuedPrompts.value.length)"
-                :goal="activeGoal"
-                :goal-capture-status="goalCaptureStatus"
-                :lifecycle-mode="composerLifecycleMode"
-                :commands="ctx.commands.value"
-                :tools="ctx.boot.value?.tools || []"
-                :mcp-content="ctx.mcpContent.value"
-                :context-used="ctx.boot.value?.context_used ?? 0"
-                :context-max="
-                  ctx.boot.value?.modelConfig?.current?.contextWindowTokens ?? 0
-                "
-                :control="ctx.boot.value?.control || null"
-                :current-model="currentModel"
-                :model-entries="modelEntries"
-                :provider-options="providerOptions"
-                :supports-vision="
-                  ctx.boot.value?.modelConfig?.current?.capabilities?.vision ??
-                  false
-                "
-                :send-blocked-reason="sendBlockedReason"
-                :complete-command="ctx.completeSlashCommand"
-                @set-permission="ctx.setPermissionMode"
-                @activate-plan="activatePlan"
-                @activate-goal="activateGoalCapture"
-                @dismiss-lifecycle="dismissLifecycle"
-                @start-goal="startGoalWithLifecycle"
-                @switch-model="switchModel"
-                @set-reasoning-effort="setReasoningEffort"
-                @send="ctx.submitFromComposer($event)"
-                @stop="ctx.stopActive"
-                @error="ctx.showToast"
-              >
-                <template #queue>
-                  <QueueTray
-                    :items="ctx.queuedPrompts.value"
-                    @edit="editQueuedPrompt"
-                    @interject="interjectQueuedPrompt"
-                    @cancel="cancelQueuedPrompt"
-                  />
-                </template>
-              </Composer>
+              <div class="composer-stack-shell">
+                <Composer
+                  v-show="!activeBottomControl"
+                  ref="composer"
+                  :busy="composerBusy"
+                  :interaction-blocked="Boolean(pendingInteraction)"
+                  :queue-occupied="Boolean(ctx.queuedPrompts.value.length)"
+                  :goal="activeGoal"
+                  :goal-capture-status="goalCaptureStatus"
+                  :lifecycle-mode="composerLifecycleMode"
+                  :commands="ctx.commands.value"
+                  :tools="ctx.boot.value?.tools || []"
+                  :mcp-content="ctx.mcpContent.value"
+                  :context-used="ctx.boot.value?.context_used ?? 0"
+                  :context-max="
+                    ctx.boot.value?.modelConfig?.current?.contextWindowTokens ??
+                    0
+                  "
+                  :control="ctx.boot.value?.control || null"
+                  :current-model="currentModel"
+                  :model-entries="modelEntries"
+                  :provider-options="providerOptions"
+                  :supports-vision="
+                    ctx.boot.value?.modelConfig?.current?.capabilities
+                      ?.vision ?? false
+                  "
+                  :send-blocked-reason="sendBlockedReason"
+                  :complete-command="ctx.completeSlashCommand"
+                  @set-permission="ctx.setPermissionMode"
+                  @activate-plan="activatePlan"
+                  @activate-goal="activateGoalCapture"
+                  @dismiss-lifecycle="dismissLifecycle"
+                  @start-goal="startGoalWithLifecycle"
+                  @switch-model="switchModel"
+                  @set-reasoning-effort="setReasoningEffort"
+                  @send="submitComposer"
+                  @stop="ctx.stopActive"
+                  @error="ctx.showToast"
+                >
+                  <template #queue>
+                    <QueueTray
+                      :items="ctx.queuedPrompts.value"
+                      @edit="editQueuedPrompt"
+                      @interject="interjectQueuedPrompt"
+                      @cancel="cancelQueuedPrompt"
+                    />
+                  </template>
+                </Composer>
+              </div>
             </div>
           </div>
         </div>

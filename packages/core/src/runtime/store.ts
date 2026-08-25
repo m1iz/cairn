@@ -135,6 +135,7 @@ const INDEX_FORCE_WRITE_EVENTS = new Set([
   'git_operation_completed',
   'turn_paused',
   'runtime_task_cancelled',
+  'conversation_branch_selected',
   'error',
   'plan_draft',
   'plan_approved',

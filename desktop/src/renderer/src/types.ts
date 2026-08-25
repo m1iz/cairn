@@ -2370,6 +2370,12 @@ type WsEventVariants =
       reason?: string
     }
   | {
+      event: 'conversation_branch_selected'
+      replaced_turn_id?: string
+      new_turn_id?: string
+      parent_message_id?: string | null
+    }
+  | {
       event: 'record_degraded'
       kind?: string
       reason?: string

@@ -29,6 +29,15 @@ describe('ChatView Composer lifecycle integration', () => {
     )
   })
 
+  it('moves interrupted-message editing into the original message row', () => {
+    expect(source).toContain('class="composer-stack-shell"')
+    expect(source).toContain(':editing-turn-id="editingInterrupted?.turn_id"')
+    expect(source).toContain('@submit-edit="submitInterruptedEdit"')
+    expect(source).toContain('watch(editableInterruptedTurnId')
+    expect(source).not.toContain('v-show="!editingInterrupted"')
+    expect(source).not.toContain('composer-edit-banner')
+  })
+
   it('restores a queue submission rejected by the Core single-slot guard', () => {
     expect(source).toContain('ctx.queueDraftRecovery.value')
     expect(source).toContain('composer.value?.restoreDraft(recovery.payload)')

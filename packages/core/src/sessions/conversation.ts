@@ -76,33 +76,29 @@ export class ConversationStore {
   }
 
   loadUnarchivedHistory(): Row[] {
-    const out: Row[] = []
-    const active = this.historyLog.loadActiveRows()
-    const hidden = new Set<string>()
-    for (const row of active) {
-      if (
-        typeof row.turn_id === 'string' &&
-        (row.hidden === true || row.schedulerHidden === true)
-      ) {
-        hidden.add(row.turn_id)
-      }
+    return visibleHistoryRows(this.historyLog.loadActiveRows())
+  }
+
+  projectHistory(leafId?: string | null): Row[] {
+    return visibleHistoryRows(this.messageGraph.project(leafId))
+  }
+
+  loadActiveHistory(): Row[] {
+    const snapshot = this.messageGraph.snapshot()
+    const activeIds = new Set<string>()
+    const byId = new Map(snapshot.nodes.map((node) => [node.id, node]))
+    let cursor = snapshot.leafId
+    while (cursor) {
+      if (activeIds.has(cursor)) break
+      activeIds.add(cursor)
+      cursor = byId.get(cursor)?.parentId ?? null
     }
-    for (const row of active) {
-      if (!('role' in row) || !('content' in row)) continue
-      if (row.type === 'model_call') continue
-      if (hidden.has(String(row.turn_id ?? ''))) continue
-      const item: Row = { role: row.role, content: row.content }
-      if (Number.isFinite(Number(row.seq)) && Number(row.seq) > 0)
-        item.seq = Math.trunc(Number(row.seq))
-      if (typeof row.turn_id === 'string') item.turn_id = row.turn_id
-      if (Array.isArray(row.attachments)) item.attachments = row.attachments
-      if (Array.isArray(row.requestedSkills))
-        item.requestedSkills = row.requestedSkills
-      if (typeof row.displayContent === 'string')
-        item.displayContent = row.displayContent
-      out.push(item)
-    }
-    return out
+    const hasInactiveBranch = snapshot.nodes.some(
+      (node) => node.status === 'committed' && !activeIds.has(node.id),
+    )
+    return hasInactiveBranch
+      ? visibleHistoryRows(this.messageGraph.project())
+      : this.loadUnarchivedHistory()
   }
 
   loadUnarchivedTurnIds(): string[] {
@@ -159,6 +155,35 @@ export class ConversationStore {
   clearCheckpoint(): void {
     clearTurnCheckpoint(this.checkpointFile)
   }
+}
+
+function visibleHistoryRows(active: Row[]): Row[] {
+  const out: Row[] = []
+  const hidden = new Set<string>()
+  for (const row of active) {
+    if (
+      typeof row.turn_id === 'string' &&
+      (row.hidden === true || row.schedulerHidden === true)
+    ) {
+      hidden.add(row.turn_id)
+    }
+  }
+  for (const row of active) {
+    if (!('role' in row) || !('content' in row)) continue
+    if (row.type === 'model_call') continue
+    if (hidden.has(String(row.turn_id ?? ''))) continue
+    const item: Row = { role: row.role, content: row.content }
+    if (Number.isFinite(Number(row.seq)) && Number(row.seq) > 0)
+      item.seq = Math.trunc(Number(row.seq))
+    if (typeof row.turn_id === 'string') item.turn_id = row.turn_id
+    if (Array.isArray(row.attachments)) item.attachments = row.attachments
+    if (Array.isArray(row.requestedSkills))
+      item.requestedSkills = row.requestedSkills
+    if (typeof row.displayContent === 'string')
+      item.displayContent = row.displayContent
+    out.push(item)
+  }
+  return out
 }
 
 export class SessionMemoryStore {

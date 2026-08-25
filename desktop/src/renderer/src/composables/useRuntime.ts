@@ -361,6 +361,47 @@ export function useRuntime(options: {
     return false
   }
 
+  function editAndResubmit(
+    replacedTurnId: string,
+    payload: string | ChatSendPayload,
+  ): boolean {
+    const content =
+      typeof payload === 'string' ? payload : String(payload.content ?? '')
+    const displayContent =
+      typeof payload === 'string'
+        ? payload
+        : String(payload.displayContent ?? payload.content ?? '')
+    const text = content.trim()
+    const activeSessionId = sessionId.value
+    if (!text || !activeSessionId || busy.value) return false
+    const blockedReason = modelSendBlockedReason()
+    if (blockedReason) {
+      updatePending('需要配置模型', blockedReason, 'error', 6000)
+      options.showToast(blockedReason)
+      return false
+    }
+    if (!hasCoreBridge()) {
+      markCoreBridgeUnavailable(true)
+      return false
+    }
+    busy.value = true
+    settleSessionRuntime(activeSessionId, true)
+    updatePending('正在重发修改后的消息...', '', 'running')
+    void invokeCore('chat.editAndResubmit', {
+      sessionId: activeSessionId,
+      replacedTurnId,
+      content: text,
+      displayContent: displayContent.trim() || text,
+      clientMessageId: nextId('user'),
+    }).catch((err) => {
+      busy.value = false
+      settleSessionRuntime(activeSessionId, false)
+      updatePending('编辑重发失败', displayError(err), 'error')
+      options.showToast(displayError(err))
+    })
+    return true
+  }
+
   function modelSendBlockedReason(): string {
     const availability = options.boot.value?.modelConfig?.availability
     return availability?.usable === false
@@ -615,7 +656,12 @@ export function useRuntime(options: {
   async function stopActive() {
     updatePending('正在停止当前任务...', '', 'running')
     try {
-      const data = await core('chat.stopRuntime', {})
+      const activeSessionId = sessionId.value
+      const activeTurnId = currentAssistant.value?.turn_id
+      const data = await core('chat.stopRuntime', {
+        ...(activeSessionId ? { sessionId: activeSessionId } : {}),
+        ...(activeTurnId ? { turnId: activeTurnId } : {}),
+      })
       return handleStopResult(data)
     } catch (err) {
       updatePending(
@@ -1433,7 +1479,10 @@ export function useRuntime(options: {
     if (data.event === 'runtime_task_cancelled') {
       const assistant =
         assistantForTurn(data.turn_id || data.task?.turnId) || assistantBefore
-      if (assistant) appendInterruptionNotice(assistant, '（任务已停止。）')
+      if (assistant) {
+        appendInterruptionNotice(assistant, '（任务已停止。）')
+        assistant.terminalReason = 'interrupted'
+      }
       busy.value = false
       updatePending('任务已停止', data.task?.label || data.reason || '', 'done')
       return
@@ -1702,6 +1751,7 @@ export function useRuntime(options: {
         content: fallback,
       })
     }
+    assistant.terminalReason = 'interrupted'
     markRunningAsAborted(assistant)
   }
 
@@ -1796,6 +1846,7 @@ export function useRuntime(options: {
     },
     connectSocket,
     sendMessage,
+    editAndResubmit,
     refreshQueuedPrompts,
     manageQueuedPrompt,
     sendInteractionAnswer,

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nextTick, ref, watch } from 'vue'
 import {
   hasComposerCapabilityTokens,
   renderComposerInlineTokens,
@@ -18,11 +19,18 @@ const props = defineProps<{
   message: ChatMessage
   plans: RuntimePlanRecord[]
   turnChange?: TurnChangeSnapshot
+  editable?: boolean
+  editing?: boolean
 }>()
 const emit = defineEmits<{
   continueExecution: []
   openReview: [paths: string[]]
+  editMessage: [message: UserMessage]
+  submitEdit: [message: UserMessage, content: string]
+  cancelEdit: []
 }>()
+const inlineEditor = ref<HTMLTextAreaElement | null>(null)
+const editContent = ref('')
 const schedulerClientIdPrefix = 'scheduler:'
 const schedulerTriggerPrefixes = ['定时任务触发 ·', '司时台触发 ·']
 
@@ -92,6 +100,35 @@ function deliveryLabel(message: UserMessage): string {
   if (message.deliveryState === 'cancelled') return '已取消'
   return ''
 }
+
+function resizeInlineEditor(): void {
+  const input = inlineEditor.value
+  if (!input) return
+  input.style.height = 'auto'
+  input.style.height = `${input.scrollHeight}px`
+}
+
+watch(
+  () => [props.editing, props.message.id] as const,
+  async ([editing]) => {
+    if (!editing || props.message.role !== 'user') return
+    editContent.value = props.message.content
+    await nextTick()
+    resizeInlineEditor()
+    inlineEditor.value?.focus()
+    inlineEditor.value?.setSelectionRange(
+      editContent.value.length,
+      editContent.value.length,
+    )
+  },
+  { immediate: true },
+)
+
+function submitInlineEdit(): void {
+  if (props.message.role !== 'user') return
+  if (!editContent.value.trim() && !props.message.attachments?.length) return
+  emit('submitEdit', props.message, editContent.value)
+}
 </script>
 
 <template>
@@ -117,13 +154,26 @@ function deliveryLabel(message: UserMessage): string {
       </div>
     </div>
   </article>
-  <article v-else-if="props.message.role === 'user'" class="message-row user">
+  <article
+    v-else-if="props.message.role === 'user'"
+    class="message-row user"
+    :class="{ 'is-editing': props.editing }"
+  >
     <div class="avatar user" aria-hidden="true">
       <component :is="avatarIcons.cairn" :size="16" />
     </div>
     <div class="message-cluster user">
       <div class="message-meta user">
         <span>你</span><small>request</small>
+        <button
+          v-if="props.editable && !props.editing"
+          type="button"
+          class="message-edit-button"
+          aria-label="编辑并重新发送"
+          @click="emit('editMessage', props.message)"
+        >
+          编辑
+        </button>
         <small
           v-if="props.message.deliveryState"
           class="prompt-delivery-state"
@@ -140,7 +190,38 @@ function deliveryLabel(message: UserMessage): string {
           :data="attachment"
         />
       </div>
-      <div v-if="props.message.content" class="bubble user whitespace-pre-wrap">
+      <form
+        v-if="props.editing"
+        class="inline-message-editor"
+        @submit.prevent="submitInlineEdit"
+      >
+        <textarea
+          ref="inlineEditor"
+          v-model="editContent"
+          rows="3"
+          aria-label="编辑已中断的消息"
+          @input="resizeInlineEditor"
+          @keydown.ctrl.enter.prevent="submitInlineEdit"
+          @keydown.meta.enter.prevent="submitInlineEdit"
+          @keydown.esc.prevent="emit('cancelEdit')"
+        />
+        <div class="inline-message-editor-actions">
+          <button type="button" @click="emit('cancelEdit')">取消</button>
+          <button
+            type="submit"
+            class="primary"
+            :disabled="
+              !editContent.trim() && !props.message.attachments?.length
+            "
+          >
+            发送
+          </button>
+        </div>
+      </form>
+      <div
+        v-else-if="props.message.content"
+        class="bubble user whitespace-pre-wrap"
+      >
         <template v-if="hasInlineTokens(props.message)">
           <template
             v-for="(segment, index) in inlineTokenParts(props.message)"

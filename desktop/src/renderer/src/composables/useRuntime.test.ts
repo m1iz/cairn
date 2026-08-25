@@ -1151,6 +1151,60 @@ describe('useRuntime IPC runtime path', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
+  it('resubmits an edited interrupted turn through the dedicated Core operation', async () => {
+    const calls: unknown[][] = []
+    g.window = fakeWindow({
+      invokeCore: async (...args: unknown[]) => {
+        calls.push(args)
+        return { turnId: 'turn-new', content: 'done' }
+      },
+      onCoreEvent: () => () => {},
+    })
+    const runtime = useRuntime(testOptions())
+    runtime.switchSession('s1')
+
+    expect(
+      runtime.editAndResubmit('turn-old', {
+        content: 'edited request',
+        displayContent: 'Edited request',
+        attachments: [],
+      }),
+    ).toBe(true)
+    await Promise.resolve()
+
+    expect(calls).toContainEqual([
+      'chat.editAndResubmit',
+      expect.objectContaining({
+        sessionId: 's1',
+        replacedTurnId: 'turn-old',
+        content: 'edited request',
+        displayContent: 'Edited request',
+      }),
+    ])
+    expect(runtime.busy.value).toBe(true)
+  })
+
+  it('rejects an inline edit submission after the bottom composer starts a new turn', () => {
+    const calls: unknown[][] = []
+    g.window = fakeWindow({
+      invokeCore: async (...args: unknown[]) => {
+        calls.push(args)
+        return {}
+      },
+      onCoreEvent: () => () => {},
+    })
+    const runtime = useRuntime(testOptions())
+    runtime.switchSession('s1')
+    runtime.busy.value = true
+
+    expect(runtime.editAndResubmit('turn-old', 'stale edited request')).toBe(
+      false,
+    )
+    expect(calls.some(([operation]) => operation === 'chat.editAndResubmit')).toBe(
+      false,
+    )
+  })
+
   it('ignores the cancelled chat.submit rejection after stopActive has interrupted the UI', async () => {
     let rejectSubmit: ((error: Error) => void) | null = null
     g.window = fakeWindow({

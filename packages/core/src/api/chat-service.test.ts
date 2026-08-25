@@ -1598,9 +1598,18 @@ describe('MainlineTurnService', () => {
     })
     await provider.waitForCalls(2)
 
-    expect(
-      api.loop.activeTasks.cancel({ taskId: 'turn:turn_cancel_a' }),
-    ).toHaveLength(1)
+    const stopped = await api.chat.stopRuntime({
+      sessionId: String(sessionA.id),
+      turnId: 'turn_cancel_a',
+    })
+    expect(stopped.cancelled).toEqual([
+      expect.objectContaining({
+        id: 'turn:turn_cancel_a',
+        session_id: String(sessionA.id),
+        turn_id: 'turn_cancel_a',
+      }),
+    ])
+    expect(stopped.completed).toHaveLength(1)
     await expect(turnA).rejects.toBeInstanceOf(CancelledTaskError)
     expect(api.loop.activeTasks.list()).toEqual([
       expect.objectContaining({ id: 'turn:turn_keep_b', cancelled: false }),
@@ -1615,8 +1624,121 @@ describe('MainlineTurnService', () => {
         'utf8',
       ),
     ).not.toContain('A late result')
+    expect(
+      api.runtime
+        .replay({ sessionId: String(sessionA.id) })
+        .events.filter((event) => event.event === 'runtime_task_cancelled'),
+    ).toEqual([
+      expect.objectContaining({
+        turn_id: 'turn_cancel_a',
+        session_id: String(sessionA.id),
+      }),
+    ])
 
     await api.close()
+  })
+
+  it('edits the latest interrupted user turn onto a durable message branch', async () => {
+    const root = tmp('cairn-mainline-edit-interrupted-')
+    const stateRoot = join(root, '.cairn')
+    const provider = new ConcurrentBlockingProvider()
+    const api = await CoreApi.create({
+      root,
+      stateRoot,
+      templatesDir: TEMPLATES_DIR,
+      modelRouter: fakeRouter(provider),
+    })
+    const session = api.sessions.create({ title: 'Edit interrupted' })
+    const sessionId = String(session.id)
+    const original = api.chat.submit({
+      content: 'original request',
+      turnId: 'turn_original',
+      sessionId,
+    })
+    await provider.waitForCalls(1)
+
+    await api.chat.stopRuntime({
+      sessionId,
+      turnId: 'turn_original',
+    })
+    await expect(original).rejects.toBeInstanceOf(CancelledTaskError)
+    provider.finish(0, response('late original reply'))
+    await vi.waitFor(
+      () =>
+        expect(
+          api.loop.sessionRuntimes.get(sessionId)?.activeCommandId,
+        ).toBeNull(),
+      { timeout: 2_000 },
+    )
+
+    const replacement = api.chat.editAndResubmit({
+      sessionId,
+      replacedTurnId: 'turn_original',
+      turnId: 'turn_replacement',
+      clientMessageId: 'client_replacement',
+      content: 'edited request',
+    })
+    await provider.waitForCalls(2)
+    expect(JSON.stringify(provider.calls[1]!.messages)).toContain(
+      'edited request',
+    )
+    expect(JSON.stringify(provider.calls[1]!.messages)).not.toContain(
+      'original request',
+    )
+    provider.finish(1, response('edited reply'))
+    await expect(replacement).resolves.toMatchObject({
+      turnId: 'turn_replacement',
+      content: 'edited reply',
+    })
+
+    const graph = api.loop.sessionRuntimes
+      .get(sessionId)!
+      .bindings.conversationStore.messageGraph.snapshot()
+    expect(
+      graph.nodes.filter(
+        (node) => node.role === 'user' && node.status === 'committed',
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          turnId: 'turn_original',
+          content: 'original request',
+        }),
+        expect.objectContaining({
+          turnId: 'turn_replacement',
+          content: 'edited request',
+        }),
+      ]),
+    )
+    expect(
+      api.runtime
+        .replay({ sessionId })
+        .events.some(
+          (event) =>
+            event.event === 'conversation_branch_selected' &&
+            event.replaced_turn_id === 'turn_original' &&
+            event.new_turn_id === 'turn_replacement',
+        ),
+    ).toBe(true)
+    await api.close()
+
+    const reopenedProvider = new FakeProvider()
+    const reopened = await CoreApi.create({
+      root,
+      stateRoot,
+      templatesDir: TEMPLATES_DIR,
+      modelRouter: fakeRouter(reopenedProvider),
+    })
+    await reopened.chat.submit({
+      sessionId,
+      turnId: 'turn_after_restart',
+      content: 'continue',
+    })
+    const reopenedContext = JSON.stringify(reopenedProvider.calls[0]?.messages)
+    expect(reopenedContext).toContain('edited request')
+    expect(reopenedContext).toContain('edited reply')
+    expect(reopenedContext).not.toContain('original request')
+    await reopened.close()
   })
 
   it('reopens a session actor from existing stores after process restart', async () => {

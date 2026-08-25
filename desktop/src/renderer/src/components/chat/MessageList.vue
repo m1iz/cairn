@@ -23,10 +23,18 @@ const props = defineProps<{
   messages: ChatMessage[]
   plans?: RuntimePlanRecord[]
   turnChanges?: TurnChangeSnapshot[]
+  editableTurnId?: string | null
+  editingTurnId?: string | null
 }>()
 const emit = defineEmits<{
   continueExecution: []
   openReview: [paths: string[]]
+  editMessage: [message: Extract<ChatMessage, { role: 'user' }>]
+  submitEdit: [
+    message: Extract<ChatMessage, { role: 'user' }>,
+    content: string,
+  ]
+  cancelEdit: []
 }>()
 const scroller = ref<HTMLElement | null>(null)
 const followBottom = ref(true)
@@ -80,6 +88,7 @@ function sizeDependencies(message: ChatMessage): unknown[] {
     return [
       message.content.length,
       message.attachments?.length ?? 0,
+      message.turn_id === props.editingTurnId,
       expansion.version.value,
     ]
   }
@@ -97,6 +106,13 @@ function changesFor(message: ChatMessage): TurnChangeSnapshot | undefined {
   return message.role === 'assistant'
     ? changesByMessage.value.get(message.id)
     : undefined
+}
+
+function submitEdit(
+  message: Extract<ChatMessage, { role: 'user' }>,
+  content: string,
+): void {
+  emit('submitEdit', message, content)
 }
 </script>
 
@@ -136,8 +152,17 @@ function changesFor(message: ChatMessage): TurnChangeSnapshot | undefined {
               :message="item"
               :plans="props.plans || []"
               :turn-change="changesFor(item)"
+              :editable="
+                item.role === 'user' && item.turn_id === props.editableTurnId
+              "
+              :editing="
+                item.role === 'user' && item.turn_id === props.editingTurnId
+              "
               @continue-execution="emit('continueExecution')"
               @open-review="emit('openReview', $event)"
+              @edit-message="emit('editMessage', $event)"
+              @submit-edit="submitEdit"
+              @cancel-edit="emit('cancelEdit')"
             />
           </div>
         </DynamicScrollerItem>
@@ -150,8 +175,17 @@ function changesFor(message: ChatMessage): TurnChangeSnapshot | undefined {
         :message="message"
         :plans="props.plans || []"
         :turn-change="changesFor(message)"
+        :editable="
+          message.role === 'user' && message.turn_id === props.editableTurnId
+        "
+        :editing="
+          message.role === 'user' && message.turn_id === props.editingTurnId
+        "
         @continue-execution="emit('continueExecution')"
         @open-review="emit('openReview', $event)"
+        @edit-message="emit('editMessage', $event)"
+        @submit-edit="submitEdit"
+        @cancel-edit="emit('cancelEdit')"
       />
     </div>
 

@@ -68,6 +68,7 @@ const CHAT_PROJECTION_EVENTS = new Set([
   'assistant_done',
   'turn_paused',
   'runtime_task_cancelled',
+  'conversation_branch_selected',
 ])
 
 export function isChatProjectionEvent(event: { event: string }): boolean {
@@ -99,6 +100,24 @@ export function applyChatProjectionEvent(
     if (runtime.seenSeqs.has(seq)) return state
     runtime.seenSeqs.add(seq)
     state.lastSeq = Math.max(state.lastSeq, seq)
+  }
+
+  if (event.event === 'conversation_branch_selected') {
+    const replacedTurnId = String(event.replaced_turn_id ?? '').trim()
+    const index = state.messages.findIndex(
+      (message) =>
+        message.role === 'user' && message.turn_id === replacedTurnId,
+    )
+    if (index >= 0) {
+      const removed = state.messages.splice(index)
+      for (const message of removed) {
+        if (!message.turn_id) continue
+        runtime.turnClock.delete(message.turn_id)
+        runtime.resumeTurnTargets.delete(message.turn_id)
+      }
+    }
+    state.currentAssistantId = null
+    return state
   }
 
   if (event.event === 'user_message') {
@@ -415,12 +434,17 @@ export function applyChatProjectionEvent(
   }
 
   if (event.event === 'runtime_task_cancelled') {
+    const interruptedTurnId = event.turn_id || event.task?.turnId || ''
+    const hasVisibleUser = state.messages.some(
+      (message) =>
+        message.role === 'user' && message.turn_id === interruptedTurnId,
+    )
     const assistant =
       assistantForEvent(
         state,
-        { ...event, turn_id: event.turn_id || event.task?.turnId } as WsEvent,
+        { ...event, turn_id: interruptedTurnId } as WsEvent,
         runtime,
-        false,
+        hasVisibleUser,
       ) || currentAssistant(state)
     if (assistant) {
       finishTimedState(assistant, eventTimeMs(event))
@@ -430,11 +454,10 @@ export function applyChatProjectionEvent(
         summary: '任务已停止',
       })
       assistant.streaming = false
+      assistant.terminalReason = 'interrupted'
     }
-    if (event.turn_id || event.task?.turnId)
-      runtime.resumeTurnTargets.delete(
-        event.turn_id || event.task?.turnId || '',
-      )
+    if (interruptedTurnId)
+      runtime.resumeTurnTargets.delete(interruptedTurnId)
     state.currentAssistantId = null
   }
 

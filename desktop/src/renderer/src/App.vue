@@ -134,6 +134,7 @@ const {
   dispose: disposeRuntime,
   connectSocket,
   sendMessage,
+  editAndResubmit,
   manageQueuedPrompt,
   sendInteractionAnswer,
   sendPlanComment,
@@ -737,6 +738,7 @@ provideAppContext({
   startGoalWithLifecycle,
   dismissLifecycle,
   sendMessage,
+  editAndResubmit,
   manageQueuedPrompt,
   sendInteractionAnswer,
   sendPlanComment,
@@ -772,7 +774,10 @@ provideAppContext({
   </div>
 
   <template v-else>
-    <div class="desktop-window-shell" :class="{ 'with-chrome-bar': showDesktopChrome }">
+    <div
+      class="desktop-window-shell"
+      :class="{ 'with-chrome-bar': showDesktopChrome }"
+    >
       <DesktopChromeBar />
       <div class="app-shell" :class="{ 'settings-app-shell': hideAppSidebar }">
         <SessionSidebar v-if="!hideAppSidebar" @activate="onSessionActivate" />

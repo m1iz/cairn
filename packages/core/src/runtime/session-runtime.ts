@@ -128,7 +128,9 @@ export class SessionRuntimeActor<TBindings> {
   }
 
   get idle(): boolean {
-    return !this.closed && !this.hasNonTerminalCommands()
+    return (
+      !this.closed && !this.runningCommandId && !this.hasNonTerminalCommands()
+    )
   }
 
   commandState(commandId: string): SessionRuntimeCommandState | null {
@@ -188,7 +190,7 @@ export class SessionRuntimeActor<TBindings> {
     }
     const promise = this.mailbox.then(async () => {
       if (controller.signal.aborted) {
-        this.transition(receipt, 'cancelled')
+        if (!isTerminal(receipt.state)) this.transition(receipt, 'cancelled')
         throw new SessionRuntimeCommandCancelledError(id)
       }
       this.transition(receipt, 'running')
@@ -196,7 +198,7 @@ export class SessionRuntimeActor<TBindings> {
       try {
         const result = await execute(this.bindings, controller.signal)
         if (controller.signal.aborted) {
-          this.transition(receipt, 'cancelled')
+          if (!isTerminal(receipt.state)) this.transition(receipt, 'cancelled')
           throw new SessionRuntimeCommandCancelledError(id)
         }
         this.transition(receipt, 'succeeded')
@@ -241,11 +243,27 @@ export class SessionRuntimeActor<TBindings> {
         receipt.commandId,
         'target_command_cancelled',
       )
+      this.transition(receipt, 'cancelled')
       receipt.controller.abort(
         new SessionRuntimeCommandCancelledError(receipt.commandId),
       )
     }
     return cancelled
+  }
+
+  async waitForTerminal(
+    commandId: string,
+  ): Promise<SessionRuntimeCommandState | null> {
+    const receipt = this.receipts.get(normalizedId(commandId, 'commandId'))
+    if (!receipt) return null
+    if (isTerminal(receipt.state)) return receipt.state
+    try {
+      await receipt.promise
+    } catch {
+      // The terminal state is the contract here; command failures are observed
+      // by the original submitter.
+    }
+    return receipt.state
   }
 
   cancelQueued(commandId: string): boolean {
@@ -510,6 +528,14 @@ export class SessionRuntimeManager<TBindings> {
 
   cancel(sessionId: string, commandId?: string | null): boolean {
     return this.actors.get(String(sessionId))?.cancel(commandId) ?? false
+  }
+
+  waitForTerminal(
+    sessionId: string,
+    commandId: string,
+  ): Promise<SessionRuntimeCommandState | null> {
+    const actor = this.actors.get(String(sessionId))
+    return actor ? actor.waitForTerminal(commandId) : Promise.resolve(null)
   }
 
   interject<TPayload>(

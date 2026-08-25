@@ -119,6 +119,94 @@
   color: rgb(var(--fg-subtle));
 }
 
+.message-edit-button {
+  border: 0;
+  padding: 1px 4px;
+  color: rgb(var(--fg-muted));
+  background: transparent;
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.message-edit-button:hover {
+  color: rgb(var(--fg));
+  text-decoration: underline;
+}
+
+.message-row.user.is-editing .message-cluster.user {
+  width: min(720px, calc(100% - 3rem));
+  max-width: min(720px, calc(100% - 3rem));
+}
+
+.inline-message-editor {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid rgb(var(--border));
+  border-radius: var(--radius-md);
+  padding: 12px;
+  background: rgb(var(--bg-elevated));
+  box-shadow: var(--shadow-sm);
+}
+
+.inline-message-editor textarea {
+  width: 100%;
+  min-height: 88px;
+  max-height: 320px;
+  resize: none;
+  overflow-y: auto;
+  border: 0;
+  padding: 0;
+  color: rgb(var(--fg));
+  background: transparent;
+  font: inherit;
+  line-height: 1.7;
+  outline: none;
+}
+
+.inline-message-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.inline-message-editor-actions button {
+  border: 1px solid rgb(var(--border));
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  color: rgb(var(--fg));
+  background: rgb(var(--bg));
+  cursor: pointer;
+}
+
+.inline-message-editor-actions button:hover {
+  background: rgb(var(--bg-hover));
+}
+
+.inline-message-editor-actions button.primary {
+  border-color: rgb(var(--fg));
+  color: rgb(var(--bg));
+  background: rgb(var(--fg));
+}
+
+.inline-message-editor-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.composer-stack-shell {
+  width: 100%;
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+.composer-stack-shell > .composer-shell {
+  width: 100%;
+  max-width: none;
+}
+
 .prompt-delivery-state {
   @apply rounded-full border px-1.5 py-0.5 text-[10px] font-medium;
   border-color: rgb(var(--border));

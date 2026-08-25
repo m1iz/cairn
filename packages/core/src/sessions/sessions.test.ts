@@ -161,6 +161,41 @@ describe('ConversationStore (test_conversation_store.py)', () => {
     })
   })
 
+  it('loads only the selected message branch for future model context', () => {
+    const store = new ConversationStore(
+      join(tmp('cairn-session-active-branch-'), 's1'),
+    )
+    store.appendHistory('user', 'first version', {
+      extra: { turn_id: 'turn_old' },
+    })
+    const oldUser = store.messageGraph.snapshot().leafId!
+    store.appendHistory('assistant', 'old reply', {
+      extra: { turn_id: 'turn_old' },
+    })
+
+    const oldNode = store.messageGraph
+      .snapshot()
+      .nodes.find((node) => node.id === oldUser)!
+    store.messageGraph.selectLeaf(oldNode.parentId)
+    store.appendHistory('user', 'edited version', {
+      extra: { turn_id: 'turn_new' },
+    })
+    store.appendHistory('assistant', 'new reply', {
+      extra: { turn_id: 'turn_new' },
+    })
+
+    expect(store.loadUnarchivedHistory().map((row) => row.content)).toEqual([
+      'first version',
+      'old reply',
+      'edited version',
+      'new reply',
+    ])
+    expect(store.loadActiveHistory().map((row) => row.content)).toEqual([
+      'edited version',
+      'new reply',
+    ])
+  })
+
   it('SessionMemoryStore delegates history to conversation and memory to shared store', () => {
     const root = tmp('cairn-session-memory-')
     const userFile = join(root, 'templates', 'USER.local.md')

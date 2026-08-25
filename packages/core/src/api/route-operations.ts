@@ -20,6 +20,7 @@ const CORE_API_ROUTE_OPERATION_LIST = [
   op('chat.manageQueuedPrompt', 'IPC', 'chat.manageQueuedPrompt'),
   op('bootstrap', 'GET', '/api/bootstrap'),
   op('chat.stopRuntime', 'POST', '/api/runtime/stop'),
+  op('chat.editAndResubmit', 'POST', '/api/chat/edit-and-resubmit'),
   op('commands.list', 'IPC', 'commands.list'),
   op('commands.complete', 'IPC', 'commands.complete'),
   op('commands.invoke', 'IPC', 'commands.invoke'),

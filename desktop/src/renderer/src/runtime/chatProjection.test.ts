@@ -10,6 +10,88 @@ import { projectAssistantFlow } from '../components/chat/assistantFlowProjection
 import type { AssistantMessage, WsEvent } from '../types'
 
 describe('chatProjection', () => {
+  it('keeps a no-delta interrupted turn editable after replay', () => {
+    const state = projectChatEvents([
+      {
+        event: 'user_message',
+        seq: 1,
+        session_id: 's1',
+        turn_id: 'turn_no_delta',
+        client_message_id: 'user_no_delta',
+        content: 'stop immediately',
+      },
+      {
+        event: 'runtime_task_cancelled',
+        seq: 2,
+        session_id: 's1',
+        turn_id: 'turn_no_delta',
+        task: { turnId: 'turn_no_delta' },
+      },
+    ])
+
+    expect(state.messages).toEqual([
+      expect.objectContaining({ role: 'user', turn_id: 'turn_no_delta' }),
+      expect.objectContaining({
+        role: 'assistant',
+        turn_id: 'turn_no_delta',
+        streaming: false,
+        terminalReason: 'interrupted',
+      }),
+    ])
+  })
+
+  it('replaces an interrupted suffix when a new conversation branch is selected', () => {
+    const state = projectChatEvents([
+      {
+        event: 'user_message',
+        seq: 1,
+        session_id: 's1',
+        turn_id: 'turn_old',
+        client_message_id: 'old_user',
+        content: 'old request',
+      },
+      {
+        event: 'message_delta',
+        seq: 2,
+        session_id: 's1',
+        turn_id: 'turn_old',
+        delta: 'partial',
+      },
+      {
+        event: 'runtime_task_cancelled',
+        seq: 3,
+        session_id: 's1',
+        turn_id: 'turn_old',
+        task: { turnId: 'turn_old' },
+      },
+      {
+        event: 'conversation_branch_selected',
+        seq: 4,
+        session_id: 's1',
+        turn_id: 'turn_new',
+        replaced_turn_id: 'turn_old',
+        new_turn_id: 'turn_new',
+      },
+      {
+        event: 'user_message',
+        seq: 5,
+        session_id: 's1',
+        turn_id: 'turn_new',
+        client_message_id: 'new_user',
+        content: 'edited request',
+      },
+    ])
+
+    expect(state.messages).toEqual([
+      expect.objectContaining({
+        id: 'new_user',
+        role: 'user',
+        content: 'edited request',
+        turn_id: 'turn_new',
+      }),
+    ])
+  })
+
   it('projects queued, interjected, and cancelled prompt states idempotently', () => {
     const state = projectChatEvents([
       {

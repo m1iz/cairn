@@ -98,6 +98,10 @@ export interface AppContext {
   startGoalWithLifecycle: (outcome: string) => Promise<GoalOperationResult>
   dismissLifecycle: () => Promise<LifecycleTransitionResult>
   sendMessage: (payload: string | ChatSendPayload) => boolean
+  editAndResubmit: (
+    replacedTurnId: string,
+    payload: string | ChatSendPayload,
+  ) => boolean
   manageQueuedPrompt: (
     promptId: string,
     action: 'cancel' | 'interject',
@@ -127,9 +131,8 @@ export interface AppContext {
   loadTokens: (silent?: boolean) => Promise<void>
 }
 
-export const APP_CONTEXT_KEY: InjectionKey<AppContext> = Symbol(
-  'cairn:app-context',
-)
+export const APP_CONTEXT_KEY: InjectionKey<AppContext> =
+  Symbol('cairn:app-context')
 
 export function provideAppContext(context: AppContext) {
   provide(APP_CONTEXT_KEY, context)

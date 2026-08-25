@@ -132,7 +132,12 @@ import {
 } from '../hooks'
 import { WorkspacePolicy } from '../permissions/workspace-policy'
 import { ProjectStore } from '../projects/store'
-import { ActiveTaskRegistry, TurnBusyError } from '../runtime/active'
+import {
+  activeTaskToDict,
+  ActiveTaskRegistry,
+  type ActiveTaskInfo,
+  TurnBusyError,
+} from '../runtime/active'
 import { WorkspaceMutationCoordinator } from '../workspace/mutation-coordinator'
 import { GoalCoordinator } from '../goals/coordinator'
 import { GoalContextBuilder } from '../goals/context'
@@ -1800,7 +1805,8 @@ export class AgentLoop {
       sessionDirOverride: true,
     })
     const history =
-      conversationStore.readCheckpoint() ?? memoryStore.loadUnarchivedHistory()
+      conversationStore.readCheckpoint() ??
+      conversationStore.loadActiveHistory()
     const todoStore = new TodoStore((todos) => {
       this.todosBySession.set(session.id, cloneTodoItems(todos))
       if (this.activeSessionId === session.id)
@@ -2139,6 +2145,140 @@ export class AgentLoop {
       bindings,
       scope: queuedScope,
     })
+  }
+
+  async settleCancelledTurn(
+    task: ActiveTaskInfo,
+    reason = 'user_stop',
+  ): Promise<boolean> {
+    const sessionId = String(task.session_id ?? '').trim()
+    const turnId = String(task.turn_id ?? '').trim()
+    if (task.kind !== 'turn' || !sessionId || !turnId) return false
+    this.sessionRuntimes.cancel(sessionId, `turn:${turnId}`)
+    const state = await this.sessionRuntimes.waitForTerminal(
+      sessionId,
+      `turn:${turnId}`,
+    )
+    if (state !== 'cancelled') return false
+    const session = this.sessionStore.get(sessionId)
+    if (!session) return false
+    const bindings = this.sessionRuntimes.get(sessionId)?.bindings
+    await this.emit(
+      runtimeEvents.runtimeTaskCancelled(activeTaskToDict(task), { reason }),
+      {
+        turnId,
+        runtimeStore: bindings?.runtimeStore ?? null,
+        scope: this.turnScope(session, turnId),
+      },
+    )
+    return true
+  }
+
+  async prepareEditedTurn(opts: {
+    sessionId: string
+    replacedTurnId: string
+    newTurnId: string
+  }): Promise<{
+    attachmentIds: string[]
+    requestedSkills: Array<{ name: string; source?: string }>
+  }> {
+    const sessionId = String(opts.sessionId).trim()
+    const replacedTurnId = String(opts.replacedTurnId).trim()
+    const newTurnId = String(opts.newTurnId).trim()
+    if (this.activeTasks.hasActiveKind('goal')) throw new TurnBusyError()
+    assertModelAvailable(this.modelRouter.availability)
+    const actor = this.sessionRuntimes.actor(sessionId)
+    if (actor.activeCommandId)
+      throw new Error('上一轮仍在停止，请稍后再编辑重发。')
+    if (this.activeTasks.hasActiveForSession(sessionId))
+      throw new Error('当前会话仍有任务运行，暂时不能编辑重发。')
+    const bindings = actor.bindings
+    const activeProfile = this.modelRouter.route('main_agent').snapshot.profile
+    if (bindings.session.mode === 'build' && activeProfile?.toolCall === false)
+      throw new ModelConfigurationError(
+        '当前激活模型不支持工具调用，无法用于 Build 或自动执行。请切换支持工具调用的模型。',
+      )
+    if (bindings.session.control_pending)
+      throw new Error('请先处理当前等待中的交互，再编辑重发。')
+    const interrupted = bindings.runtimeStore
+      .eventsForTurns([replacedTurnId], { includeArchive: true })
+      .some((event) => event.event === 'runtime_task_cancelled')
+    if (!interrupted) throw new Error('只能编辑并重发最近一条已中断的消息。')
+
+    const graph = bindings.conversationStore.messageGraph
+    const snapshot = graph.snapshot()
+    if (
+      snapshot.prompts.some((prompt) =>
+        ['queued', 'running', 'interjected'].includes(prompt.state),
+      )
+    )
+      throw new Error('请先处理当前会话中的排队消息，再编辑重发。')
+    const nodes = new Map(snapshot.nodes.map((node) => [node.id, node]))
+    let cursor = snapshot.leafId
+    let latestUser = null as (typeof snapshot.nodes)[number] | null
+    const seen = new Set<string>()
+    while (cursor) {
+      if (seen.has(cursor)) throw new Error('消息历史分支包含循环。')
+      seen.add(cursor)
+      const node = nodes.get(cursor)
+      if (!node) throw new Error('当前消息历史分支不完整。')
+      if (node.status === 'committed' && node.role === 'user') {
+        latestUser = node
+        break
+      }
+      cursor = node.parentId
+    }
+    if (!latestUser || latestUser.turnId !== replacedTurnId)
+      throw new Error('只能编辑并重发最近一条已中断的消息。')
+
+    const attachments = Array.isArray(latestUser.history.attachments)
+      ? latestUser.history.attachments
+      : []
+    const attachmentIds = attachments
+      .map((item) =>
+        typeof item === 'string'
+          ? item
+          : item && typeof item === 'object' && !Array.isArray(item)
+            ? String((item as Record<string, unknown>).id ?? '')
+            : '',
+      )
+      .map((id) => id.trim())
+      .filter(Boolean)
+    const requestedSkills = Array.isArray(latestUser.history.requestedSkills)
+      ? latestUser.history.requestedSkills
+          .map((item) => {
+            if (!item || typeof item !== 'object' || Array.isArray(item))
+              return null
+            const value = item as Record<string, unknown>
+            const name = String(value.name ?? '').trim()
+            if (!name) return null
+            const source = String(value.source ?? '').trim()
+            return { name, ...(source ? { source } : {}) }
+          })
+          .filter(
+            (item): item is { name: string; source?: string } => item !== null,
+          )
+      : []
+
+    graph.selectLeaf(latestUser.parentId)
+    const projected = bindings.conversationStore.projectHistory(
+      latestUser.parentId,
+    )
+    bindings.history.splice(0, bindings.history.length, ...projected)
+    bindings.memoryStore.clearCheckpoint()
+    await this.emit(
+      runtimeEvents.conversationBranchSelected({
+        replacedTurnId,
+        newTurnId,
+        parentMessageId: latestUser.parentId,
+      }),
+      {
+        turnId: newTurnId,
+        runtimeStore: bindings.runtimeStore,
+        scope: this.turnScope(bindings.session, newTurnId),
+      },
+    )
+    return { attachmentIds, requestedSkills }
   }
 
   async interjectUserTurn(

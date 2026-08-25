@@ -88,7 +88,10 @@ describe('Goal desktop runtime E2E', () => {
     runtime.switchSession('session-goal')
 
     await expect(runtime.stopActive()).resolves.toBe(true)
-    expect(calls).toContainEqual(['chat.stopRuntime', {}])
+    expect(calls).toContainEqual([
+      'chat.stopRuntime',
+      { sessionId: 'session-goal' },
+    ])
     expect(runtime.busy.value).toBe(false)
     expect(runtime.pending).toMatchObject({
       label: '已请求停止',

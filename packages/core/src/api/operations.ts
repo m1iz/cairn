@@ -620,6 +620,8 @@ export const CORE_OPERATION_REGISTRY = {
             .enum(['turn', 'scheduler', 'team', 'watchlist', 'goal'])
             .nullable()
             .optional(),
+          sessionId: nullableStringSchema,
+          turnId: nullableStringSchema,
         })
         .strict()
         .optional(),
@@ -628,6 +630,21 @@ export const CORE_OPERATION_REGISTRY = {
   ),
   'chat.submit': operation(z.tuple([chatSubmitSchema]), (api, [input]) =>
     api.chat.submit(input),
+  ),
+  'chat.editAndResubmit': operation(
+    z.tuple([
+      z
+        .object({
+          sessionId: idSchema,
+          replacedTurnId: idSchema,
+          content: z.string().trim().min(1),
+          displayContent: nullableStringSchema,
+          clientMessageId: nullableStringSchema,
+          turnId: nullableStringSchema,
+        })
+        .strict(),
+    ]),
+    (api, [input]) => api.chat.editAndResubmit(input),
   ),
   'chat.listQueuedPrompts': operation(
     z.tuple([queuedPromptSessionSchema]),

@@ -371,6 +371,18 @@ export function runtimeTaskCancelled(
   })
 }
 
+export function conversationBranchSelected(opts: {
+  replacedTurnId: string
+  newTurnId: string
+  parentMessageId?: string | null
+}): EventPayload {
+  return runtimeEvent('conversation_branch_selected', {
+    replaced_turn_id: opts.replacedTurnId,
+    new_turn_id: opts.newTurnId,
+    parent_message_id: opts.parentMessageId ?? null,
+  })
+}
+
 export function contextProjection(opts: {
   report: EventPayload
   messageCount: number

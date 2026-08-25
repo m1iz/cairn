@@ -100,12 +100,19 @@ export class ActiveTaskRegistry {
   }
 
   cancel(
-    opts: { taskId?: string | null; kind?: ActiveTaskKind | null } = {},
+    opts: {
+      taskId?: string | null
+      kind?: ActiveTaskKind | null
+      sessionId?: string | null
+      turnId?: string | null
+    } = {},
   ): ActiveTaskInfo[] {
     const selected = [...this.tasks.values()].filter((active) => {
       return (
         (!opts.taskId || active.info.id === opts.taskId) &&
-        (!opts.kind || active.info.kind === opts.kind)
+        (!opts.kind || active.info.kind === opts.kind) &&
+        (!opts.sessionId || active.info.session_id === opts.sessionId) &&
+        (!opts.turnId || active.info.turn_id === opts.turnId)
       )
     })
     for (const active of selected) active.cancel()

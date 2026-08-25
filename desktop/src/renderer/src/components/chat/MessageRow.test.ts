@@ -67,6 +67,76 @@ describe('MessageRow prompt delivery state', () => {
     app.unmount()
   })
 
+  it('offers editing only when the parent marks an interrupted user message editable', () => {
+    container = document.createElement('div')
+    document.body.append(container)
+    const onEditMessage = vi.fn()
+    const message: UserMessage = {
+      id: 'user-interrupted',
+      role: 'user',
+      content: 'fix this request',
+      turn_id: 'turn-interrupted',
+    }
+    const app = createApp(() =>
+      h(MessageRow, {
+        message,
+        plans: [],
+        editable: true,
+        onEditMessage,
+      }),
+    )
+    app.mount(container)
+
+    const button = container.querySelector<HTMLButtonElement>(
+      '.message-edit-button',
+    )!
+    button.click()
+    expect(onEditMessage).toHaveBeenCalledWith(message)
+    app.unmount()
+  })
+
+  it('edits and submits an interrupted message in its original row', async () => {
+    container = document.createElement('div')
+    document.body.append(container)
+    const onSubmitEdit = vi.fn()
+    const onCancelEdit = vi.fn()
+    const message: UserMessage = {
+      id: 'user-inline-edit',
+      role: 'user',
+      content: 'original request',
+      turn_id: 'turn-inline-edit',
+    }
+    const app = createApp(() =>
+      h(MessageRow, {
+        message,
+        plans: [],
+        editable: true,
+        editing: true,
+        onSubmitEdit,
+        onCancelEdit,
+      }),
+    )
+    app.mount(container)
+
+    const textarea = container.querySelector<HTMLTextAreaElement>(
+      '.inline-message-editor textarea',
+    )!
+    expect(textarea.value).toBe('original request')
+    textarea.value = 'revised request'
+    textarea.dispatchEvent(new Event('input'))
+    await Promise.resolve()
+
+    const buttons = container.querySelectorAll<HTMLButtonElement>(
+      '.inline-message-editor-actions button',
+    )
+    buttons[1]!.click()
+    expect(onSubmitEdit).toHaveBeenCalledWith(message, 'revised request')
+    buttons[0]!.click()
+    expect(onCancelEdit).toHaveBeenCalledTimes(1)
+
+    app.unmount()
+  })
+
   it('exposes a continue action for an evaluated pause card', () => {
     container = document.createElement('div')
     document.body.append(container)
