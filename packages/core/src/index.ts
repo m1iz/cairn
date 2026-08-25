@@ -32,6 +32,7 @@ export * from './tools/builtin'
 export * from './tools/dispatch'
 export * from './tools/subagent-tasks'
 export * from './tools/web-search'
+export * from './tools/responses-web-search-adapter'
 export * from './context/pipeline'
 export * from './extensions/resolver'
 // optional code intelligence (default off; production enablement is receipt-gated)

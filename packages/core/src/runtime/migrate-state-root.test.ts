@@ -246,9 +246,9 @@ describe('migrateLegacyStateRoot', () => {
     expect(
       readFileSync(join(stateRoot, 'model_config.json'), 'utf8'),
     ).toContain('legacy')
-    expect(
-      readFileSync(join(stateRoot, 'cairn.local.json'), 'utf8'),
-    ).toContain('classic')
+    expect(readFileSync(join(stateRoot, 'cairn.local.json'), 'utf8')).toContain(
+      'classic',
+    )
     expect(readFileSync(join(stateRoot, 'mcp_config.json'), 'utf8')).toContain(
       'kept',
     )
@@ -509,11 +509,36 @@ describe('migrateLegacyStateRoot', () => {
     }
     const retiredDir = `desktop_${String.fromCharCode(112, 101, 116)}`
     const retiredKey = String.fromCharCode(
-      100, 101, 115, 107, 116, 111, 112, 80, 101, 116,
+      100,
+      101,
+      115,
+      107,
+      116,
+      111,
+      112,
+      80,
+      101,
+      116,
     )
     const previousConfigName = String.fromCharCode(
-      101, 109, 112, 101, 114, 111, 114, 46, 108, 111, 99, 97, 108, 46,
-      106, 115, 111, 110,
+      101,
+      109,
+      112,
+      101,
+      114,
+      111,
+      114,
+      46,
+      108,
+      111,
+      99,
+      97,
+      108,
+      46,
+      106,
+      115,
+      111,
+      110,
     )
 
     mkdirSync(join(previousRoot, 'memory', retiredDir), { recursive: true })
@@ -535,7 +560,13 @@ describe('migrateLegacyStateRoot', () => {
     )
     mkdirSync(join(previousRoot, 'goals'), { recursive: true })
     const previousSchemaPrefix = String.fromCharCode(
-      101, 109, 112, 101, 114, 111, 114,
+      101,
+      109,
+      112,
+      101,
+      114,
+      111,
+      114,
     )
     const previousProductName = `${previousSchemaPrefix} Agent`
     writeFileSync(
@@ -572,9 +603,9 @@ describe('migrateLegacyStateRoot', () => {
 
     expect(first.copied).toBe(5)
     expect(second.copied).toBe(0)
-    expect(readFileSync(join(stateRoot, 'model_config.json'), 'utf8')).toContain(
-      'schemaVersion',
-    )
+    expect(
+      readFileSync(join(stateRoot, 'model_config.json'), 'utf8'),
+    ).toContain('schemaVersion')
     expect(
       readFileSync(
         join(stateRoot, 'sessions', 'session_1', 'history.jsonl'),

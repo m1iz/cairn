@@ -5,9 +5,7 @@ import {
   decideCodeIntelligenceGate,
 } from './eval'
 
-const benchmarkRoot = String(
-  process.env.CAIRN_CODE_BENCHMARK_ROOT ?? '',
-).trim()
+const benchmarkRoot = String(process.env.CAIRN_CODE_BENCHMARK_ROOT ?? '').trim()
 const benchmarkMaxFiles = Number(
   process.env.CAIRN_CODE_BENCHMARK_MAX_FILES ?? 200,
 )

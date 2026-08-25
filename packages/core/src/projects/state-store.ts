@@ -8,8 +8,7 @@ import {
 } from 'node:fs'
 import { join, resolve } from 'node:path'
 
-export const PROJECT_MEMORY_START =
-  '<!-- cairn:project-memory:start -->'
+export const PROJECT_MEMORY_START = '<!-- cairn:project-memory:start -->'
 export const PROJECT_MEMORY_END = '<!-- cairn:project-memory:end -->'
 export const DEFAULT_PROJECT_MEMORY_BLOCK =
   '## Cairn Project Memory\n\n- 尚未记录项目情况。'

@@ -240,8 +240,7 @@ describe('compactSession routing integration', () => {
           {
             op: 'append_section_item',
             section: 'Cross-Project Decisions',
-            content:
-              '- Across Cairn projects, run make check before handoff.',
+            content: '- Across Cairn projects, run make check before handoff.',
             reason: 'cross-project verification practice',
             sourceSeqs: [1],
             confidence: 'high',

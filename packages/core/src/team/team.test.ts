@@ -50,7 +50,10 @@ class EchoTool extends Tool {
 function fakeSubagents() {
   const specs = new Map<string, { name: string; tool_names: string[] }>([
     ['code_explorer', { name: 'code_explorer', tool_names: ['echo'] }],
-    ['implementation_engineer', { name: 'implementation_engineer', tool_names: ['echo'] }],
+    [
+      'implementation_engineer',
+      { name: 'implementation_engineer', tool_names: ['echo'] },
+    ],
   ])
   return {
     get: (name: string) => specs.get(name) ?? null,

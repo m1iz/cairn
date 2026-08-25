@@ -2016,6 +2016,43 @@ describe('AgentLoop', () => {
     await loop.close()
   })
 
+  it('injects a web search backend without changing the main model provider', async () => {
+    const root = tmp('cairn-loop-web-search-')
+    const provider = new FakeProvider()
+    const search = vi.fn(async () => [
+      {
+        title: 'Official result',
+        url: 'https://example.com/search',
+        snippet: 'Search result content',
+      },
+    ])
+    const loop = await AgentLoop.create({
+      root,
+      stateRoot: join(root, '.cairn'),
+      templatesDir: TEMPLATES_DIR,
+      modelRouter: fakeRouter(provider),
+      webSearchAdapter: { name: 'fake-hosted-search', search },
+    })
+
+    const result = await loop.registry.executeResult('web_search', {
+      query: 'current agent information',
+      max_results: 1,
+    })
+
+    expect(search).toHaveBeenCalledWith(
+      'current agent information',
+      expect.objectContaining({ maxResults: 1, fresh: false }),
+    )
+    expect(result.isError).toBe(false)
+    expect(result.metadata).toMatchObject({
+      backend: 'fake-hosted-search',
+      query: 'current agent information',
+    })
+    expect(result.modelContent).toContain('https://example.com/search')
+    expect(provider.calls).toHaveLength(0)
+    await loop.close()
+  })
+
   it('runs Scheduler turns through TaskRuntime and propagates lifecycle cancellation', async () => {
     const root = tmp('cairn-loop-scheduler-task-runtime-')
     const loop = await AgentLoop.create({

@@ -123,9 +123,7 @@ describe('AgentRunner permission batch preflight', () => {
   })
 
   it('executes the destructive batch directly in full_access', async () => {
-    const workspace = mkdtempSync(
-      join(tmpdir(), 'cairn-full-batch-workspace-'),
-    )
+    const workspace = mkdtempSync(join(tmpdir(), 'cairn-full-batch-workspace-'))
     const stateRoot = mkdtempSync(join(tmpdir(), 'cairn-full-batch-state-'))
     const paths = ['a.txt', 'b.txt', 'c.txt']
     for (const path of paths) writeFileSync(join(workspace, path), path)
@@ -151,9 +149,7 @@ describe('AgentRunner permission batch preflight', () => {
   })
 
   it('denies the resumed exact batch without deleting or asking again', async () => {
-    const workspace = mkdtempSync(
-      join(tmpdir(), 'cairn-deny-batch-workspace-'),
-    )
+    const workspace = mkdtempSync(join(tmpdir(), 'cairn-deny-batch-workspace-'))
     const stateRoot = mkdtempSync(join(tmpdir(), 'cairn-deny-batch-state-'))
     const paths = ['a.txt', 'b.txt', 'c.txt']
     for (const path of paths) writeFileSync(join(workspace, path), path)
@@ -231,9 +227,7 @@ describe('AgentRunner permission batch preflight', () => {
     const workspace = mkdtempSync(
       join(tmpdir(), 'cairn-invalid-batch-workspace-'),
     )
-    const stateRoot = mkdtempSync(
-      join(tmpdir(), 'cairn-invalid-batch-state-'),
-    )
+    const stateRoot = mkdtempSync(join(tmpdir(), 'cairn-invalid-batch-state-'))
     writeFileSync(join(workspace, 'keep.txt'), 'keep')
     const control = new ControlManager(stateRoot)
     control.setMode(ControlMode.FULL_ACCESS)

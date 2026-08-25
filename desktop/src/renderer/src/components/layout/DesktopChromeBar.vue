@@ -151,7 +151,11 @@ async function runAction(action: MenuAction) {
     </div>
 
     <nav class="desktop-chrome-menu" aria-label="应用菜单">
-      <div v-for="menu in menus" :key="menu.id" class="desktop-chrome-menu-item">
+      <div
+        v-for="menu in menus"
+        :key="menu.id"
+        class="desktop-chrome-menu-item"
+      >
         <button
           class="desktop-chrome-menu-button"
           type="button"
@@ -161,7 +165,11 @@ async function runAction(action: MenuAction) {
         >
           {{ menu.label }}
         </button>
-        <div v-if="openMenu === menu.id" class="desktop-chrome-menu-popover" role="menu">
+        <div
+          v-if="openMenu === menu.id"
+          class="desktop-chrome-menu-popover"
+          role="menu"
+        >
           <button
             v-for="item in menu.items"
             :key="item.action"

@@ -92,13 +92,7 @@ export class LinuxEnvironmentAdapter implements EnvironmentStepExecutor {
     this.downloader = opts.downloader ?? new NodeHttpsAssetDownloader()
     this.downloadsDir =
       opts.downloadsDir ??
-      posix.join(
-        this.homeDir,
-        '.cache',
-        'cairn',
-        'environment',
-        'downloads',
-      )
+      posix.join(this.homeDir, '.cache', 'cairn', 'environment', 'downloads')
     this.installRoot =
       opts.installRoot ??
       posix.join(

@@ -41,8 +41,7 @@ describe('resolveConfig', () => {
 
   it('uses packaged default root when no explicit root is provided', () => {
     const cfg = resolveConfig({
-      defaultRoot:
-        '/Users/me/Library/Application Support/Cairn/runtime',
+      defaultRoot: '/Users/me/Library/Application Support/Cairn/runtime',
       env: { CAIRN_CONFIG_DIR: '/tmp/cairn-config-test-state' },
       readFile: throwingRead,
     })

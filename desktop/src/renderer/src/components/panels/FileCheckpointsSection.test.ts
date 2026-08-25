@@ -253,9 +253,7 @@ describe('FileCheckpointsSection', () => {
       previewRevision: gitPreview.revision,
       dirtyStrategy: 'stash',
     })
-    expect(container.textContent).toContain(
-      'refs/cairn/rewind/grw_one/head',
-    )
+    expect(container.textContent).toContain('refs/cairn/rewind/grw_one/head')
   })
 
   it('surfaces isolated corrupt Git transaction journals without offering recovery mutation', async () => {

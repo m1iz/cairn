@@ -29,6 +29,12 @@ export type ProviderReasoningAdapters = Readonly<
 export type ProviderRegion =
   'foreign' | 'aggregator' | 'cloud' | 'cn' | 'local' | 'other'
 
+export interface HostedWebSearchCapability {
+  protocol: 'responses_web_search'
+  toolType: 'web_search' | 'web_search_2025_08_26'
+  requiredProtocol: ProviderProtocol
+}
+
 export interface ProviderSpec {
   name: string
   displayName: string
@@ -56,6 +62,7 @@ export interface ProviderSpec {
   supportsPromptCaching: boolean
   thinkingStyle: string
   reasoningAsContent: boolean
+  hostedWebSearch: HostedWebSearchCapability | null
   modelOverrides: ReadonlyArray<readonly [string, Record<string, unknown>]>
 }
 
@@ -183,6 +190,7 @@ function spec(input: SpecInput): RegistryProviderSpec {
     supportsPromptCaching: false,
     thinkingStyle: '',
     reasoningAsContent: false,
+    hostedWebSearch: null,
     modelOverrides: [],
     ...inputFields,
     protocols,
@@ -319,6 +327,11 @@ export const PROVIDERS: readonly RegistryProviderSpec[] = [
     envKey: 'DEEPSEEK_API_KEY',
     region: 'cn',
     thinkingStyle: 'thinking_type',
+    hostedWebSearch: {
+      protocol: 'responses_web_search',
+      toolType: 'web_search',
+      requiredProtocol: 'openai',
+    },
     websiteUrl: 'https://platform.deepseek.com',
     apiKeyUrl: 'https://platform.deepseek.com/api_keys',
   }),

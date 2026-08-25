@@ -204,9 +204,7 @@ describe('resolveMediaRawPath', () => {
   })
 
   it('rejects malformed media URLs', () => {
-    const stateRoot = mkdtempSync(
-      path.join(tmpdir(), 'cairn-media-protocol-'),
-    )
+    const stateRoot = mkdtempSync(path.join(tmpdir(), 'cairn-media-protocol-'))
     expect(
       resolveMediaRawPath('app://media/../../secret/raw', { stateRoot }),
     ).toBeNull()

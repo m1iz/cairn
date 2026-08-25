@@ -77,10 +77,7 @@ const closeIcon = actionIcons.close
         </footer>
       </div>
 
-      <aside
-        class="model-setup-visual"
-        aria-label="Cairn product preview"
-      >
+      <aside class="model-setup-visual" aria-label="Cairn product preview">
         <div class="model-setup-cairn" :aria-label="content.heroAlt">
           <BrandMark size="clamp(132px, 25vw, 220px)" />
           <p>Choose a model. Keep control.</p>

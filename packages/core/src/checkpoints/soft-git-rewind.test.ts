@@ -221,9 +221,7 @@ describe('SoftGitRewindService', () => {
       code: 'unrelated_changes_require_stash',
     })
     expect(git(fixture.workspace, 'rev-parse', 'HEAD')).toBe(fixture.baseHead)
-    expect(
-      git(fixture.workspace, 'for-each-ref', 'refs/cairn/rewind'),
-    ).toBe('')
+    expect(git(fixture.workspace, 'for-each-ref', 'refs/cairn/rewind')).toBe('')
     expect(readFileSync(join(fixture.workspace, 'unrelated.txt'), 'utf8')).toBe(
       'user work\n',
     )
@@ -328,9 +326,7 @@ describe('SoftGitRewindService', () => {
         applyFiles: async () => undefined,
       }),
     ).rejects.toMatchObject({ code: 'stale_preview' })
-    expect(
-      git(fixture.workspace, 'for-each-ref', 'refs/cairn/rewind'),
-    ).toBe('')
+    expect(git(fixture.workspace, 'for-each-ref', 'refs/cairn/rewind')).toBe('')
   })
 
   it('vetoes a non-ancestor target and Git operations in progress', async () => {
@@ -483,9 +479,7 @@ describe('SoftGitRewindService', () => {
         applyFiles: async () => undefined,
       }),
     ).rejects.toMatchObject({ code: 'stash_filter_unsupported' })
-    expect(
-      git(fixture.workspace, 'for-each-ref', 'refs/cairn/rewind'),
-    ).toBe('')
+    expect(git(fixture.workspace, 'for-each-ref', 'refs/cairn/rewind')).toBe('')
   })
 
   it('refuses to stash an unrelated dirty set above the bounded volume', async () => {
@@ -511,9 +505,7 @@ describe('SoftGitRewindService', () => {
       stashSafe: false,
     })
     expect(preview.dirtyBytes).toBeGreaterThan(128 * 1024 * 1024)
-    expect(
-      git(fixture.workspace, 'for-each-ref', 'refs/cairn/rewind'),
-    ).toBe('')
+    expect(git(fixture.workspace, 'for-each-ref', 'refs/cairn/rewind')).toBe('')
   })
 
   it('rolls HEAD and index back without touching the worktree when file rewind fails', async () => {

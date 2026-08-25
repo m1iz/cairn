@@ -33,8 +33,8 @@ interface CairnBridge {
 }
 
 function bridge(): CairnBridge | undefined {
-  return (globalThis as unknown as { window?: { cairn?: CairnBridge } })
-    .window?.cairn
+  return (globalThis as unknown as { window?: { cairn?: CairnBridge } }).window
+    ?.cairn
 }
 
 export async function selectDirectory(): Promise<string | null> {

@@ -140,5 +140,4 @@ function _assertRendererBridgeTypes(): void {
 
   // @ts-expect-error sessions.rename requires a patch
   void invokeCore('sessions.rename', 's1')
-
 }

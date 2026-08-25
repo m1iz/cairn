@@ -30,11 +30,7 @@ mkdirSync(emptyBin, { recursive: true })
 mkdirSync(appDataRoot, { recursive: true })
 mkdirSync(localAppDataRoot, { recursive: true })
 
-const args = [
-  '--cairn-packaged-smoke',
-  '--cairn-smoke-receipt',
-  receiptPath,
-]
+const args = ['--cairn-packaged-smoke', '--cairn-smoke-receipt', receiptPath]
 if (process.platform === 'linux') {
   args.unshift('--headless', '--disable-gpu', '--ozone-platform=headless')
   args.unshift('--no-sandbox')
@@ -89,14 +85,7 @@ function resolveAppPath(argv) {
     candidates = readdirSync(distRoot, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && entry.name.startsWith('mac'))
       .map((entry) =>
-        join(
-          distRoot,
-          entry.name,
-          'Cairn.app',
-          'Contents',
-          'MacOS',
-          'Cairn',
-        ),
+        join(distRoot, entry.name, 'Cairn.app', 'Contents', 'MacOS', 'Cairn'),
       )
   } else if (process.platform === 'win32') {
     candidates = [join(distRoot, 'win-unpacked', 'Cairn.exe')]

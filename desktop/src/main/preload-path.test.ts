@@ -7,14 +7,7 @@ describe('resolveMainPreloadPath', () => {
     const mainDir = path.join('/tmp', 'cairn', 'desktop', 'out', 'main')
 
     expect(resolveMainPreloadPath(mainDir)).toBe(
-      path.join(
-        '/tmp',
-        'cairn',
-        'desktop',
-        'out',
-        'preload',
-        'index.cjs',
-      ),
+      path.join('/tmp', 'cairn', 'desktop', 'out', 'preload', 'index.cjs'),
     )
   })
 })

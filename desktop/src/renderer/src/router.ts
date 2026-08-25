@@ -94,10 +94,5 @@ export const router = createRouter({
   routes: routeRecords,
 })
 
-export const navOrder = [
-  'chat',
-  'plugins',
-  'scheduler',
-  'settings',
-] as const
+export const navOrder = ['chat', 'plugins', 'scheduler', 'settings'] as const
 export type NavRouteName = (typeof navOrder)[number]

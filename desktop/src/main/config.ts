@@ -42,8 +42,7 @@ function resolveRuntimeRoot(
   if (forcedRuntimeRoot) return { root: forcedRuntimeRoot, source: 'packaged' }
   const explicit = argValue(argv, '--root')
   if (explicit) return { root: explicit, source: 'explicit' }
-  if (env.CAIRN_ROOT)
-    return { root: env.CAIRN_ROOT, source: 'env' }
+  if (env.CAIRN_ROOT) return { root: env.CAIRN_ROOT, source: 'env' }
   if (defaultRoot) return { root: defaultRoot, source: 'default' }
   return { root: path.resolve(mainDir, '..', '..', '..'), source: 'default' }
 }
@@ -55,8 +54,7 @@ function resolveStateRoot(env: Record<string, string | undefined>): {
   root: string
   source: RootSource
 } {
-  if (env.CAIRN_CONFIG_DIR)
-    return { root: env.CAIRN_CONFIG_DIR, source: 'env' }
+  if (env.CAIRN_CONFIG_DIR) return { root: env.CAIRN_CONFIG_DIR, source: 'env' }
   return { root: defaultStateRoot(), source: 'default' }
 }
 

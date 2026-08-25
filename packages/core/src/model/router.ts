@@ -11,6 +11,7 @@ import {
 import { createProvider } from '../providers/factory'
 import {
   findByName,
+  type HostedWebSearchCapability,
   type ProviderProtocol,
   type ProviderSpec,
 } from '../providers/registry'
@@ -33,6 +34,7 @@ export interface ProviderSnapshot {
   contextWindowTokens: number
   config: Record<string, unknown>
   supportsVision: boolean
+  hostedWebSearch?: HostedWebSearchCapability | null
   pricing?: ModelPricing
   modelEntryId: string
   routeReason: string
@@ -184,6 +186,7 @@ export function buildProviderSnapshot(
     contextWindowTokens,
     config: structuredClone(config) as unknown as Record<string, unknown>,
     supportsVision: profile.vision,
+    hostedWebSearch: spec.hostedWebSearch,
     ...(entry.pricing ? { pricing: structuredClone(entry.pricing) } : {}),
     modelEntryId: entry.entryId,
     routeReason: 'active_model',
@@ -237,6 +240,7 @@ function bootstrapProviderSnapshot(): ProviderSnapshot {
     contextWindowTokens: profile.contextWindowTokens,
     config: {},
     supportsVision: profile.vision,
+    hostedWebSearch: spec.hostedWebSearch,
     modelEntryId: 'unconfigured',
     routeReason: 'bootstrap_unconfigured',
   }

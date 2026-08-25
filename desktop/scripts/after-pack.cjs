@@ -69,9 +69,7 @@ function validatePackagedAppResources(
     if (
       ((entry === '/node_modules' || entry.startsWith('/node_modules/')) &&
         !isAllowedNodeModuleEntry(entry)) ||
-      /(?:^|\/)(?:fixtures|tests|skills-catalog)(?:\/|$)/i.test(
-        entry,
-      ) ||
+      /(?:^|\/)(?:fixtures|tests|skills-catalog)(?:\/|$)/i.test(entry) ||
       /(?:\.py|requirements[^/]*\.txt)$/i.test(entry)
     )
       throw new Error(`packaged app contains forbidden ASAR entry: ${entry}`)
@@ -86,7 +84,8 @@ function validatePackagedAppResources(
 
   const extractEntry = (entry) => {
     const rawEntry = rawEntryByNormalized.get(`/${entry}`)
-    if (!rawEntry) throw new Error(`packaged app is missing ASAR entry: /${entry}`)
+    if (!rawEntry)
+      throw new Error(`packaged app is missing ASAR entry: /${entry}`)
     return extractFile(asarPath, rawEntry.replace(/^[/\\]/, ''))
   }
   const packageJson = JSON.parse(extractEntry('package.json').toString('utf8'))

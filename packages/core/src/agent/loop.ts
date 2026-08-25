@@ -257,7 +257,8 @@ import {
 } from '../tools/filesystem'
 import { ToolRegistry } from '../tools/registry'
 import type { ToolExecutionContext } from '../tools/base'
-import { WebSearchTool } from '../tools/web-search'
+import { WebSearchTool, type WebSearchAdapter } from '../tools/web-search'
+import { ResponsesWebSearchAdapter } from '../tools/responses-web-search-adapter'
 import * as runtimeEvents from '../runtime/events'
 import { planToDict } from '../plans/models'
 import {
@@ -340,6 +341,8 @@ export interface AgentLoopCreateOptions {
   initializeMcp?: boolean
   eventSink?: StreamEmitter | null
   permissionRules?: PermissionRuleInput[] | null
+  /** Trusted-host override; undefined selects the active provider's hosted search. */
+  webSearchAdapter?: WebSearchAdapter | null
   /** Trusted-host injection for containment integration tests and native hosts. */
   processSandbox?: ProcessContainmentController
   /** Beta，默认关闭；开启后仅捕获受管文件工具的 before/after。 */
@@ -533,6 +536,7 @@ export class AgentLoop {
   private activeRunner!: AgentRunner
   history: Msg[] = []
   private readonly ownsModelRouter: boolean
+  private readonly webSearchAdapter: WebSearchAdapter | null
   private readonly enableFirstRunOnboarding: boolean
   private schedulerAgentTurnSubmitter:
     ((payload: SchedulerAgentTurnPayload) => Promise<string>) | null = null
@@ -585,6 +589,12 @@ export class AgentLoop {
     this.registry.setRoot(this.paths.stateRoot)
     this.modelRouter = modelRouter
     this.ownsModelRouter = !opts.modelRouter
+    this.webSearchAdapter =
+      opts.webSearchAdapter === undefined
+        ? new ResponsesWebSearchAdapter(() =>
+            this.modelRouter.route('web_search'),
+          )
+        : opts.webSearchAdapter
     this.enableFirstRunOnboarding = Boolean(opts.enableFirstRunOnboarding)
     this.sharedMemory = sharedMemory
     this.profileOnboarding = new ProfileOnboardingCoordinator({
@@ -3906,7 +3916,7 @@ export class AgentLoop {
         ownedRunner: this.processRuntime,
       }),
     )
-    this.registry.register(new WebSearchTool())
+    this.registry.register(new WebSearchTool(this.webSearchAdapter))
     this.registry.register(new WebFetch())
     this.registry.register(
       new LoadSkill(

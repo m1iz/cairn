@@ -156,5 +156,11 @@ describe('provider registry', () => {
         anthropic: 'anthropic',
       },
     })
+    expect(findByName('deepseek')?.hostedWebSearch).toEqual({
+      protocol: 'responses_web_search',
+      toolType: 'web_search',
+      requiredProtocol: 'openai',
+    })
+    expect(findByName('openai')?.hostedWebSearch).toBeNull()
   })
 })

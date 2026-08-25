@@ -19,11 +19,7 @@ const corePackage = readJson(`${repoRoot}/packages/core/package.json`)
 const desktopPackage = readJson(`${repoRoot}/desktop/package.json`)
 
 assertDeclaredDependencies(coreBom, corePackage, new Set())
-assertDeclaredDependencies(
-  desktopBom,
-  desktopPackage,
-  new Set(['@cairn/core']),
-)
+assertDeclaredDependencies(desktopBom, desktopPackage, new Set(['@cairn/core']))
 assertComponent(desktopBom, '@cairn/core')
 
 const coreComponent = findComponent(coreBom, '@cairn/core')
