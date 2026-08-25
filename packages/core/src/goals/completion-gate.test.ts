@@ -580,7 +580,6 @@ describe('GoalCompletionGate.complete', () => {
       verificationWaived: false,
       factVersions: {
         runtime: expect.stringContaining('runtime:'),
-        control: expect.stringContaining('runtime:'),
         scope: expect.stringContaining('scope:'),
         storage: expect.stringContaining('storage:'),
         hardConstraints: expect.stringContaining('hard_constraints:'),
@@ -1068,7 +1067,6 @@ describe('GoalCompletionGate.complete', () => {
         pass: false,
         factVersions: {
           runtime: expect.stringContaining('runtime:'),
-          control: expect.stringContaining('runtime:'),
         },
       },
     })

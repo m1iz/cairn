@@ -77,8 +77,6 @@ export interface GoalGateResult {
 
 export interface GoalGateFactVersions {
   readonly runtime: string | null
-  /** @deprecated Runtime facts supersede the legacy Control resolver version. */
-  readonly control: string | null
   readonly scope: string | null
   readonly storage: string | null
   readonly hardConstraints: string | null
@@ -498,7 +496,6 @@ export class GoalCompletionGate {
       verificationWaived,
       factVersions: {
         runtime: factVersion(runtime),
-        control: factVersion(runtime),
         scope: factVersion(scope),
         storage: factVersion(storage),
         hardConstraints: factVersion(constraints),
@@ -1106,7 +1103,6 @@ async function validateTrustedCompletionPrecondition(
         ? `plan:${plan.planId}:${plan.planEventSeq}:${plan.approvalGeneration}:${plan.integritySha256}`
         : null,
     runtime: factVersion(runtime),
-    control: factVersion(runtime),
     scope: factVersion(scope),
     storage: factVersion(storage),
     hardConstraints: factVersion(constraints),
@@ -1470,7 +1466,6 @@ function result(input: {
 function emptyFactVersions(): GoalGateFactVersions {
   return {
     runtime: null,
-    control: null,
     scope: null,
     storage: null,
     hardConstraints: null,

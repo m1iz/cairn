@@ -98,7 +98,6 @@ async function goalFixture() {
     riskDisclosures: [],
     factVersions: {
       runtime: null,
-      control: null,
       scope: null,
       storage: null,
       hardConstraints: null,
