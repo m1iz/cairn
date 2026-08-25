@@ -1237,7 +1237,6 @@ function fakeRouter(provider: LLMProvider): {
   return {
     route: (useCase: string) => ({
       snapshot: snapshot(provider),
-      fallback: null,
       useCase,
       reason: `${useCase}:goal-e2e`,
       estimatedTokens: null,
@@ -1257,9 +1256,7 @@ function snapshot(provider: LLMProvider): ProviderSnapshot {
     contextWindowTokens: 100_000,
     config: {},
     supportsVision: false,
-    entryName: 'goal-e2e',
-    entryLabel: 'Goal E2E',
-    modelRole: 'main',
+    modelEntryId: 'goal-e2e',
     routeReason: 'deterministic_fake',
   }
 }

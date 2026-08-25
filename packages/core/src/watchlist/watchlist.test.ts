@@ -151,8 +151,6 @@ function snapshot(
     config: {},
     supportsVision: false,
     modelEntryId: 'active-entry',
-    entryName: 'active-entry',
-    entryLabel: 'Fake',
     routeReason: 'watchlist_check',
   }
 }

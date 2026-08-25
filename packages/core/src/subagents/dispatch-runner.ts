@@ -112,12 +112,12 @@ export function buildDispatchRunner(
 
 function assertAgentModelPolicy(
   args: DispatchRunnerFactoryArgs,
-  snapshot: { modelEntryId?: string; entryName: string },
+  snapshot: { modelEntryId: string },
 ): void {
   const allowed = args.spec.definition.model.allowedProfiles
   if (allowed.length === 0) return
   const active = new Set(
-    [snapshot.modelEntryId, snapshot.entryName]
+    [snapshot.modelEntryId]
       .map((value) => String(value ?? '').trim())
       .filter(Boolean),
   )

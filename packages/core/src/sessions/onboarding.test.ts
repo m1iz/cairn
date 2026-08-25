@@ -79,15 +79,12 @@ function fakeRouter(provider: LLMProvider) {
     contextWindowTokens: 100_000,
     config: {},
     supportsVision: false,
-    entryName: 'fake',
-    entryLabel: 'Fake',
-    modelRole: 'main',
+    modelEntryId: 'fake',
     routeReason: 'fake',
   }
   return {
     route: (useCase: string): ModelRoute => ({
       snapshot: snap,
-      fallback: null,
       useCase,
       reason: `${useCase}:fake`,
       estimatedTokens: null,
@@ -494,9 +491,7 @@ describe('AgentLoop.create() first-run onboarding integration (opt-in, 2026-07-0
       ),
     ).toBeUndefined()
     expect(
-      JSON.parse(
-        readFileSync(join(root, '.cairn', 'onboarding.json'), 'utf8'),
-      ),
+      JSON.parse(readFileSync(join(root, '.cairn', 'onboarding.json'), 'utf8')),
     ).toMatchObject({ version: 2, profile: { status: 'pending' } })
 
     await loop.close()
@@ -561,9 +556,7 @@ describe('AgentLoop.create() first-run onboarding integration (opt-in, 2026-07-0
       ),
     ).toBeUndefined()
     expect(
-      JSON.parse(
-        readFileSync(join(root, '.cairn', 'onboarding.json'), 'utf8'),
-      ),
+      JSON.parse(readFileSync(join(root, '.cairn', 'onboarding.json'), 'utf8')),
     ).toMatchObject({ version: 2, profile: { status: 'pending' } })
 
     await loop.close()

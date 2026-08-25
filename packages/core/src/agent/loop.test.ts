@@ -3541,8 +3541,6 @@ function snapshot(provider: LLMProvider, toolCall = true): ProviderSnapshot {
     config: {},
     supportsVision: true,
     modelEntryId: 'active-entry',
-    entryName: 'active-entry',
-    entryLabel: 'Fake',
     routeReason: 'active_model',
   }
 }

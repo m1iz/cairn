@@ -272,7 +272,6 @@ describe('DispatchSubagentTool (W04-014/W08)', () => {
             },
           },
         },
-        fallback: null,
         useCase: 'subagent',
         reason: 'mutation lease test',
         estimatedTokens: null,
@@ -358,7 +357,10 @@ describe('DispatchSubagentTool (W04-014/W08)', () => {
     })
 
     await expect(
-      tool.execute({ agent_type: 'implementation_engineer', task: 'policy probe' }),
+      tool.execute({
+        agent_type: 'implementation_engineer',
+        task: 'policy probe',
+      }),
     ).resolves.toBe('结论: policy checked')
     expect(observed).toEqual([
       'load_skill:skill-a',
@@ -834,7 +836,6 @@ describe('DispatchSubagentTool (W04-014/W08)', () => {
           snapshot: {
             ...snapshot('active-model', 'main'),
             modelEntryId: 'active-entry',
-            entryName: 'active-entry',
           },
           useCase,
           reason: `${useCase}:${agentType}:lightweight`,
@@ -928,7 +929,6 @@ describe('DispatchSubagentTool (W04-014/W08)', () => {
           ...snapshot('secondary-model', 'secondary'),
           provider,
         },
-        fallback: null,
         useCase: 'subagent',
         reason: 'snapshot inheritance',
         estimatedTokens: null,
@@ -956,7 +956,6 @@ describe('DispatchSubagentTool (W04-014/W08)', () => {
           ...snapshot('secondary-model', 'secondary'),
           contextWindowTokens: 64_000,
         },
-        fallback: null,
         useCase: 'subagent',
         reason: 'test',
         estimatedTokens: null,
@@ -997,9 +996,7 @@ describe('DispatchSubagentTool (W04-014/W08)', () => {
         snapshot: {
           ...snapshot('unsafe-model', 'secondary'),
           modelEntryId: 'unsafe-profile',
-          entryName: 'unsafe-profile',
         },
-        fallback: null,
         useCase: 'subagent',
         reason: 'test',
         estimatedTokens: null,
@@ -1027,7 +1024,6 @@ describe('DispatchSubagentTool (W04-014/W08)', () => {
             }),
           },
         },
-        fallback: null,
         useCase: 'subagent',
         reason: 'token budget test',
         estimatedTokens: null,
@@ -1061,9 +1057,7 @@ function snapshot(model: string, role: 'main' | 'secondary'): ProviderSnapshot {
     contextWindowTokens: 100_000,
     config: {},
     supportsVision: false,
-    entryName: 'fake',
-    entryLabel: 'Fake',
-    modelRole: role,
+    modelEntryId: 'fake',
     routeReason: role === 'secondary' ? 'secondary_model' : 'fallback_main',
   }
 }

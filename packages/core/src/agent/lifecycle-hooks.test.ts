@@ -40,22 +40,18 @@ function router(provider: LLMProvider) {
     contextWindowTokens: 100_000,
     config: {},
     supportsVision: false,
-    entryName: 'fake',
-    entryLabel: 'Fake',
-    modelRole: 'main',
+    modelEntryId: 'fake',
     routeReason: 'fake',
   }
   return {
     route: (useCase: string): ModelRoute => ({
       snapshot,
-      fallback: null,
       useCase,
       reason: `${useCase}:fake`,
       estimatedTokens: null,
     }),
     routeForRole: (useCase: string): ModelRoute => ({
       snapshot,
-      fallback: null,
       useCase,
       reason: `${useCase}:fake`,
       estimatedTokens: null,

@@ -477,8 +477,7 @@ function fakeReviewerRouter(): ModelRouter {
     contextWindowTokens: 100_000,
     config: {},
     supportsVision: false,
-    entryName: 'reviewer-test',
-    entryLabel: 'Reviewer test',
+    modelEntryId: 'reviewer-test',
     routeReason: 'subagent',
   }
   return {

@@ -81,7 +81,7 @@ export class WatchlistService {
     const decision = parseWatchlistDecision(resp.content || '')
     decision.model = snapshot.model
     decision.provider = snapshot.providerName
-    decision.model_entry_id = snapshot.modelEntryId ?? snapshot.entryName
+    decision.model_entry_id = snapshot.modelEntryId
     return decision
   }
 }

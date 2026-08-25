@@ -34,20 +34,12 @@ export interface ProviderSnapshot {
   config: Record<string, unknown>
   supportsVision: boolean
   pricing?: ModelPricing
-  /** Compatibility-optional for synthetic test snapshots; real snapshots always set it. */
-  modelEntryId?: string
-  /** @deprecated CoreApi 迁移期间的只读别名。 */
-  entryName: string
-  entryLabel: string
-  /** @deprecated Historical synthetic fixtures only; real snapshots omit it. */
-  modelRole?: ModelRole
+  modelEntryId: string
   routeReason: string
 }
 
 export interface ModelRoute {
   snapshot: ProviderSnapshot
-  /** @deprecated Historical synthetic fixtures only; real routes omit it. */
-  fallback?: ProviderSnapshot | null
   executionPolicy?: {
     fallback: ProviderSnapshot | null
     triggerOn: ModelFallbackTrigger[]
@@ -120,9 +112,7 @@ export class ModelRouter {
 
   payload(): Record<string, unknown> {
     return {
-      activeModelId: this.availability.usable
-        ? (this.active.modelEntryId ?? this.active.entryName)
-        : null,
+      activeModelId: this.availability.usable ? this.active.modelEntryId : null,
       activeModel: this.availability.usable ? this.active.model : null,
       routeCounts: Object.fromEntries(this.routeCounts),
     }
@@ -196,8 +186,6 @@ export function buildProviderSnapshot(
     supportsVision: profile.vision,
     ...(entry.pricing ? { pricing: structuredClone(entry.pricing) } : {}),
     modelEntryId: entry.entryId,
-    entryName: entry.entryId,
-    entryLabel: entry.displayName || entry.modelId,
     routeReason: 'active_model',
   }
 }
@@ -249,8 +237,7 @@ function bootstrapProviderSnapshot(): ProviderSnapshot {
     contextWindowTokens: profile.contextWindowTokens,
     config: {},
     supportsVision: profile.vision,
-    entryName: 'unconfigured',
-    entryLabel: 'Unconfigured model',
+    modelEntryId: 'unconfigured',
     routeReason: 'bootstrap_unconfigured',
   }
 }

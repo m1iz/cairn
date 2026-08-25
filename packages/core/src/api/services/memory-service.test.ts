@@ -936,7 +936,6 @@ function fakeRouter(provider: FakeProvider): {
         provider,
         useCase === 'main_agent' ? 'main' : 'secondary',
       ),
-      fallback: null,
       useCase,
       reason: `${useCase}:fake`,
       estimatedTokens: null,
@@ -959,9 +958,7 @@ function snapshot(
     contextWindowTokens: 100000,
     config: {},
     supportsVision: false,
-    entryName: 'fake',
-    entryLabel: 'Fake',
-    modelRole: role,
+    modelEntryId: 'fake',
     routeReason: `${role}_model`,
   }
 }
