@@ -51,6 +51,56 @@ test.beforeEach(async ({ page }) => {
   await installVisualCoreBridge(page)
 })
 
+test('keeps the desktop chrome fixed while content uses internal scrolling', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/chat')
+
+  const chrome = page.locator('.desktop-chrome-bar')
+  const settingsButton = page.locator('.sidebar-settings-button')
+  const composer = page.locator('.composer')
+  await expect(chrome).toBeVisible()
+  await expect(page.locator('.messages-pane')).toBeVisible()
+  await expect(settingsButton).toBeVisible()
+  await expect(composer).toBeVisible()
+
+  const before = await chrome.boundingBox()
+  expect(before?.y).toBe(0)
+
+  const scrollContract = await page.evaluate(() => {
+    window.scrollTo(0, 120)
+    const messages = document.querySelector<HTMLElement>('.messages-pane')
+    const bodyStyle = window.getComputedStyle(document.body)
+    const appStyle = window.getComputedStyle(document.querySelector('#app')!)
+    const messageStyle = messages ? window.getComputedStyle(messages) : null
+
+    return {
+      windowScrollY: window.scrollY,
+      bodyOverflow: bodyStyle.overflow,
+      appOverflow: appStyle.overflow,
+      messageOverflowY: messageStyle?.overflowY,
+      documentFitsViewport:
+        document.documentElement.scrollHeight === window.innerHeight,
+    }
+  })
+
+  expect(scrollContract).toEqual({
+    windowScrollY: 0,
+    bodyOverflow: 'hidden',
+    appOverflow: 'hidden',
+    messageOverflowY: 'auto',
+    documentFitsViewport: true,
+  })
+  expect((await chrome.boundingBox())?.y).toBe(0)
+
+  for (const element of [settingsButton, composer]) {
+    const box = await element.boundingBox()
+    expect(box).not.toBeNull()
+    expect(box!.y + box!.height).toBeLessThanOrEqual(800)
+  }
+})
+
 const scenarios = [
   {
     name: 'chat-empty-desktop',
