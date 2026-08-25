@@ -67,4 +67,17 @@ describe('source architecture boundaries', () => {
 
     expect(violations).toEqual([])
   })
+
+  it('keeps fallback routing on the model policy contract', async () => {
+    const violations: string[] = []
+    const obsoleteRunnerFallback =
+      /\b(?:fallbackProvider|fallbackModel|fallbackProviderName)\b/
+    for (const file of await sourceFiles(SOURCE_ROOT)) {
+      const source = await readFile(file, 'utf8')
+      if (obsoleteRunnerFallback.test(source))
+        violations.push(path.relative(SOURCE_ROOT, file))
+    }
+
+    expect(violations).toEqual([])
+  })
 })
