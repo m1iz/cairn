@@ -12,7 +12,6 @@
   min-width: 0;
   min-height: 0;
   flex: 1;
-  transition: padding-right 160ms ease;
 }
 
 .chat-content-column > .chat-body {
@@ -1043,13 +1042,6 @@
     0 1px 0 rgb(255 255 255 / 0.025) inset;
   backdrop-filter: blur(18px);
   animation: workspace-enter 160ms ease-out;
-}
-
-@media (min-width: 1180px) {
-  .chat-workspace-layout:has(> .environment-floating-card)
-    > .chat-content-column {
-    padding-right: 348px;
-  }
 }
 
 .environment-floating-card .workspace-pane {
