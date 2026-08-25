@@ -47,7 +47,7 @@
 }
 
 .welcome-card p {
-  @apply mt-3 text-sm leading-6;
+  @apply mt-5 text-sm leading-6;
   color: rgb(var(--fg-muted));
 }
 

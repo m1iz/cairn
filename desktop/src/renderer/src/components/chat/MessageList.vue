@@ -17,7 +17,6 @@ import {
   shouldFollowBottom,
   shouldVirtualize,
 } from './messageListModel'
-import BrandMark from '../brand/BrandMark.vue'
 
 const props = defineProps<{
   messages: ChatMessage[]
@@ -117,7 +116,6 @@ function submitEdit(
   <section ref="scroller" class="messages-pane" @scroll.passive="onScroll">
     <div v-if="!props.messages.length" class="welcome-card animate-rise-in">
       <div class="welcome-brand-lockup" aria-label="Cairn">
-        <BrandMark :size="44" />
         <span class="welcome-wordmark">Cairn</span>
       </div>
       <div class="welcome-layout">
