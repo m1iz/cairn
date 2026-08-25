@@ -91,7 +91,7 @@ async function waitForCompleteAsar(
   )
 }
 
-describe('desktop release packaging (MIG-REL-001)', () => {
+describe('desktop release packaging', () => {
   it('does not bundle the legacy Python backend by default', () => {
     const config = fs.readFileSync(
       path.join(desktopRoot, 'electron-builder.yml'),

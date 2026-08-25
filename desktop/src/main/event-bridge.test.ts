@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CORE_EVENT_CHANNEL } from '../shared/ipc-contract'
 import { CoreEventBridge } from './event-bridge'
 
-describe('CoreEventBridge (MIG-IPC-003)', () => {
+describe('CoreEventBridge', () => {
   it('broadcasts core runtime events to attached renderer windows', () => {
     const bridge = new CoreEventBridge()
     const first = new FakeWebContents()

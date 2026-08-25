@@ -1,5 +1,5 @@
 /**
- * 历史 jsonl 热段 + 归档 (MIG-MEM-001)。对齐 Python `agent/memory_history.py`。
+ * 历史 jsonl 热段 + 归档。
  * 热段保持小；compact 时把不再活跃的行归档到 history_archive/<month>.jsonl.gz。
  * 磁盘兼容: history.jsonl 行 schema + history_index.json 不变。
  */

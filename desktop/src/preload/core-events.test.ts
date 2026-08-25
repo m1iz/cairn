@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CORE_EVENT_CHANNEL } from '../shared/ipc-contract'
 import { createCoreEventBridge } from './core-events'
 
-describe('preload core event bridge (MIG-IPC-003)', () => {
+describe('preload core event bridge', () => {
   it('subscribes to core events and returns an unsubscribe function', () => {
     const ipc = new FakeIpcRenderer()
     const bridge = createCoreEventBridge(ipc)

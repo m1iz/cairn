@@ -1,6 +1,6 @@
 /**
- * TokenTracker 契约 (MIG-MEM-004)。
- * 移植 Python tests/unit/test_token_usage.py 的 tracker 部分。
+ * TokenTracker 契约。
+ *
  */
 import { describe, expect, it } from 'vitest'
 import {

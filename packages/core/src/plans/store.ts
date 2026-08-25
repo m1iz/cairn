@@ -1,5 +1,5 @@
 /**
- * PlanStore (MIG-CTRL-012)。对齐 Python `agent/plans/store.py`。
+ * PlanStore。
  * 磁盘格式: <root>/memory/plans/index.json，按 plan id 的字典；indent=2；腐坏隔离为 index.json.corrupt-*。
  */
 import {

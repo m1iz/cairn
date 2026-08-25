@@ -101,8 +101,7 @@ export class ProjectStore {
 
   /** Detects private `.cairn/sessions` or `.cairn/memory` already sitting inside the
    * project's own source tree (from an older layout or another tool). Diagnostics-only:
-   * this never deletes or migrates that data automatically — see global-state-store plan
-   * Task 8. */
+   * this never deletes or migrates that data automatically. */
   detectLegacyPrivateData(projectPath: string): LegacyProjectPrivateData {
     const dotCairn = join(resolve(projectPath), '.cairn')
     return {

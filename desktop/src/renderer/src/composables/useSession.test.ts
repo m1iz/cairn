@@ -8,7 +8,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('useSession IPC session routes (MIG-IPC-010)', () => {
+describe('useSession IPC session routes', () => {
   it('loads sessions through Core IPC when the bridge is available', async () => {
     const calls: unknown[][] = []
     g.window = {

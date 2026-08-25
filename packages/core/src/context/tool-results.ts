@@ -1,6 +1,6 @@
 /**
- * context_pipeline: 工具结果截断/摘要 (MIG-CORE-003)。
- * 对齐 Python `agent/context_pipeline/tool_results.py`。
+ * context_pipeline: 工具结果截断/摘要。
+ *
  */
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'

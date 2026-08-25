@@ -1,5 +1,5 @@
 /**
- * 权限模型 (MIG-CTRL-014)。对齐 Python `agent/permissions/models.py`。
+ * 权限模型。
  * PermissionDecision 字段集合: allowed/requiresApproval/risk/reason/toolName/arguments/rule/trace —— 无 `behavior`。
  */
 import { createHash } from 'node:crypto'

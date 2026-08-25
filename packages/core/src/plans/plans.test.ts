@@ -1,5 +1,5 @@
 /**
- * Plans 子系统契约 (MIG-CTRL-012/013)。
+ * Plans 子系统契约。
  * 移植 Python:
  *  - tests/unit/test_plan_store.py (store round-trip + 腐坏隔离)
  *  - tests/unit/test_plan_execution_state.py (PlanExecutionState)

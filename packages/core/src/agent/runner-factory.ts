@@ -1,5 +1,5 @@
 /**
- * runner_factory (MIG-CORE-010)。对齐 Python `agent/runner_factory.py:build_routed_runner`。
+ * runner_factory。
  * 按单一激活模型构造 AgentRunner，供主 Agent、子代理和 Team 复用。
  */
 import type { LLMProvider } from '../providers/base'

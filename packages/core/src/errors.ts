@@ -1,5 +1,5 @@
 /**
- * 领域错误基类 (MIG-FND-008)。
+ * 领域错误基类。
  *
  * 对齐 Python 侧散落的 `class XxxError(ValueError/RuntimeError)`（SchedulerStoreCorrupt、
  * PlanQualityError、PlanEvidenceError 等）。所有错误可被 IPC 边界

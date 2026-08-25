@@ -1,5 +1,5 @@
 /**
- * PlanContextBuilder (MIG-CTRL-013)。对齐 Python `agent/plans/context.py`。
+ * PlanContextBuilder。
  * 为当前 plan runtime 生成紧凑的模型可见附件（durable runtime state）。
  */
 import {

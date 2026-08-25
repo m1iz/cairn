@@ -5,7 +5,7 @@ import { dirname } from 'node:path'
 import { syncFileBestEffort } from '../util/fs-durability'
 
 /**
- * 原子 JSON 存储 + 腐坏隔离 (MIG-FND-002)。
+ * 原子 JSON 存储 + 腐坏隔离。
  *
  * 对齐 Python 各 store 的写模式（`tasks/store`、`scheduler/store`、`runtime/store`、
  * `memory_versions._atomic_write_text`）：写 tmp → rename 原子替换；解析失败 → 备份为

@@ -13,7 +13,7 @@ function tmp(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
 }
 
-describe('CoreTeamService (MIG-IPC-007)', () => {
+describe('CoreTeamService', () => {
   it('wraps TeamManager payload with managed project scope and member detail', async () => {
     const manager = makeManager(tmp('cairn-team-service-'))
     const service = new CoreTeamService({

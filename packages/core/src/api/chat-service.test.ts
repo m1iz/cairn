@@ -30,7 +30,7 @@ function skillDocument(
   return `---\nname: ${name}\ndescription: ${description}\n---\n\n${body}\n`
 }
 
-describe('MainlineTurnService (MIG-IPC-005)', () => {
+describe('MainlineTurnService', () => {
   it('submits chat turns through AgentLoop and returns durable turn metadata', async () => {
     const root = tmp('cairn-mainline-')
     const api = await CoreApi.create({

@@ -8,7 +8,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('attachment API Core IPC (MIG-IPC-010)', () => {
+describe('attachment API Core IPC', () => {
   it('uploads attachments through Core IPC when the bridge is available', async () => {
     const calls: unknown[][] = []
     g.window = {

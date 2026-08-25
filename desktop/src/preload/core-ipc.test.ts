@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createCoreBridge, type CoreBridge } from './core-ipc'
 
-describe('preload core IPC bridge (MIG-IPC-002)', () => {
+describe('preload core IPC bridge', () => {
   it('invokes namespaced CoreApi channels by operation key', async () => {
     const calls: Array<{ channel: string; args: unknown[] }> = []
     const bridge = createCoreBridge({

@@ -1,5 +1,5 @@
 /**
- * Control 子系统集成契约 (MIG-CTRL-001..017 经 ControlManager)。
+ * Control 子系统集成契约。
  * 移植 Python:
  *  - tests/unit/test_control.py (ControlManager-level：不含 AgentRunner 的用例)
  *  - tests/unit/test_plan_decision_policy.py (PlanDecisionPolicy)

@@ -49,7 +49,7 @@ class FakeTool extends Tool {
   }
 }
 
-describe('CoreSkillService (MIG-IPC-007)', () => {
+describe('CoreSkillService', () => {
   it('maps installer internals to stable safe API errors', async () => {
     const service = new CoreSkillService(tmp('cairn-skill-safe-error-'))
 

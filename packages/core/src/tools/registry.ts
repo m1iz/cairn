@@ -1,5 +1,5 @@
 /**
- * ToolRegistry (MIG-TOOL-003)。
+ * ToolRegistry。
  * 对齐 Python `agent/tools/registry.py`：注册、生成 definitions、参数校验/转型、执行。
  */
 import {
@@ -86,7 +86,7 @@ export class ToolRegistry {
     return (await this.executeResult(name, args)).modelContent
   }
 
-  /** 执行工具 + map_result，返回富 ToolResult。对齐 Python `execute_result`。 */
+  /** 执行工具 + map_result，返回富 ToolResult。 */
   async executeResult(
     name: string,
     args: Record<string, unknown>,

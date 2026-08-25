@@ -1,5 +1,5 @@
 /**
- * 控制工具 ask_user / propose_plan (MIG-CTRL-004)。对齐 Python `agent/control/tools.py`。
+ * 控制工具 ask_user / propose_plan。
  * 生成 waiting tool result（__CONTROL_PAUSE__ 前缀）；propose_plan 经质量门。
  */
 import { Tool, type ToolExecutionContext } from '../tools/base'

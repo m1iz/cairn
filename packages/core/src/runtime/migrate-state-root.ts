@@ -13,19 +13,63 @@ import { homedir } from 'node:os'
 import type { RuntimePaths } from './paths'
 
 const PRE_CAIRN_STATE_DIR = String.fromCharCode(
-  46, 101, 109, 112, 101, 114, 111, 114, 45, 97, 103, 101, 110, 116,
+  46,
+  101,
+  109,
+  112,
+  101,
+  114,
+  111,
+  114,
+  45,
+  97,
+  103,
+  101,
+  110,
+  116,
 )
 const PRE_CAIRN_LOCAL_CONFIG = String.fromCharCode(
-  101, 109, 112, 101, 114, 111, 114, 46, 108, 111, 99, 97, 108, 46, 106, 115,
-  111, 110,
+  101,
+  109,
+  112,
+  101,
+  114,
+  111,
+  114,
+  46,
+  108,
+  111,
+  99,
+  97,
+  108,
+  46,
+  106,
+  115,
+  111,
+  110,
 )
 const PRE_CAIRN_SCHEMA_PREFIX = `${String.fromCharCode(
-  101, 109, 112, 101, 114, 111, 114,
+  101,
+  109,
+  112,
+  101,
+  114,
+  111,
+  114,
 )}.`
 const PRE_CAIRN_BRAND = PRE_CAIRN_SCHEMA_PREFIX.slice(0, -1)
 const PRE_CAIRN_PRODUCT_DIR = PRE_CAIRN_STATE_DIR.slice(1)
 const RETIRED_DESKTOP_KEY = String.fromCharCode(
-  100, 101, 115, 107, 116, 111, 112, 112, 101, 116,
+  100,
+  101,
+  115,
+  107,
+  116,
+  111,
+  112,
+  112,
+  101,
+  116,
 )
 const RETIRED_DESKTOP_DIR = `desktop_${String.fromCharCode(112, 101, 116)}`
 
@@ -268,8 +312,8 @@ function migratePreCairnGlobalState(
     opts.previousProductStateRoot === null
       ? null
       : (opts.previousProductStateRoot ??
-        (paths.stateRootSource === 'default'
-          || paths.stateRoot === join(homedir(), '.cairn')
+        (paths.stateRootSource === 'default' ||
+        paths.stateRoot === join(homedir(), '.cairn')
           ? join(homedir(), PRE_CAIRN_STATE_DIR)
           : null))
   if (!sourceRoot || sourceRoot === paths.stateRoot) return
@@ -291,7 +335,13 @@ function migratePreCairnGlobalState(
       `memory/${RETIRED_DESKTOP_DIR}`,
     ],
   })
-  migratePreCairnLocalConfig(sourceRoot, paths.stateRoot, logPath, logged, result)
+  migratePreCairnLocalConfig(
+    sourceRoot,
+    paths.stateRoot,
+    logPath,
+    logged,
+    result,
+  )
 }
 
 function migratePreCairnLocalConfig(
@@ -318,7 +368,8 @@ function migratePreCairnLocalConfig(
       rel_path: PRE_CAIRN_LOCAL_CONFIG,
       source,
       dest: null,
-      reason: status === 'unsafe' ? 'config is not a regular file' : 'invalid json',
+      reason:
+        status === 'unsafe' ? 'config is not a regular file' : 'invalid json',
     })
     result.skipped += 1
     return
@@ -517,7 +568,7 @@ function copyTree(opts: {
 }
 
 /** One-time path-rename migration: `USER.local.md` moved from `<stateRoot>/templates/` to
- * `<stateRoot>/memory/profile/` (see Task 3). Not a straight tree copy since the relative
+ * `<stateRoot>/memory/profile/`. Not a straight tree copy since the relative
  * path itself changed, so `copyTree`'s `excludeTopLevelDirs: ['templates']` skips it and
  * this handles it as a single targeted file move instead. */
 function migrateLegacyUserProfilePath(

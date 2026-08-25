@@ -3,7 +3,7 @@ import { EnvironmentError, PromptQueueFullError } from '@cairn/core'
 import { channelForCoreOperation } from '../shared/ipc-contract'
 import { registerCoreIpc, type CoreApiLike } from './ipc'
 
-describe('core IPC bridge (MIG-IPC-002)', () => {
+describe('core IPC bridge', () => {
   it('derives stable namespaced channels from CoreApi operation keys', () => {
     expect(channelForCoreOperation('bootstrap')).toBe('cairn:core:bootstrap')
     expect(channelForCoreOperation('sessions.create')).toBe(

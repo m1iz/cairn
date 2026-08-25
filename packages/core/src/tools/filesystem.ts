@@ -1,5 +1,5 @@
 /**
- * 文件系统工具 (MIG-TOOL-006/007)。
+ * 文件系统工具。
  * 对齐 Python `agent/tools/filesystem.py`：ReadFileTool/WriteFileTool/EditFileTool。
  * 工作区路径禁闭：expanduser + resolve 规范化后 relative_to 检查。
  */

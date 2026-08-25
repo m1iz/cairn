@@ -1,6 +1,6 @@
 /**
- * OpenAI-compat provider (MIG-PROV-003)。
- * 对齐 Python `agent/providers/openai_compat.py`。
+ * OpenAI-compat provider。
+ *
  */
 import OpenAI from 'openai'
 import { reasoningPayload, type ReasoningEffort } from '../model/profile'

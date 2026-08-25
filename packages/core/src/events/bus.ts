@@ -1,5 +1,5 @@
 /**
- * 类型化事件总线 (MIG-FND-005)。
+ * 类型化事件总线。
  *
  * 承载 runtime 事件流（替代 Python 的 emit 回调链）。W15 由 Electron 主进程把事件桥到
  * 渲染层 IPC；进程内订阅，无需 WS/last_seq。

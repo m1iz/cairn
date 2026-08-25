@@ -1,5 +1,5 @@
 /**
- * 控制态模型 (MIG-CTRL-001)。对齐 Python `agent/control/models.py`。
+ * 控制态模型。
  * Interaction/Question/QuestionOption/ControlState + from_dict/to_dict 校验逐字保真。
  * ControlStore.load() 会把旧的 accept_edits/auto 以及 Plan previous_mode
  * 原子迁移为当前的 smart_auto/full_access。

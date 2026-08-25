@@ -1,5 +1,5 @@
 /**
- * PlanVerificationManager (MIG-CTRL-008)。对齐 Python `agent/control/plan_verification.py`。
+ * PlanVerificationManager。
  * 命令型 step 验证 + 独立 reviewer 流程。
  */
 import { nowTs } from '../util/time'

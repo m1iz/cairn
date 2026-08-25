@@ -1,5 +1,5 @@
 /**
- * Tool 基类 + 能力标志 + ToolResult (MIG-TOOL-001/002)。
+ * Tool 基类 + 能力标志 + ToolResult。
  * 对齐 Python `agent/tools/base.py` + `results.py` + `protocol.py`。
  */
 import type { ToolParamsSchema } from './schema'
@@ -69,7 +69,7 @@ export function isToolErrorText(value: unknown): boolean {
 }
 
 /**
- * 富工具结果对象 (MIG-TOOL-002，runner/engine 用)。对齐 Python `agent/tools/results.py:ToolResult`。
+ * 富工具结果对象。
  * 暴露 modelContent/summary/displaySummary/metadata/artifacts/isError 与 fromText/artifactPayloads。
  */
 export class ToolResultObj {
@@ -110,7 +110,7 @@ export class ToolResultObj {
     return new ToolResultObj(data)
   }
 
-  /** 对齐 Python `artifact_payloads()`。 */
+  /**  */
   artifactPayloads(): Array<Record<string, unknown>> {
     return this.artifacts.map((a) => ({
       path: a.path,

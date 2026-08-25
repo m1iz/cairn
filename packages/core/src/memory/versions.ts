@@ -1,5 +1,5 @@
 /**
- * 记忆版本快照/diff/restore (MIG-MEM-002)。对齐 Python `agent/memory_versions.py`。
+ * 记忆版本快照/diff/restore。
  * 磁盘兼容: memory/versions/{index.json, snapshots/<id>.json}；字段 relPath/createdAt/contentHash（camel）。
  */
 import { createHash } from 'node:crypto'

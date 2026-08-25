@@ -1,5 +1,5 @@
 /**
- * 权限管线/策略契约 (MIG-CTRL-014/015/016/017)。
+ * 权限管线/策略契约。
  * 覆盖权限 policy 与 permission pipeline 的统一 TypeScript 实现。
  * 注: PE-13 (高风险即使有 plan token 仍审批) 在 control.test.ts 经 ControlManager.assessPermission 验证。
  */

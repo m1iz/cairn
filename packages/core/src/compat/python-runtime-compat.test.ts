@@ -14,7 +14,7 @@ import { TeamStore } from '../team/store'
 const here = dirname(fileURLToPath(import.meta.url))
 const fixtureDir = join(here, '..', '..', 'fixtures', 'python-runtime')
 
-describe('Python runtime data compatibility (MIG-REL-003)', () => {
+describe('Python runtime data compatibility', () => {
   it('loads Python-layout memory, model_config, mcp_config, sessions, and team data without migration prompts', async () => {
     const root = mkdtempSync(join(tmpdir(), 'cairn-python-runtime-'))
     cpSync(fixtureDir, root, { recursive: true })

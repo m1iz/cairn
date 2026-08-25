@@ -1,5 +1,5 @@
 /**
- * AgentRunner 回合状态机契约 (MIG-CORE-008/009)。
+ * AgentRunner 回合状态机契约。
  * 移植 Python:
  *  - tests/unit/test_runner_state.py (turn-phase 序列、tool batch、结构化结果、error 结果、context_projection 发射)
  *  - tests/unit/test_control.py::test_runner_* (pause-on-ask、plan-mode wrap、ask-guard、plan-guard、answer-resume)
@@ -1812,9 +1812,7 @@ describe('AgentRunner turn phases (test_runner_state.py)', () => {
   })
 
   it('keeps the prompt stable-prefix hash across turns and emits cache-break plus provider cache diagnostics', async () => {
-    const snapshotDir = mkdtempSync(
-      join(tmpdir(), 'cairn-prompt-projection-'),
-    )
+    const snapshotDir = mkdtempSync(join(tmpdir(), 'cairn-prompt-projection-'))
     const provider = new FakeProvider([
       makeResponse({ content: 'one', usage: { input: 10, output: 2 } }),
       makeResponse({

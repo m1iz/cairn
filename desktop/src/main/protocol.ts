@@ -75,9 +75,8 @@ export function resolveStaticAssetPath(
 
 export interface RawMediaRoots {
   stateRoot: string
-  /** Read-only legacy fallback: pre-global-store installs kept attachments/media under
-   * `runtimeRoot/memory/...`. Never written to, never migrated here — Task 7's migration
-   * handles the one-time copy; this is just so existing links keep resolving until then. */
+  /** Read-only historical fallback for attachments/media created before the global
+   * state store. This path is never written here and only keeps existing links valid. */
   legacyRuntimeRoot?: string | null
 }
 

@@ -1,5 +1,5 @@
 /**
- * ModelCaller (MIG-CORE-001)。对齐 Python `agent/runner_model.py`。
+ * ModelCaller。
  * 统一调用全局激活模型并记录重试元数据；不执行跨模型 fallback。
  */
 import {

@@ -1,5 +1,5 @@
 /**
- * RunCommand scaffold (MIG-TOOL-011) + skills (MIG-TOOL-012)。
+ * RunCommand scaffold + skills。
  */
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

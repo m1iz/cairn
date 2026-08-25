@@ -1,5 +1,5 @@
 /**
- * ControlStore (MIG-CTRL-001)。对齐 Python `agent/control/store.py`。
+ * ControlStore。
  * 磁盘格式: <stateRoot>/control/state.json，indent=2；解析失败回退默认。
  */
 import {

@@ -1,5 +1,5 @@
 /**
- * AgentRunner 回合状态机 (MIG-CORE-008/009)。对齐 Python `agent/runner.py`。
+ * AgentRunner 回合状态机。
  * 单轮执行、工具循环、并发执行、plan guard / ask guard、暂停/checkpoint、query_state 恢复。
  * 不变量: INV-001 (tool_use↔tool_result 配对)、INV-002 (高影响命令审批)。
  * 未迁移波次的协作者（memory/W06、tokenTracker/W06、compactor/W06、runtime task/W14）以 null 守卫。

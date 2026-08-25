@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { BootstrapPayload } from '../../types'
 import { shouldShowModelSetupPrompt } from './modelSetupDialogModel'
 
-describe('onboarding model availability (MIG-APP-001)', () => {
+describe('onboarding model availability', () => {
   it('keeps the migration parity test on the single first-run prompt', () => {
     expect(shouldShowModelSetupPrompt(boot(false))).toBe(true)
     expect(shouldShowModelSetupPrompt(boot(true))).toBe(false)

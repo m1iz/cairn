@@ -4,7 +4,7 @@ import {
   CoreMutationGuardError,
 } from './mutation-guard'
 
-describe('mutation guard (MIG-IPC-008)', () => {
+describe('mutation guard', () => {
   it('allows direct user actions in ask_before_edit mode', () => {
     expect(() =>
       assertCoreMutationAllowed(

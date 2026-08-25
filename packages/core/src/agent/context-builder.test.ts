@@ -1,5 +1,5 @@
 /**
- * ContextBuilder 系统提示词契约 (MIG-CORE-006)。
+ * ContextBuilder 系统提示词契约。
  * 移植 Python tests/unit/test_agent_prompt_contracts.py 中模板驱动的断言:
  *  - bootstrap/identity 短语命中、Prompt-Version、memory budget 裁剪、固定段 <7000。
  * 注: SubagentRegistry(W08) / DispatchSubagentTool(TOOL-014) 相关断言留待对应波次。

@@ -14,7 +14,7 @@ function tmp(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
 }
 
-describe('CoreConfigService (MIG-IPC-007)', () => {
+describe('CoreConfigService', () => {
   it('reads and writes USER.local.md without touching cairn.local.json', () => {
     const root = tmp('cairn-config-service-')
     mkdirSync(join(root, 'templates', 'init'), { recursive: true })

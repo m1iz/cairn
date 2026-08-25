@@ -1,7 +1,7 @@
 import { open, stat, unlink } from 'node:fs/promises'
 
 /**
- * 文件锁 (MIG-FND-003)。
+ * 文件锁。
  *
  * 跨写者串行化（scheduler action log / external store 合并）。零依赖实现：用 O_EXCL
  * 独占创建 `*.lock` 文件作为互斥；支持 stale 锁回收与超时。后续如需更强可换 proper-lockfile。

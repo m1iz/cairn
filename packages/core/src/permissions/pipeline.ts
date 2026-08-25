@@ -1,5 +1,5 @@
 /**
- * PermissionPipeline (MIG-CTRL-016/017)。对齐 Python `agent/permissions/pipeline.py`。
+ * PermissionPipeline。
  * 参数感知的三模式权限评估。规则名逐字保真。
  * PE-13: 高风险命令即便在已批准计划中仍需审批 —— 由 PermissionManager 在 token 前评估高风险体现。
  */

@@ -1,5 +1,5 @@
 /**
- * PermissionManager (MIG-CTRL-017)。对齐 Python `agent/permissions/manager.py`。
+ * PermissionManager。
  * approve/deny-once 指纹 + plan token；高风险 run_command 在 token 前先评估 (PE-13)。
  */
 import { createHash, randomUUID } from 'node:crypto'

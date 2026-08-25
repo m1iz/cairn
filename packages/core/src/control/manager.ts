@@ -1,5 +1,5 @@
 /**
- * ControlManager (MIG-CTRL-002/011)。对齐 Python `agent/control/manager.py`。
+ * ControlManager。
  * 薄门面，委托 8 个子管理器；Ask/Plan 交互流 + 模式管理 + resume 消息逐字保真。
  */
 import { AsyncLocalStorage } from 'node:async_hooks'

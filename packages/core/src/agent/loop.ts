@@ -1,5 +1,5 @@
 /**
- * AgentLoop 装配根 (MIG-CORE-011)。
+ * AgentLoop 装配根。
  * 把 core 子系统组合成可执行的本地 Agent: session history、memory、tools、
  * subagents、scheduler、Team、control 和 routed AgentRunner。
  */

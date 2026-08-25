@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { ValidationError } from '../errors'
 
 /**
- * id 工具 (MIG-FND-004)。
+ * id 工具。
  *
  * 对齐 Python `new_id(prefix)` / `f"plan_{uuid4().hex[:12]}"` / `f"disc_{hex[:10]}"` 等：
  * 前缀 + 截断的 uuid hex。前缀与长度保持，便于磁盘可读（非格式契约）。

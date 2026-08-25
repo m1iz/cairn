@@ -1,5 +1,5 @@
 /**
- * TokenTracker — 每调用 JSONL 账本 + 聚合 (MIG-MEM-004)。对齐 Python `agent/telemetry.py`。
+ * TokenTracker — 每调用 JSONL 账本 + 聚合。
  * should_compact 阈值 0.7；新记录使用 model_entry_id，旧 role/fallback 字段只读兼容。
  * 实现 runner 的 TokenTrackerLike。
  */

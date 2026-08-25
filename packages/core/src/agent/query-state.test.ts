@@ -1,5 +1,5 @@
 /**
- * query_state 契约 (MIG-CORE-007)。移植 Python tests/unit/test_query_state.py。
+ * query_state 契约。
  */
 import { describe, expect, it } from 'vitest'
 import {

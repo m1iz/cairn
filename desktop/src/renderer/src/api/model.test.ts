@@ -17,7 +17,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('model API Core IPC (MIG-IPC-010)', () => {
+describe('model API Core IPC', () => {
   it('runs model tests through Core IPC when the bridge is available', async () => {
     const calls: unknown[][] = []
     g.window = {

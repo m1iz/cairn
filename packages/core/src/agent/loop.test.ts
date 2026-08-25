@@ -218,7 +218,7 @@ async function createInterruptedSkip(
   }
 }
 
-describe('AgentLoop (MIG-CORE-011)', () => {
+describe('AgentLoop', () => {
   it('keeps code intelligence absent by default and exposes it only for a gated Build scope', async () => {
     const defaultRoot = tmp('cairn-loop-code-default-')
     const defaultLoop = await AgentLoop.create({

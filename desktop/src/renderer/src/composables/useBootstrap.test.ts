@@ -8,7 +8,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('useBootstrap IPC bootstrap (MIG-IPC-004)', () => {
+describe('useBootstrap IPC bootstrap', () => {
   it('loads bootstrap through Core IPC when the preload bridge is available', async () => {
     const calls: unknown[][] = []
     g.window = {

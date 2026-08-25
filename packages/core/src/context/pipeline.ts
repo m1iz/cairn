@@ -1,5 +1,5 @@
 /**
- * context_pipeline: 微压缩 + 流水线编排 (MIG-CORE-004/005)。
+ * context_pipeline: 微压缩 + 流水线编排。
  * 对齐 Python `agent/context_pipeline/microcompact.py` + `pipeline.py`。
  */
 import { createHash } from 'node:crypto'

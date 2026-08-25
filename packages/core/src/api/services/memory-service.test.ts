@@ -35,7 +35,7 @@ function appendCompletedTurns(loop: AgentLoop, turns: number): void {
   }
 }
 
-describe('CoreMemoryService (MIG-IPC-007)', () => {
+describe('CoreMemoryService', () => {
   it('returns the Python-compatible memory payload with context, token, runtime, watchlist, and version summaries', async () => {
     const { root, loop, service } = await makeService()
     loop.sharedMemory.writeMemory('# Long\n\nKeep this fact.')

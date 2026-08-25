@@ -1,6 +1,6 @@
 /**
- * 命令安全判定纯函数 (MIG-TOOL-005)。
- * 对齐 Python `agent/permissions/resolvers.py`。Shell/权限管线共用。
+ * 命令安全判定纯函数。
+ * Shell/权限管线共用。
  */
 import {
   analyzeShellCommand,

@@ -8,7 +8,7 @@ function tmp(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
 }
 
-describe('CoreDiagnosticsService (MIG-IPC-007 / MIG-APP-002)', () => {
+describe('CoreDiagnosticsService', () => {
   it('summarizes diagnostics without mutating missing or corrupt config files', async () => {
     const root = tmp('cairn-diagnostics-service-')
     writeFileSync(join(root, 'cairn.local.json'), '{bad json', 'utf8')

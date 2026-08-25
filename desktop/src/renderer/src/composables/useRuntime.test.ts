@@ -11,7 +11,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('useRuntime IPC runtime path (MIG-IPC-010)', () => {
+describe('useRuntime IPC runtime path', () => {
   it('applies live profile onboarding state changes to bootstrap', () => {
     let listener: ((event: unknown) => void) | null = null
     g.window = fakeWindow({

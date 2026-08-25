@@ -4,7 +4,7 @@ import { channelForCoreOperation } from '../shared/ipc-contract'
 import { coreOperationKeys, registerCoreHostIpc } from './core-host'
 import type { CoreApiLike } from './ipc'
 
-describe('desktop CoreApi host (MIG-IPC-002)', () => {
+describe('desktop CoreApi host', () => {
   it('registers every CoreApi operation on the Electron IPC boundary', () => {
     const ipc = new FakeIpcMain()
     registerCoreHostIpc(ipc, {

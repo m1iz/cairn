@@ -1,5 +1,5 @@
 /**
- * 记忆子系统契约 (MIG-MEM-001/002)。
+ * 记忆子系统契约。
  * 移植 Python:
  *  - tests/unit/test_history_log.py (HistoryLog 迁移/compact/归档 + MemoryStore.loadUnarchived/checkpoint)
  *  - tests/unit/test_memory_versions.py (MemoryVersionStore snapshot/restore/dedupe + MemoryStore writes 建版本)

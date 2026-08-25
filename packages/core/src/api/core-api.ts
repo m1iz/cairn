@@ -1,5 +1,5 @@
 /**
- * CoreApi (MIG-IPC-001)。
+ * CoreApi。
  * 进程内核心 API 门面，替代 aiohttp routes；Electron main 进程持有此单例，
  * renderer 后续通过 IPC 调用这些方法。
  */

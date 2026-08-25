@@ -1,5 +1,5 @@
 /**
- * PermissionPolicy (MIG-CTRL-016)。对齐 Python `agent/permissions/policy.py`。
+ * PermissionPolicy。
  * PermissionPipeline 的向后兼容门面。
  */
 import type { ToolRegistry } from '../tools/registry'

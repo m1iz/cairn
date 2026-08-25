@@ -195,7 +195,7 @@ const EXPECTED_OPERATIONS = [
   'workspace.snapshot',
 ]
 
-describe('CoreApi (MIG-IPC-001)', () => {
+describe('CoreApi', () => {
   it('stops an already-ready lifecycle when CoreApi initialization fails', async () => {
     const root = tmp('cairn-core-api-lifecycle-init-failure-')
     const loop = await AgentLoop.create({

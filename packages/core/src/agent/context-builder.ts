@@ -1,5 +1,5 @@
 /**
- * 系统提示词构建 ContextBuilder (MIG-CORE-006)。对齐 Python `agent/context.py`。
+ * 系统提示词构建 ContextBuilder。
  * bootstrap(SOUL/TOOL/USER) + identity + memory + skills 拼装；段以 \n\n---\n\n 连接。
  * jinja → 手写插值（仅 workspace / subagents_summary / skills_summary 三个变量）。
  * skills/subagent/memory 以注入接口给入（完整实现来自各自波次）。
