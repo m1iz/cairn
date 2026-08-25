@@ -4200,6 +4200,7 @@ select:focus-visible {
   border-radius: var(--radius-md);
   background: rgb(var(--desktop-chrome-popover-bg));
   box-shadow: 0 14px 34px rgb(var(--shadow-color) / 0.32);
+  -webkit-app-region: no-drag;
 }
 
 .desktop-chrome-menu-popover button {
@@ -4211,6 +4212,7 @@ select:focus-visible {
   background: transparent;
   font-size: var(--font-size-md);
   text-align: left;
+  -webkit-app-region: no-drag;
 }
 
 .desktop-chrome-menu-popover button:hover {

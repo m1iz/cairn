@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { ArrowLeft, ArrowRight, PanelLeft } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { windowAction } from '../../api/backend'
@@ -23,6 +23,7 @@ const router = useRouter()
 const isWindows =
   typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent)
 const openMenu = ref<MenuId | null>(null)
+const chromeBar = ref<HTMLElement | null>(null)
 
 const menus: Array<{
   id: MenuId
@@ -69,6 +70,25 @@ function toggleMenu(id: MenuId) {
   openMenu.value = openMenu.value === id ? null : id
 }
 
+function closeMenuFromOutside(event: PointerEvent) {
+  if (!openMenu.value || chromeBar.value?.contains(event.target as Node)) return
+  openMenu.value = null
+}
+
+function closeMenuFromKeyboard(event: KeyboardEvent) {
+  if (event.key === 'Escape') openMenu.value = null
+}
+
+onMounted(() => {
+  document.addEventListener('pointerdown', closeMenuFromOutside)
+  document.addEventListener('keydown', closeMenuFromKeyboard)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', closeMenuFromOutside)
+  document.removeEventListener('keydown', closeMenuFromKeyboard)
+})
+
 function dispatch(name: string) {
   window.dispatchEvent(new Event(name))
 }
@@ -99,7 +119,7 @@ async function runAction(action: MenuAction) {
 </script>
 
 <template>
-  <header v-if="isWindows" class="desktop-chrome-bar" @mouseleave="openMenu = null">
+  <header v-if="isWindows" ref="chromeBar" class="desktop-chrome-bar">
     <div class="desktop-chrome-leading">
       <button
         class="desktop-chrome-icon-button"
