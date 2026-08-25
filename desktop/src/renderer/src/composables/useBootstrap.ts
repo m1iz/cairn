@@ -10,19 +10,28 @@ export function useBootstrap(showToast: (message: string) => void) {
   const skillContent = ref('')
   const configContent = ref('')
   const mcpContent = ref('')
+  let bootstrapRequestVersion = 0
 
-  async function loadBootstrap(showLoading = true, sessionId = '') {
+  async function loadBootstrap(
+    showLoading = true,
+    sessionId = '',
+  ): Promise<boolean> {
+    const requestVersion = ++bootstrapRequestVersion
     try {
       if (showLoading) loading.value = true
       error.value = ''
       const payload = await core('bootstrap', {
         sessionId: sessionId || null,
       })
+      if (requestVersion !== bootstrapRequestVersion) return false
       boot.value = payload
+      return true
     } catch (err) {
-      error.value = err instanceof Error ? err.message : String(err)
+      if (requestVersion === bootstrapRequestVersion)
+        error.value = err instanceof Error ? err.message : String(err)
+      return false
     } finally {
-      loading.value = false
+      if (requestVersion === bootstrapRequestVersion) loading.value = false
     }
   }
 

@@ -429,6 +429,7 @@ async function cancelQueuedPrompt(item: QueuedPromptItem): Promise<void> {
         <div class="chat-body">
           <MessageList
             :messages="ctx.messages.value"
+            :loading="ctx.sessionTransitioning.value"
             :plans="ctx.planProjection.plans"
             :turn-changes="turnChanges"
             :editable-turn-id="editableInterruptedTurnId"

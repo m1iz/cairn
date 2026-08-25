@@ -31,6 +31,12 @@ describe('App Goal capture integration', () => {
     expect(app).toContain('watch(sessionId')
   })
 
+  it('guards asynchronous session activation against stale completions', () => {
+    expect(app).toContain('sessionTransitioning')
+    expect(app).toContain('sessionActivationVersion')
+    expect(context).toContain('sessionTransitioning: Ref<boolean>')
+  })
+
   it('reconciles terminal Goals from bootstrap and runtime projections', () => {
     expect(app).toContain('currentGoal.value?.id || null')
     expect(app).toContain('current.sessionId !== previous.sessionId')

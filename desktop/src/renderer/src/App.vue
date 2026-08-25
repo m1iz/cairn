@@ -42,6 +42,8 @@ const showDesktopChrome =
   typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent)
 const modelSetupPromptOpen = ref(false)
 const modelSetupDismissed = ref(false)
+const sessionTransitioning = ref(false)
+let sessionActivationVersion = 0
 const commandDescriptors = ref<CommandDescriptor[]>([])
 const commandDialog = reactive<{
   open: boolean
@@ -252,11 +254,23 @@ async function replaceGoal(
 }
 
 async function onSessionActivate(id: string) {
-  await sessionStore.activate(id)
-  switchSession(id)
-  if (sessionStore.isDraftSessionId(id)) return
-  await bootstrap.loadBootstrap(false, sessionStore.backendSessionId())
-  restoreFromHistory(boot.value?.unarchivedHistory || [])
+  const activationVersion = ++sessionActivationVersion
+  sessionTransitioning.value = true
+  try {
+    await sessionStore.activate(id)
+    if (activationVersion !== sessionActivationVersion) return
+    switchSession(id)
+    if (sessionStore.isDraftSessionId(id)) return
+    const loaded = await bootstrap.loadBootstrap(
+      false,
+      sessionStore.backendSessionId(),
+    )
+    if (!loaded || activationVersion !== sessionActivationVersion) return
+    restoreFromHistory(boot.value?.unarchivedHistory || [])
+  } finally {
+    if (activationVersion === sessionActivationVersion)
+      sessionTransitioning.value = false
+  }
 }
 
 async function openProfileInterviewSession(sessionId: string | null) {
@@ -705,6 +719,7 @@ provideAppContext({
   activeTurnChange,
   goalCaptureState: goalCapture.state,
   sessionId,
+  sessionTransitioning,
   sessionRuntimeStates,
   runtimeText,
   eventTransportText,

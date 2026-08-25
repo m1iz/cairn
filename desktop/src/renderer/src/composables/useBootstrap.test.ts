@@ -69,4 +69,27 @@ describe('useBootstrap IPC bootstrap', () => {
     expect('saveModelConfig' in boot).toBe(false)
     expect(calls).toEqual([['bootstrap', { sessionId: null }]])
   })
+
+  it('keeps a slower previous session bootstrap from replacing the latest one', async () => {
+    const resolvers = new Map<string, (payload: unknown) => void>()
+    g.window = {
+      cairn: {
+        invokeCore: async (...args: unknown[]) =>
+          await new Promise((resolve) => {
+            const request = args[1] as { sessionId: string }
+            resolvers.set(request.sessionId, resolve)
+          }),
+      },
+    }
+    const bootstrap = useBootstrap(() => {})
+    const first = bootstrap.loadBootstrap(false, 'session-1')
+    const second = bootstrap.loadBootstrap(false, 'session-2')
+
+    resolvers.get('session-2')?.({ app: 'latest', modelConfig: { models: [] } })
+    await expect(second).resolves.toBe(true)
+    resolvers.get('session-1')?.({ app: 'stale', modelConfig: { models: [] } })
+    await expect(first).resolves.toBe(false)
+
+    expect(bootstrap.boot.value?.app).toBe('latest')
+  })
 })

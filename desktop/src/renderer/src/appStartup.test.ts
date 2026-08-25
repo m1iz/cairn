@@ -4,7 +4,7 @@ import { runInitialStartup } from './appStartup'
 
 describe('runInitialStartup', () => {
   it('routes session-load failures into bootstrap error handling instead of leaving the app loading', async () => {
-    const loadBootstrap = vi.fn(async () => undefined)
+    const loadBootstrap = vi.fn(async () => false)
     const switchSession = vi.fn()
     const restoreFromHistory = vi.fn()
     const connectSocket = vi.fn()

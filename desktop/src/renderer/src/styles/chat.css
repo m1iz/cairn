@@ -3,8 +3,17 @@
 }
 
 .messages-pane {
-  @apply min-h-0 flex-1 overflow-x-hidden overflow-y-auto py-6;
+  @apply relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto py-6;
   padding-inline: clamp(1rem, 4vw, 4rem);
+}
+
+.session-transition-state {
+  @apply absolute inset-0 flex items-center justify-center gap-2 text-sm;
+  color: rgb(var(--fg-muted));
+}
+
+.session-transition-spinner {
+  @apply size-3.5 animate-spin rounded-full border-2 border-border-strong border-t-transparent;
 }
 
 .message-stack {

@@ -24,6 +24,7 @@ const props = defineProps<{
   turnChanges?: TurnChangeSnapshot[]
   editableTurnId?: string | null
   editingTurnId?: string | null
+  loading?: boolean
 }>()
 const emit = defineEmits<{
   continueExecution: []
@@ -114,84 +115,90 @@ function submitEdit(
 
 <template>
   <section ref="scroller" class="messages-pane" @scroll.passive="onScroll">
-    <div v-if="!props.messages.length" class="welcome-card animate-rise-in">
-      <div class="welcome-brand-lockup" aria-label="Cairn">
-        <span class="welcome-wordmark">Cairn</span>
-      </div>
-      <div class="welcome-layout">
-        <div>
-          <h1>把任务交给本地 Agent。</h1>
-          <p>
-            从代码修改、资料整理到长期提醒，都在独立会话里推进；需要时会调用工具、队友和记忆，留下清晰的执行轨迹。
-          </p>
+    <div v-if="props.loading" class="session-transition-state" role="status">
+      <span class="session-transition-spinner" aria-hidden="true" />
+      <span>正在切换对话…</span>
+    </div>
+    <template v-else>
+      <div v-if="!props.messages.length" class="welcome-card animate-rise-in">
+        <div class="welcome-brand-lockup" aria-label="Cairn">
+          <span class="welcome-wordmark">Cairn</span>
+        </div>
+        <div class="welcome-layout">
+          <div>
+            <h1>把任务交给本地 Agent。</h1>
+            <p>
+              从代码修改、资料整理到长期提醒，都在独立会话里推进；需要时会调用工具、队友和记忆，留下清晰的执行轨迹。
+            </p>
+          </div>
         </div>
       </div>
-    </div>
 
-    <DynamicScroller
-      v-if="virtualized"
-      class="message-stack"
-      :items="props.messages"
-      key-field="id"
-      :min-item-size="56"
-      page-mode
-    >
-      <template #default="{ item, active }">
-        <DynamicScrollerItem
-          :item="item"
-          :active="active"
-          :size-dependencies="sizeDependencies(item)"
-        >
-          <div class="message-stack-virtual-row">
-            <MessageRow
-              :message="item"
-              :plans="props.plans || []"
-              :turn-change="changesFor(item)"
-              :editable="
-                item.role === 'user' && item.turn_id === props.editableTurnId
-              "
-              :editing="
-                item.role === 'user' && item.turn_id === props.editingTurnId
-              "
-              @continue-execution="emit('continueExecution')"
-              @open-review="emit('openReview', $event)"
-              @edit-message="emit('editMessage', $event)"
-              @submit-edit="submitEdit"
-              @cancel-edit="emit('cancelEdit')"
-            />
-          </div>
-        </DynamicScrollerItem>
-      </template>
-    </DynamicScroller>
-    <div v-else class="message-stack">
-      <MessageRow
-        v-for="message in props.messages"
-        :key="message.id"
-        :message="message"
-        :plans="props.plans || []"
-        :turn-change="changesFor(message)"
-        :editable="
-          message.role === 'user' && message.turn_id === props.editableTurnId
-        "
-        :editing="
-          message.role === 'user' && message.turn_id === props.editingTurnId
-        "
-        @continue-execution="emit('continueExecution')"
-        @open-review="emit('openReview', $event)"
-        @edit-message="emit('editMessage', $event)"
-        @submit-edit="submitEdit"
-        @cancel-edit="emit('cancelEdit')"
-      />
-    </div>
+      <DynamicScroller
+        v-if="virtualized"
+        class="message-stack"
+        :items="props.messages"
+        key-field="id"
+        :min-item-size="56"
+        page-mode
+      >
+        <template #default="{ item, active }">
+          <DynamicScrollerItem
+            :item="item"
+            :active="active"
+            :size-dependencies="sizeDependencies(item)"
+          >
+            <div class="message-stack-virtual-row">
+              <MessageRow
+                :message="item"
+                :plans="props.plans || []"
+                :turn-change="changesFor(item)"
+                :editable="
+                  item.role === 'user' && item.turn_id === props.editableTurnId
+                "
+                :editing="
+                  item.role === 'user' && item.turn_id === props.editingTurnId
+                "
+                @continue-execution="emit('continueExecution')"
+                @open-review="emit('openReview', $event)"
+                @edit-message="emit('editMessage', $event)"
+                @submit-edit="submitEdit"
+                @cancel-edit="emit('cancelEdit')"
+              />
+            </div>
+          </DynamicScrollerItem>
+        </template>
+      </DynamicScroller>
+      <div v-else class="message-stack">
+        <MessageRow
+          v-for="message in props.messages"
+          :key="message.id"
+          :message="message"
+          :plans="props.plans || []"
+          :turn-change="changesFor(message)"
+          :editable="
+            message.role === 'user' && message.turn_id === props.editableTurnId
+          "
+          :editing="
+            message.role === 'user' && message.turn_id === props.editingTurnId
+          "
+          @continue-execution="emit('continueExecution')"
+          @open-review="emit('openReview', $event)"
+          @edit-message="emit('editMessage', $event)"
+          @submit-edit="submitEdit"
+          @cancel-edit="emit('cancelEdit')"
+        />
+      </div>
 
-    <button
-      v-if="!followBottom && props.messages.length"
-      type="button"
-      class="scroll-to-bottom-btn"
-      aria-label="回到底部"
-      @click="resumeFollow"
-    >
-      回到底部 ↓
-    </button>
+      <button
+        v-if="!followBottom && props.messages.length"
+        type="button"
+        class="scroll-to-bottom-btn"
+        aria-label="回到底部"
+        @click="resumeFollow"
+      >
+        回到底部 ↓
+      </button>
+    </template>
   </section>
 </template>

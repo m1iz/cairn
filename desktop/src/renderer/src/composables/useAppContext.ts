@@ -52,6 +52,7 @@ export interface AppContext {
   activeTurnChange: ComputedRef<TurnChangeSnapshot | null>
   goalCaptureState: Ref<GoalCaptureProjection>
   sessionId: Ref<string>
+  sessionTransitioning: Ref<boolean>
   sessionRuntimeStates: Record<string, { running: boolean; attention: boolean }>
   runtimeText: () => string
   eventTransportText: () => string

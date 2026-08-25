@@ -38,6 +38,10 @@ describe('ChatView Composer lifecycle integration', () => {
     expect(source).not.toContain('composer-edit-banner')
   })
 
+  it('uses an explicit session transition state instead of flashing the welcome screen', () => {
+    expect(source).toContain(':loading="ctx.sessionTransitioning.value"')
+  })
+
   it('restores a queue submission rejected by the Core single-slot guard', () => {
     expect(source).toContain('ctx.queueDraftRecovery.value')
     expect(source).toContain('composer.value?.restoreDraft(recovery.payload)')
