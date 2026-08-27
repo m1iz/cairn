@@ -130,6 +130,44 @@ describe('local config', () => {
     ).toEqual({ hybridMemory: 'off' })
   })
 
+  it('normalizes optional trusted hybrid memory infrastructure', () => {
+    const parsed = parseLocalConfig({
+      memory: {
+        hybridMemory: 'eval',
+        embedding: {
+          provider: 'tei',
+          endpoint: 'http://127.0.0.1:8088/',
+          model: 'intfloat/multilingual-e5-small',
+          dimensions: 384,
+          timeoutMs: 5_000,
+        },
+        vector_database: {
+          provider: 'postgres',
+          connectionString: 'postgresql://local-only',
+          secretsFile: 'D:/CairnData/memory-services/.env',
+        },
+        evaluation_receipt_path: 'D:/CairnData/evals/receipt.json',
+      },
+    })
+
+    expect(parsed.memory).toEqual({
+      hybridMemory: 'eval',
+      embedding: {
+        provider: 'tei',
+        endpoint: 'http://127.0.0.1:8088',
+        model: 'intfloat/multilingual-e5-small',
+        dimensions: 384,
+        timeoutMs: 5_000,
+      },
+      vectorDatabase: {
+        provider: 'postgres',
+        connectionString: 'postgresql://local-only',
+        secretsFile: 'D:/CairnData/memory-services/.env',
+      },
+      evaluationReceiptPath: 'D:/CairnData/evals/receipt.json',
+    })
+  })
+
   it('accepts canonical and snake-case code intelligence modes and defaults invalid values off', () => {
     expect(
       parseLocalConfig({ code_intelligence: { mode: 'on' } }).codeIntelligence,

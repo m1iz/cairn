@@ -18,6 +18,7 @@ import {
   HybridMemoryRetriever,
   type HybridMemorySearchResponse,
   type HybridMemorySearchScope,
+  type HybridMemoryVectorStore,
   type MemoryEmbeddingProvider,
 } from './hybrid-retrieval'
 
@@ -48,6 +49,7 @@ export interface HybridMemoryServiceDiagnostics {
   lastResultCount: number
   lastSourceDigest: string | null
   derivedDiskBytes: number
+  vectorStore?: ReturnType<HybridMemoryVectorStore['diagnostics']> | null
 }
 
 export class HybridMemoryService {
@@ -56,6 +58,7 @@ export class HybridMemoryService {
   readonly capability: EffectiveHybridMemoryCapability
   private readonly now: () => number
   private indexedDigest: string | null = null
+  private nextEmbeddingRetryAt = 0
   private indexQueue: Promise<void> = Promise.resolve()
   private searches = 0
   private promptMutations = 0
@@ -69,6 +72,7 @@ export class HybridMemoryService {
     stateRoot: string
     requested: Resolved<HybridMemoryModeValue>
     embeddingProvider?: MemoryEmbeddingProvider | null
+    vectorStore?: HybridMemoryVectorStore | null
     evaluationGate?: HybridMemoryEvaluationGateReceipt | null
     now?: () => number
   }) {
@@ -76,6 +80,7 @@ export class HybridMemoryService {
     this.now = opts.now ?? Date.now
     this.retriever = new HybridMemoryRetriever({
       embeddingProvider: opts.embeddingProvider ?? null,
+      vectorStore: opts.vectorStore ?? null,
       now: this.now,
     })
     this.capability = effectiveHybridMemoryCapability({
@@ -140,6 +145,7 @@ export class HybridMemoryService {
       lastResultCount: this.lastResultCount,
       lastSourceDigest: this.lastSourceDigest,
       derivedDiskBytes: this.derivedDiskBytes,
+      vectorStore: this.retriever.vectorStore?.diagnostics() ?? null,
     }
   }
 
@@ -149,9 +155,16 @@ export class HybridMemoryService {
     signal?: AbortSignal,
   ): Promise<void> {
     const run = async () => {
-      if (this.indexedDigest === sourceDigest) return
+      const retryEmbedding =
+        Boolean(this.retriever.embeddingProvider) &&
+        !this.retriever.embeddingIndexAvailable() &&
+        this.now() >= this.nextEmbeddingRetryAt
+      if (this.indexedDigest === sourceDigest && !retryEmbedding) return
       await this.retriever.replace(chunks, { signal })
       this.indexedDigest = sourceDigest
+      this.nextEmbeddingRetryAt = this.retriever.embeddingIndexAvailable()
+        ? 0
+        : this.now() + 60_000
     }
     this.indexQueue = this.indexQueue.then(run, run)
     await this.indexQueue

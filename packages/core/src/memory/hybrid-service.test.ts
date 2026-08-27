@@ -140,6 +140,44 @@ describe('HybridMemoryService', () => {
       ),
     ).toMatchObject({ reason: 'hybrid_memory_gate_passed' })
   })
+
+  it('retries a recovered embedding provider after a bounded circuit-breaker delay', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'cairn-hybrid-retry-'))
+    let now = Date.UTC(2026, 6, 19)
+    let available = false
+    let calls = 0
+    const provider: MemoryEmbeddingProvider = {
+      id: 'recovering-provider',
+      dimensions: 2,
+      async embed(texts) {
+        calls += 1
+        if (!available) throw new Error('temporarily unavailable')
+        return texts.map(() => [1, 0])
+      },
+    }
+    const service = new HybridMemoryService({
+      stateRoot: root,
+      requested: resolveHybridMemoryMode([candidate('eval')]),
+      embeddingProvider: provider,
+      evaluationGate: null,
+      now: () => now,
+    })
+    const input = {
+      query: 'database endpoint',
+      documents: [document('db', '## DB\n\nDatabase endpoint db.internal')],
+      scope: { mode: 'chat' as const, sessionId: 's1' },
+    }
+
+    expect((await service.retrieve(input)).search?.strategy).toBe(
+      'fts_fallback',
+    )
+    available = true
+    await service.retrieve(input)
+    expect(calls).toBe(1)
+    now += 60_000
+    expect((await service.retrieve(input)).search?.strategy).toBe('hybrid')
+    expect(calls).toBe(3)
+  })
 })
 
 function serviceFor(

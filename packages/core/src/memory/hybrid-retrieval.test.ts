@@ -140,6 +140,49 @@ describe('HybridMemoryRetriever', () => {
     expect(result.results[0]!.id).toBe('fallback')
     expect(JSON.stringify(result)).not.toContain('private query bytes')
   })
+
+  it('keeps hybrid retrieval available when the vector database is offline', async () => {
+    const retriever = new HybridMemoryRetriever({
+      embeddingProvider: embeddingProvider({
+        'semantic database location': [1, 0, 0],
+        'PostgreSQL endpoint is local.internal:6543': [1, 0, 0],
+      }),
+      vectorStore: {
+        id: 'offline-store',
+        async loadEmbeddings() {
+          throw new Error('database offline')
+        },
+        async sync() {
+          throw new Error('database offline')
+        },
+        async search() {
+          throw new Error('database offline')
+        },
+        async recordAccess() {
+          throw new Error('database offline')
+        },
+        diagnostics() {
+          return {
+            id: 'offline-store',
+            available: false,
+            lastError: 'database offline',
+          }
+        },
+      },
+      now: () => NOW,
+    })
+    await retriever.replace([
+      chunk('db', 'PostgreSQL endpoint is local.internal:6543', 'global'),
+    ])
+
+    const result = await retriever.search({
+      query: 'semantic database location',
+      scope: { mode: 'chat', sessionId: 'session-a' },
+    })
+
+    expect(result.strategy).toBe('hybrid')
+    expect(result.results[0]?.id).toBe('db')
+  })
 })
 
 function chunk(

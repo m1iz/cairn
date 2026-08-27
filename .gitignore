@@ -48,6 +48,12 @@ coverage/
 /desktop/test-results/
 /desktop/.uiplan-progress.json
 
+# Local SWE-bench evaluation harness (never part of the product)
+/pnpm-lock.yaml
+/packages/core/pnpm-lock.yaml
+/packages/core/pnpm-workspace.yaml
+/packages/core/src/agent/swe-sample-eval.live.test.ts
+
 # Logs / local automation state
 /logs/
 npm-debug.log*

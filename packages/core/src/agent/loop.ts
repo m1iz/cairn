@@ -95,7 +95,12 @@ import {
   type HybridMemoryMode,
 } from '../memory/hybrid-capability'
 import type { HybridMemoryDocument } from '../memory/hybrid-index'
-import type { MemoryEmbeddingProvider } from '../memory/hybrid-retrieval'
+import type {
+  HybridMemoryVectorStore,
+  MemoryEmbeddingProvider,
+} from '../memory/hybrid-retrieval'
+import { TeiEmbeddingProvider } from '../memory/tei-embedding-provider'
+import { PostgresHybridMemoryVectorStore } from '../memory/postgres-vector-store'
 import {
   effectiveCodeIntelligenceCapability,
   resolveCodeIntelligenceMode,
@@ -355,6 +360,8 @@ export interface AgentLoopCreateOptions {
   hybridMemoryMode?: HybridMemoryMode
   /** Provider capability is injected by a trusted host; project data cannot supply it. */
   memoryEmbeddingProvider?: MemoryEmbeddingProvider | null
+  /** Optional derived vector store. Failures fall back to the in-memory index. */
+  memoryVectorStore?: HybridMemoryVectorStore | null
   /** Provider-bound offline evaluation receipt required before prompt mutation. */
   hybridMemoryEvaluationGate?: HybridMemoryEvaluationGateReceipt | null
   /** Experimental code intelligence remains inert unless a verified gate enables it. */
@@ -792,6 +799,7 @@ export class AgentLoop {
           : [],
       ),
       embeddingProvider: opts.memoryEmbeddingProvider ?? null,
+      vectorStore: opts.memoryVectorStore ?? null,
       evaluationGate: opts.hybridMemoryEvaluationGate ?? null,
     })
     this.codeIntelligence = new CodeIntelligenceService({
@@ -1157,6 +1165,20 @@ export class AgentLoop {
     const localConfig = await loadLocalConfig(paths.stateRoot, {
       preserveCorrupt: false,
     })
+    const configuredEmbeddingProvider = localConfig.memory.embedding
+      ? new TeiEmbeddingProvider(localConfig.memory.embedding)
+      : null
+    const configuredVectorStore = localConfig.memory.vectorDatabase
+      ? new PostgresHybridMemoryVectorStore({
+          connectionString: expandLocalSecrets(
+            localConfig.memory.vectorDatabase.connectionString,
+            localConfig.memory.vectorDatabase.secretsFile,
+          ),
+        })
+      : null
+    const configuredEvaluationGate = loadHybridMemoryEvaluationGate(
+      localConfig.memory.evaluationReceiptPath,
+    )
     const templatesDir = paths.templatesDir
     const userFile = ensureUserProfileFile(paths.stateRoot, templatesDir)
     const memoryTemplate = existingPath(join(templatesDir, 'init', 'MEMORY.md'))
@@ -1186,6 +1208,18 @@ export class AgentLoop {
           opts.softGitRewindMode ?? localConfig.workspace.gitRewind.mode,
         hybridMemoryMode:
           opts.hybridMemoryMode ?? localConfig.memory.hybridMemory,
+        memoryEmbeddingProvider:
+          opts.memoryEmbeddingProvider === undefined
+            ? configuredEmbeddingProvider
+            : opts.memoryEmbeddingProvider,
+        memoryVectorStore:
+          opts.memoryVectorStore === undefined
+            ? configuredVectorStore
+            : opts.memoryVectorStore,
+        hybridMemoryEvaluationGate:
+          opts.hybridMemoryEvaluationGate === undefined
+            ? configuredEvaluationGate
+            : opts.hybridMemoryEvaluationGate,
         codeIntelligenceMode:
           opts.codeIntelligenceMode ?? localConfig.codeIntelligence.mode,
       },
@@ -3014,6 +3048,7 @@ export class AgentLoop {
         .catch(() => {})
     }
     await this.hookService.shutdown()
+    await this.hybridMemory.retriever.vectorStore?.close?.().catch(() => {})
   }
 
   async endSession(sessionId: string, reason: string): Promise<void> {
@@ -5147,4 +5182,46 @@ function activeSessionHistoryAfterSeq(
     out.push(item)
   }
   return out
+}
+
+function loadHybridMemoryEvaluationGate(
+  path: string | undefined,
+): HybridMemoryEvaluationGateReceipt | null {
+  if (!path || !isAbsolute(path) || !existsSync(path)) return null
+  try {
+    const value = JSON.parse(readFileSync(path, 'utf8')) as Record<
+      string,
+      unknown
+    >
+    const datasetSha256 = String(value.datasetSha256 ?? '')
+      .trim()
+      .toLowerCase()
+    const embeddingProviderId = String(value.embeddingProviderId ?? '').trim()
+    if (
+      value.passed !== true ||
+      !/^[a-f0-9]{64}$/.test(datasetSha256) ||
+      !embeddingProviderId
+    )
+      return null
+    return { passed: true, datasetSha256, embeddingProviderId }
+  } catch {
+    return null
+  }
+}
+
+function expandLocalSecrets(template: string, secretsFile?: string): string {
+  if (!secretsFile || !isAbsolute(secretsFile) || !existsSync(secretsFile))
+    return template
+  try {
+    const values = new Map<string, string>()
+    for (const line of readFileSync(secretsFile, 'utf8').split(/\r?\n/)) {
+      const match = /^([A-Z][A-Z0-9_]*)=(.*)$/.exec(line.trim())
+      if (match) values.set(match[1]!, match[2]!)
+    }
+    return template.replace(/\$\{([A-Z][A-Z0-9_]*)\}/g, (match, key) =>
+      values.has(key) ? encodeURIComponent(values.get(key)!) : match,
+    )
+  } catch {
+    return template
+  }
 }

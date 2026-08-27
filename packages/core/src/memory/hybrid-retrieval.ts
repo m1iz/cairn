@@ -22,7 +22,57 @@ export interface HybridMemorySearchScope {
 export interface MemoryEmbeddingProvider {
   readonly id: string
   readonly dimensions: number
-  embed(texts: readonly string[], signal?: AbortSignal): Promise<number[][]>
+  embed(
+    texts: readonly string[],
+    options?: MemoryEmbeddingRequestOptions,
+  ): Promise<number[][]>
+}
+
+export interface MemoryEmbeddingRequestOptions {
+  signal?: AbortSignal
+  purpose?: 'query' | 'document'
+}
+
+export interface HybridMemoryVectorStoreDiagnostics {
+  id: string
+  available: boolean
+  lastError: string | null
+}
+
+export interface HybridMemoryAccessRecord {
+  chunkId: string
+  source: HybridMemorySource
+  projectId?: string | null
+  sessionId?: string | null
+}
+
+export interface HybridMemoryVectorStore {
+  readonly id: string
+  loadEmbeddings(
+    chunks: readonly HybridMemoryChunkInput[],
+    provider: MemoryEmbeddingProvider,
+    signal?: AbortSignal,
+  ): Promise<Map<string, number[]>>
+  sync(
+    chunks: readonly HybridMemoryChunkInput[],
+    embeddings: ReadonlyMap<string, number[]>,
+    provider: MemoryEmbeddingProvider,
+    signal?: AbortSignal,
+  ): Promise<void>
+  search(
+    embedding: readonly number[],
+    scope: HybridMemorySearchScope,
+    maxResults: number,
+    provider: MemoryEmbeddingProvider,
+    signal?: AbortSignal,
+  ): Promise<Map<string, number>>
+  recordAccess?(
+    records: readonly HybridMemoryAccessRecord[],
+    provider: MemoryEmbeddingProvider,
+    signal?: AbortSignal,
+  ): Promise<void>
+  diagnostics(): HybridMemoryVectorStoreDiagnostics
+  close?(): Promise<void>
 }
 
 export interface HybridMemoryMmrConfig {
@@ -111,6 +161,7 @@ const STOP_WORDS = new Set([
  */
 export class HybridMemoryRetriever {
   readonly embeddingProvider: MemoryEmbeddingProvider | null
+  readonly vectorStore: HybridMemoryVectorStore | null
   readonly config: HybridMemoryConfig
   private readonly now: () => number
   private chunks: IndexedChunk[] = []
@@ -120,6 +171,7 @@ export class HybridMemoryRetriever {
   constructor(
     opts: {
       embeddingProvider?: MemoryEmbeddingProvider | null
+      vectorStore?: HybridMemoryVectorStore | null
       config?: Partial<HybridMemoryConfig> & {
         sourceWeights?: Partial<Record<HybridMemorySource, number>>
         mmr?: Partial<HybridMemoryMmrConfig>
@@ -128,6 +180,7 @@ export class HybridMemoryRetriever {
     } = {},
   ) {
     this.embeddingProvider = opts.embeddingProvider ?? null
+    this.vectorStore = opts.vectorStore ?? null
     this.now = opts.now ?? Date.now
     this.config = normalizeConfig(opts.config)
   }
@@ -136,34 +189,69 @@ export class HybridMemoryRetriever {
     return this.currentGeneration
   }
 
+  embeddingIndexAvailable(): boolean {
+    return Boolean(
+      this.embeddingProvider &&
+      !this.embeddingIndexFailed &&
+      this.chunks.some((chunk) => chunk.embedding),
+    )
+  }
+
   async replace(
     inputs: readonly HybridMemoryChunkInput[],
     opts: { signal?: AbortSignal } = {},
   ): Promise<number> {
     const normalized = inputs.map(normalizeChunk)
-    let embeddings: number[][] | null = null
+    const embeddingsById = new Map<string, number[]>()
     this.embeddingIndexFailed = false
     if (this.embeddingProvider && normalized.length) {
       try {
-        embeddings = await this.embeddingProvider.embed(
-          normalized.map((chunk) => chunk.text),
-          opts.signal,
+        if (this.vectorStore) {
+          const cached = await this.vectorStore
+            .loadEmbeddings(normalized, this.embeddingProvider, opts.signal)
+            .catch(() => new Map<string, number[]>())
+          for (const chunk of normalized) {
+            const vector = cached.get(chunk.id)
+            if (vector?.length === this.embeddingProvider.dimensions)
+              embeddingsById.set(chunk.id, vector.slice())
+          }
+        }
+        const missing = normalized.filter(
+          (chunk) => !embeddingsById.has(chunk.id),
         )
-        validateEmbeddings(
-          embeddings,
-          normalized.length,
-          this.embeddingProvider.dimensions,
-        )
+        if (missing.length) {
+          const embedded = await this.embeddingProvider.embed(
+            missing.map((chunk) => chunk.text),
+            { signal: opts.signal, purpose: 'document' },
+          )
+          validateEmbeddings(
+            embedded,
+            missing.length,
+            this.embeddingProvider.dimensions,
+          )
+          missing.forEach((chunk, index) =>
+            embeddingsById.set(chunk.id, embedded[index]!.slice()),
+          )
+        }
+        if (this.vectorStore)
+          await this.vectorStore
+            .sync(
+              normalized,
+              embeddingsById,
+              this.embeddingProvider,
+              opts.signal,
+            )
+            .catch(() => {})
       } catch {
         if (opts.signal?.aborted) throw abortError(opts.signal)
         this.embeddingIndexFailed = true
-        embeddings = null
+        embeddingsById.clear()
       }
     }
-    this.chunks = normalized.map((chunk, index) => ({
+    this.chunks = normalized.map((chunk) => ({
       ...chunk,
       tokens: tokenize(chunk.text),
-      embedding: embeddings?.[index]?.slice() ?? null,
+      embedding: embeddingsById.get(chunk.id)?.slice() ?? null,
     }))
     this.currentGeneration += 1
     return this.currentGeneration
@@ -191,10 +279,10 @@ export class HybridMemoryRetriever {
         fallbackReason = 'embedding_failed'
       } else {
         try {
-          const embedded = await this.embeddingProvider.embed(
-            [query],
-            input.signal,
-          )
+          const embedded = await this.embeddingProvider.embed([query], {
+            signal: input.signal,
+            purpose: 'query',
+          })
           validateEmbeddings(embedded, 1, this.embeddingProvider.dimensions)
           queryEmbedding = embedded[0]!.slice()
         } catch {
@@ -205,10 +293,25 @@ export class HybridMemoryRetriever {
     }
     throwIfAborted(input.signal)
 
-    const vector = queryEmbedding
+    const maxResults = clampInteger(input.maxResults ?? 6, 1, 50)
+    let vector = queryEmbedding
       ? vectorScores(snapshot, queryEmbedding)
       : new Map<string, number>()
-    const maxResults = clampInteger(input.maxResults ?? 6, 1, 50)
+    if (queryEmbedding && this.vectorStore && this.embeddingProvider) {
+      try {
+        const stored = await this.vectorStore.search(
+          queryEmbedding,
+          input.scope,
+          Math.max(maxResults, maxResults * this.config.candidateMultiplier),
+          this.embeddingProvider,
+          input.signal,
+        )
+        if (stored.size) vector = normalizeScores(stored)
+      } catch {
+        if (input.signal?.aborted) throw abortError(input.signal)
+        // The in-memory copy is an intentional circuit-breaker fallback.
+      }
+    }
     const ranked = rankChunks({
       chunks: snapshot,
       lexical,
@@ -222,6 +325,29 @@ export class HybridMemoryRetriever {
     )
     const diversified = mmrRerank(candidates, this.config.mmr)
 
+    const results = diversified.slice(0, maxResults).map((item) => item.result)
+    if (
+      results.length &&
+      this.vectorStore?.recordAccess &&
+      this.embeddingProvider
+    ) {
+      try {
+        await this.vectorStore.recordAccess(
+          results.map((result) => ({
+            chunkId: result.id,
+            source: result.source,
+            projectId: result.projectId,
+            sessionId: result.sessionId,
+          })),
+          this.embeddingProvider,
+          input.signal,
+        )
+      } catch {
+        if (input.signal?.aborted) throw abortError(input.signal)
+        // Access accounting is observational and must never block retrieval.
+      }
+    }
+
     return {
       strategy: fallbackReason
         ? 'fts_fallback'
@@ -231,7 +357,7 @@ export class HybridMemoryRetriever {
       fallbackReason,
       embeddingProviderId: this.embeddingProvider?.id ?? null,
       generation,
-      results: diversified.slice(0, maxResults).map((item) => item.result),
+      results,
     }
   }
 }

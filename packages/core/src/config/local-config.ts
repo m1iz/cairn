@@ -41,8 +41,25 @@ export interface WorkspacePreferences {
 
 export type HybridMemoryMode = 'off' | 'eval' | 'on'
 
+export interface MemoryEmbeddingPreferences {
+  provider: 'tei'
+  endpoint: string
+  model: string
+  dimensions: number
+  timeoutMs: number
+}
+
+export interface MemoryVectorDatabasePreferences {
+  provider: 'postgres'
+  connectionString: string
+  secretsFile?: string
+}
+
 export interface MemoryPreferences {
   hybridMemory: HybridMemoryMode
+  embedding?: MemoryEmbeddingPreferences
+  vectorDatabase?: MemoryVectorDatabasePreferences
+  evaluationReceiptPath?: string
 }
 
 export type CodeIntelligenceMode = 'off' | 'eval' | 'on'
@@ -140,6 +157,14 @@ export function parseLocalConfig(
       hybridMemory: normalizeHybridMemoryMode(
         memory.hybridMemory ?? memory.hybrid_memory,
       ),
+      ...parseMemoryEmbedding(memory.embedding),
+      ...parseMemoryVectorDatabase(
+        memory.vectorDatabase ?? memory.vector_database,
+      ),
+      ...optionalStringProperty(
+        'evaluationReceiptPath',
+        memory.evaluationReceiptPath ?? memory.evaluation_receipt_path,
+      ),
     },
     codeIntelligence: {
       mode: normalizeCodeIntelligenceMode(codeIntelligence.mode),
@@ -194,6 +219,20 @@ export async function saveLocalConfig(
     },
     memory: {
       hybridMemory: normalizeHybridMemoryMode(config.memory?.hybridMemory),
+      ...(config.memory?.embedding
+        ? { embedding: normalizeMemoryEmbedding(config.memory.embedding) }
+        : {}),
+      ...(config.memory?.vectorDatabase
+        ? {
+            vectorDatabase: normalizeMemoryVectorDatabase(
+              config.memory.vectorDatabase,
+            ),
+          }
+        : {}),
+      ...optionalStringProperty(
+        'evaluationReceiptPath',
+        config.memory?.evaluationReceiptPath,
+      ),
     },
     codeIntelligence: {
       mode: normalizeCodeIntelligenceMode(config.codeIntelligence?.mode),
@@ -234,6 +273,62 @@ export function normalizeSoftGitRewindMode(value: unknown): SoftGitRewindMode {
 
 export function normalizeHybridMemoryMode(value: unknown): HybridMemoryMode {
   return value === 'eval' || value === 'on' ? value : 'off'
+}
+
+function parseMemoryEmbedding(
+  value: unknown,
+): { embedding: MemoryEmbeddingPreferences } | Record<string, never> {
+  const input = objectOrEmpty(value)
+  if (input.provider !== 'tei') return {}
+  return { embedding: normalizeMemoryEmbedding(input) }
+}
+
+function normalizeMemoryEmbedding(
+  value: Partial<MemoryEmbeddingPreferences>,
+): MemoryEmbeddingPreferences {
+  return {
+    provider: 'tei',
+    endpoint: String(value.endpoint || 'http://127.0.0.1:8088').replace(
+      /\/+$/,
+      '',
+    ),
+    model: String(value.model || 'intfloat/multilingual-e5-small'),
+    dimensions: Math.min(
+      8_192,
+      Math.max(1, Math.trunc(Number(value.dimensions) || 384)),
+    ),
+    timeoutMs: Math.min(
+      120_000,
+      Math.max(100, Math.trunc(Number(value.timeoutMs) || 10_000)),
+    ),
+  }
+}
+
+function parseMemoryVectorDatabase(
+  value: unknown,
+): { vectorDatabase: MemoryVectorDatabasePreferences } | Record<string, never> {
+  const input = objectOrEmpty(value)
+  if (input.provider !== 'postgres' || !String(input.connectionString || ''))
+    return {}
+  return { vectorDatabase: normalizeMemoryVectorDatabase(input) }
+}
+
+function normalizeMemoryVectorDatabase(
+  value: Partial<MemoryVectorDatabasePreferences>,
+): MemoryVectorDatabasePreferences {
+  return {
+    provider: 'postgres',
+    connectionString: String(value.connectionString || ''),
+    ...optionalStringProperty('secretsFile', value.secretsFile),
+  }
+}
+
+function optionalStringProperty<K extends string>(
+  key: K,
+  value: unknown,
+): { [P in K]?: string } {
+  const normalized = String(value ?? '').trim()
+  return normalized ? ({ [key]: normalized } as { [P in K]: string }) : {}
 }
 
 export function normalizeCodeIntelligenceMode(
