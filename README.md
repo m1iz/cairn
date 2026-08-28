@@ -115,35 +115,6 @@ Renderer 不直接持有本机权限。Electron Main 对 IPC 操作重新授权�
 
 详细设计见[架构总览](docs/architecture/overview.md)与[控制和权限](docs/architecture/control-and-permissions.md)。
 
-## 评测
-
-Cairn 将功能正确性与 Agent 效果分开衡量，避免把局部实验写成完整排行榜成绩。
-
-| 评测                      | 范围                                  |                               结果 |
-| ------------------------- | ------------------------------------- | ---------------------------------: |
-| **SWE-bench Verified**    | 固定 27 题子集，使用官方验证器        |      **20 / 27 resolved（74.1%）** |
-| **LongMemEval-S**         | 官方 cleaned 500 题、每题官方候选会话 |                    **Hit@1 89.0%** |
-| **LongMemEval-S**         | 同上                                  | **Recall@5 94.53% · MRR@5 93.09%** |
-| **Hybrid Memory latency** | 同一 500 题检索运行                   |                   **P95 74.14 ms** |
-
-在该 LongMemEval-S 设置中，Cairn Hybrid 相比纯向量检索的 Hit@1 提升 **4.4 个百分点**，相比 BM25 提升 **4.0 个百分点**。该结果衡量的是官方每题候选会话上的检索能力，不代表在任意规模全局记忆库中的准确率。
-
-评测入口和复现约束见 [`config/hybrid-memory/README.md`](config/hybrid-memory/README.md)。公开数据与 embedding 缓存不会写入仓库。
-
-## 开发与质量检查
-
-```bash
-# Core 与 Desktop 测试
-npm test
-npm --prefix desktop test
-
-# 静态检查与构建
-npm run typecheck
-npm run format:check
-npm run build
-```
-
-GitHub Actions 会在 Windows 与 Ubuntu 上执行格式门禁、文档边界检查、类型检查、Lint、测试和桌面构建；Windows 还会验证原生终端与打包后的应用 smoke test。
 
 ## 文档导航
 
