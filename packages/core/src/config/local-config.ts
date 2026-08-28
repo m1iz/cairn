@@ -55,10 +55,18 @@ export interface MemoryVectorDatabasePreferences {
   secretsFile?: string
 }
 
+export interface MemoryRerankerPreferences {
+  provider: 'tei'
+  endpoint: string
+  model: string
+  timeoutMs: number
+}
+
 export interface MemoryPreferences {
   hybridMemory: HybridMemoryMode
   embedding?: MemoryEmbeddingPreferences
   vectorDatabase?: MemoryVectorDatabasePreferences
+  reranker?: MemoryRerankerPreferences
   evaluationReceiptPath?: string
 }
 
@@ -161,6 +169,7 @@ export function parseLocalConfig(
       ...parseMemoryVectorDatabase(
         memory.vectorDatabase ?? memory.vector_database,
       ),
+      ...parseMemoryReranker(memory.reranker),
       ...optionalStringProperty(
         'evaluationReceiptPath',
         memory.evaluationReceiptPath ?? memory.evaluation_receipt_path,
@@ -320,6 +329,27 @@ function normalizeMemoryVectorDatabase(
     provider: 'postgres',
     connectionString: String(value.connectionString || ''),
     ...optionalStringProperty('secretsFile', value.secretsFile),
+  }
+}
+
+function parseMemoryReranker(
+  value: unknown,
+): { reranker: MemoryRerankerPreferences } | Record<string, never> {
+  const input = objectOrEmpty(value)
+  if (input.provider !== 'tei') return {}
+  return {
+    reranker: {
+      provider: 'tei',
+      endpoint: String(input.endpoint || 'http://127.0.0.1:8089').replace(
+        /\/+$/,
+        '',
+      ),
+      model: String(input.model || 'BAAI/bge-reranker-v2-m3'),
+      timeoutMs: Math.min(
+        30_000,
+        Math.max(100, Math.trunc(Number(input.timeoutMs) || 800)),
+      ),
+    },
   }
 }
 

@@ -81,6 +81,7 @@ describe('ContextBuilder (test_agent_prompt_contracts.py — template-driven)', 
     }
     expect(prompt).toContain('`fresh` 必须提供目标、原因、已知事实')
     expect(prompt).toContain('用户档案与长期记忆由 Core')
+    expect(prompt).toContain('save_long_term_memory')
     expect(prompt).toContain('不要调用 `read_file`')
     expect(prompt).not.toContain('.cairn/templates')
     expect(prompt).not.toContain('.cairn/memory')

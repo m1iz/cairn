@@ -1106,3 +1106,55 @@ describe('SaveUserProfileTool (onboarding profile persistence)', () => {
     expect(memory.versions.list({ target: 'user' })).toHaveLength(0)
   })
 })
+
+describe('SaveLongTermMemoryTool', () => {
+  it('writes one versioned fact outside the workspace through the Core-owned writer', async () => {
+    const { mkdtempSync, readFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const { MemoryStore } = await import('./memory/store')
+    const { SaveLongTermMemoryTool } = await import('./tools/builtin')
+    const dir = mkdtempSync(join(tmpdir(), 'cairn-save-memory-'))
+    const memory = new MemoryStore(
+      join(dir, 'memory'),
+      join(dir, 'USER.local.md'),
+    )
+    let refreshes = 0
+    const tool = new SaveLongTermMemoryTool(memory, () => {
+      refreshes += 1
+    })
+
+    const first = await tool.execute({ content: '测试口令是 青松-3816。' })
+    const second = await tool.execute({ content: '测试口令是 青松-3816。' })
+    const stored = readFileSync(memory.memoryFile, 'utf8')
+
+    expect(first).toContain('已通过受控 memory patch')
+    expect(second).toContain('已存在')
+    expect(stored).toContain('## Key Facts\n- 测试口令是 青松-3816。')
+    expect(stored.match(/青松-3816/g)).toHaveLength(1)
+    expect(memory.versions.list({ target: 'memory' })).toHaveLength(2)
+    expect(refreshes).toBe(1)
+  })
+
+  it('rejects suspected secrets without modifying memory', async () => {
+    const { mkdtempSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const { MemoryStore } = await import('./memory/store')
+    const { SaveLongTermMemoryTool } = await import('./tools/builtin')
+    const dir = mkdtempSync(join(tmpdir(), 'cairn-save-memory-secret-'))
+    const memory = new MemoryStore(
+      join(dir, 'memory'),
+      join(dir, 'USER.local.md'),
+    )
+    const before = memory.readMemory()
+    const tool = new SaveLongTermMemoryTool(memory)
+
+    const result = await tool.execute({
+      content: 'api_key=sk-test-secret-1234567890',
+    })
+
+    expect(result).toContain('suspected_secret')
+    expect(memory.readMemory()).toBe(before)
+  })
+})

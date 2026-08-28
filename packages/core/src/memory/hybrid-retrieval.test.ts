@@ -114,6 +114,48 @@ describe('HybridMemoryRetriever', () => {
     expect(result.results[2]!.id).toBe('duplicate')
   })
 
+  it('allows evaluation baselines to disable the lexical safety floor', async () => {
+    const provider = embeddingProvider({
+      query: [1, 0, 0],
+      'query exact keyword match': [0, 1, 0],
+      'semantic-only candidate': [1, 0, 0],
+    })
+    const withSafetyFloor = new HybridMemoryRetriever({
+      embeddingProvider: provider,
+      config: {
+        textWeight: 0,
+        vectorWeight: 1,
+        fusionStrategy: 'weighted',
+        lexicalSafetyFloor: true,
+        mmr: { enabled: false, lambda: 1 },
+      },
+    })
+    const strictVector = new HybridMemoryRetriever({
+      embeddingProvider: provider,
+      config: {
+        textWeight: 0,
+        vectorWeight: 1,
+        fusionStrategy: 'weighted',
+        lexicalSafetyFloor: false,
+        mmr: { enabled: false, lambda: 1 },
+      },
+    })
+    const chunks = [
+      chunk('lexical', 'query exact keyword match', 'global'),
+      chunk('semantic', 'semantic-only candidate', 'global'),
+    ]
+    await withSafetyFloor.replace(chunks)
+    await strictVector.replace(chunks)
+
+    const input = {
+      query: 'query',
+      scope: { mode: 'chat' as const, sessionId: 'session-a' },
+      maxResults: 2,
+    }
+    expect((await withSafetyFloor.search(input)).results[0]!.id).toBe('lexical')
+    expect((await strictVector.search(input)).results[0]!.id).toBe('semantic')
+  })
+
   it('falls back to FTS when query embedding fails and never drops a keyword hit', async () => {
     const provider: MemoryEmbeddingProvider = {
       id: 'throwing-fixture',

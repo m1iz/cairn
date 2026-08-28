@@ -21,6 +21,7 @@ import {
   type HybridMemoryVectorStore,
   type MemoryEmbeddingProvider,
 } from './hybrid-retrieval'
+import type { MemoryReranker } from './hybrid-ranking'
 
 export interface HybridMemoryRetrieveInput {
   query: string
@@ -73,6 +74,7 @@ export class HybridMemoryService {
     requested: Resolved<HybridMemoryModeValue>
     embeddingProvider?: MemoryEmbeddingProvider | null
     vectorStore?: HybridMemoryVectorStore | null
+    reranker?: MemoryReranker | null
     evaluationGate?: HybridMemoryEvaluationGateReceipt | null
     now?: () => number
   }) {
@@ -81,6 +83,7 @@ export class HybridMemoryService {
     this.retriever = new HybridMemoryRetriever({
       embeddingProvider: opts.embeddingProvider ?? null,
       vectorStore: opts.vectorStore ?? null,
+      reranker: opts.reranker ?? null,
       now: this.now,
     })
     this.capability = effectiveHybridMemoryCapability({

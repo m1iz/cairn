@@ -301,10 +301,7 @@ async function removeStaleRows(
 }
 
 function namespaceFor(
-  chunk: Pick<
-    HybridMemoryChunkInput,
-    'source' | 'projectId' | 'sessionId'
-  >,
+  chunk: Pick<HybridMemoryChunkInput, 'source' | 'projectId' | 'sessionId'>,
 ): string {
   if (chunk.source === 'global') return 'global'
   if (chunk.source === 'project') return `project:${chunk.projectId ?? ''}`

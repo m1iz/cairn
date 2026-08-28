@@ -18,6 +18,7 @@ const CANONICAL_SECTIONS: Record<MemoryMarkdownKind, string[]> = {
     'Deprecated',
   ],
   global: [
+    'Key Facts',
     'Long-Term Projects',
     'Cross-Project Decisions',
     'Open Questions',

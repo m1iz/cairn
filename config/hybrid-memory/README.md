@@ -30,3 +30,43 @@ not mutate model prompts in `on` mode without a matching passing receipt.
 
 Local database files, downloaded model weights, passwords, reports, and
 receipts belong outside the repository and must not be committed.
+
+The optional local cross-encoder is started with
+`docker compose --profile reranker up -d`. It uses the NVIDIA GPU and stores
+the downloaded `BAAI/bge-reranker-v2-m3` weights under
+`CAIRN_MEMORY_DATA_DIR`; retrieval remains available through RRF when this
+service is stopped or times out.
+
+Trusted local configuration can enable it independently from the embedding
+provider:
+
+```json
+{
+  "memory": {
+    "reranker": {
+      "provider": "tei",
+      "endpoint": "http://127.0.0.1:8089",
+      "model": "BAAI/bge-reranker-v2-m3",
+      "timeoutMs": 800
+    }
+  }
+}
+```
+
+The production path uses reciprocal-rank fusion, reranks at most twenty
+candidates, and applies an admission decision before any memory is projected
+into the model prompt. A weak top result therefore produces an explicit empty
+memory result instead of injecting the nearest unrelated chunk.
+
+## Public LongMemEval retrieval evaluation
+
+The opt-in `npm run eval:longmemeval --workspace @cairn/core` benchmark reads
+the official cleaned LongMemEval-S dataset from `CAIRN_LONGMEMEVAL_DATA` and
+writes its report to `CAIRN_LONGMEMEVAL_REPORT`. It never calls the configured
+chat model. Document embeddings are cached in the separate PostgreSQL database
+specified by `CAIRN_LONGMEMEVAL_DATABASE_URL`, so an interrupted first run can
+reuse completed embedding work without polluting the normal memory database.
+The report keeps strict BM25-only and vector-only baselines separate from a
+neutral fusion baseline and the Cairn production-default strategy. Its scores
+use each question's official haystack; they are not global-corpus retrieval
+scores.

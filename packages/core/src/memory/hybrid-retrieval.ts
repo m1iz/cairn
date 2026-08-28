@@ -83,10 +83,15 @@ export interface HybridMemoryMmrConfig {
 export interface HybridMemoryConfig {
   textWeight: number
   vectorWeight: number
+  lexicalSafetyFloor: boolean
   temporalHalfLifeDays: number
   sourceWeights: Record<HybridMemorySource, number>
   mmr: HybridMemoryMmrConfig
   candidateMultiplier: number
+  fusionStrategy: 'weighted' | 'rrf'
+  rrfRankConstant: number
+  rerankCandidateLimit: number
+  admission: MemoryAdmissionConfig
 }
 
 export interface HybridMemorySearchInput {
@@ -100,6 +105,7 @@ export interface HybridMemorySearchResult extends HybridMemoryChunkInput {
   score: number
   lexicalScore: number
   vectorScore: number
+  rerankerScore?: number | null
 }
 
 export interface HybridMemorySearchResponse {
@@ -107,6 +113,9 @@ export interface HybridMemorySearchResponse {
   fallbackReason: 'embedding_failed' | null
   embeddingProviderId: string | null
   generation: number
+  rerankerId: string | null
+  rerankerFallback: boolean
+  admission: MemoryAdmissionDecision
   results: HybridMemorySearchResult[]
 }
 
@@ -124,10 +133,21 @@ interface RankedChunk {
 const DEFAULT_CONFIG: HybridMemoryConfig = {
   textWeight: 0.55,
   vectorWeight: 0.45,
+  lexicalSafetyFloor: true,
   temporalHalfLifeDays: 30,
   sourceWeights: { global: 1, project: 1.05, session: 0.9 },
   mmr: { enabled: true, lambda: 0.72 },
-  candidateMultiplier: 3,
+  candidateMultiplier: 5,
+  fusionStrategy: 'rrf',
+  rrfRankConstant: 40,
+  rerankCandidateLimit: 20,
+  admission: {
+    enabled: true,
+    minRerankerScore: 0.05,
+    minVectorScore: 0.8,
+    minLexicalScore: 0.65,
+    requireSignalAgreement: true,
+  },
 }
 
 const STOP_WORDS = new Set([
@@ -163,6 +183,7 @@ export class HybridMemoryRetriever {
   readonly embeddingProvider: MemoryEmbeddingProvider | null
   readonly vectorStore: HybridMemoryVectorStore | null
   readonly config: HybridMemoryConfig
+  readonly reranker: MemoryReranker | null
   private readonly now: () => number
   private chunks: IndexedChunk[] = []
   private currentGeneration = 0
@@ -172,15 +193,18 @@ export class HybridMemoryRetriever {
     opts: {
       embeddingProvider?: MemoryEmbeddingProvider | null
       vectorStore?: HybridMemoryVectorStore | null
+      reranker?: MemoryReranker | null
       config?: Partial<HybridMemoryConfig> & {
         sourceWeights?: Partial<Record<HybridMemorySource, number>>
         mmr?: Partial<HybridMemoryMmrConfig>
+        admission?: Partial<MemoryAdmissionConfig>
       }
       now?: () => number
     } = {},
   ) {
     this.embeddingProvider = opts.embeddingProvider ?? null
     this.vectorStore = opts.vectorStore ?? null
+    this.reranker = opts.reranker ?? null
     this.now = opts.now ?? Date.now
     this.config = normalizeConfig(opts.config)
   }
@@ -312,20 +336,60 @@ export class HybridMemoryRetriever {
         // The in-memory copy is an intentional circuit-breaker fallback.
       }
     }
-    const ranked = rankChunks({
+    let ranked = rankChunks({
       chunks: snapshot,
       lexical,
       vector,
       config: this.config,
       now: this.now(),
     })
+    let rerankerFallback = false
+    if (this.reranker && ranked.length) {
+      const rerankPool = ranked.slice(0, this.config.rerankCandidateLimit)
+      try {
+        const scores = await this.reranker.rerank(
+          query,
+          rerankPool.map((candidate) => ({
+            id: candidate.result.id,
+            text: candidate.result.text,
+            lexicalScore: candidate.result.lexicalScore,
+            vectorScore: candidate.result.vectorScore,
+            fusedScore: candidate.rawScore,
+          })),
+          { signal: input.signal, topN: this.config.rerankCandidateLimit },
+        )
+        const reranked = applyRerankerScores(
+          rerankPool.map((candidate) => ({
+            ...candidate,
+            id: candidate.result.id,
+            text: candidate.result.text,
+            lexicalScore: candidate.result.lexicalScore,
+            vectorScore: candidate.result.vectorScore,
+            fusedScore: candidate.rawScore,
+          })),
+          scores,
+        ).map((candidate) => ({
+          ...candidate,
+          result: {
+            ...candidate.result,
+            rerankerScore: candidate.rerankerScore,
+          },
+        }))
+        ranked = [...reranked, ...ranked.slice(rerankPool.length)]
+      } catch {
+        if (input.signal?.aborted) throw abortError(input.signal)
+        rerankerFallback = true
+      }
+    }
     const candidates = ranked.slice(
       0,
       Math.max(maxResults, maxResults * this.config.candidateMultiplier),
     )
-    const diversified = mmrRerank(candidates, this.config.mmr)
+    const diversified = mmrRerank(candidates, this.config.mmr, maxResults)
 
-    const results = diversified.slice(0, maxResults).map((item) => item.result)
+    const proposed = diversified.slice(0, maxResults).map((item) => item.result)
+    const admission = decideMemoryAdmission(proposed[0], this.config.admission)
+    const results = admission.admitted ? proposed : []
     if (
       results.length &&
       this.vectorStore?.recordAccess &&
@@ -357,6 +421,9 @@ export class HybridMemoryRetriever {
       fallbackReason,
       embeddingProviderId: this.embeddingProvider?.id ?? null,
       generation,
+      rerankerId: this.reranker?.id ?? null,
+      rerankerFallback,
+      admission,
       results,
     }
   }
@@ -376,6 +443,8 @@ function normalizeConfig(
       input?.vectorWeight,
       DEFAULT_CONFIG.vectorWeight,
     ),
+    lexicalSafetyFloor:
+      input?.lexicalSafetyFloor ?? DEFAULT_CONFIG.lexicalSafetyFloor,
     temporalHalfLifeDays: positiveFinite(
       input?.temporalHalfLifeDays,
       DEFAULT_CONFIG.temporalHalfLifeDays,
@@ -403,6 +472,38 @@ function normalizeConfig(
       1,
       10,
     ),
+    fusionStrategy:
+      input?.fusionStrategy === 'weighted'
+        ? 'weighted'
+        : DEFAULT_CONFIG.fusionStrategy,
+    rrfRankConstant: clampInteger(
+      input?.rrfRankConstant ?? DEFAULT_CONFIG.rrfRankConstant,
+      1,
+      1_000,
+    ),
+    rerankCandidateLimit: clampInteger(
+      input?.rerankCandidateLimit ?? DEFAULT_CONFIG.rerankCandidateLimit,
+      1,
+      100,
+    ),
+    admission: {
+      enabled: input?.admission?.enabled ?? DEFAULT_CONFIG.admission.enabled,
+      minRerankerScore: finiteWeight(
+        input?.admission?.minRerankerScore,
+        DEFAULT_CONFIG.admission.minRerankerScore,
+      ),
+      minVectorScore: finiteWeight(
+        input?.admission?.minVectorScore,
+        DEFAULT_CONFIG.admission.minVectorScore,
+      ),
+      minLexicalScore: finiteWeight(
+        input?.admission?.minLexicalScore,
+        DEFAULT_CONFIG.admission.minLexicalScore,
+      ),
+      requireSignalAgreement:
+        input?.admission?.requireSignalAgreement ??
+        DEFAULT_CONFIG.admission.requireSignalAgreement,
+    },
   }
 }
 
@@ -500,6 +601,36 @@ function rankChunks(input: {
   config: HybridMemoryConfig
   now: number
 }): RankedChunk[] {
+  if (input.config.fusionStrategy === 'rrf') {
+    const byId = new Map(input.chunks.map((chunk) => [chunk.id, chunk]))
+    return reciprocalRankFusion(
+      input.chunks.map((chunk) => ({
+        id: chunk.id,
+        text: chunk.text,
+        lexicalScore: input.lexical.get(chunk.id) ?? 0,
+        vectorScore: input.vector.get(chunk.id) ?? 0,
+      })),
+      input.config.rrfRankConstant,
+    ).map((candidate) => {
+      const chunk = byId.get(candidate.id)!
+      const baseScore = candidate.fusedScore
+      const rawScore =
+        baseScore *
+        temporalDecay(chunk, input.now, input.config) *
+        input.config.sourceWeights[chunk.source] *
+        (1 + Math.log1p(chunk.accessCount ?? 0) * 0.05)
+      return {
+        rawScore,
+        result: {
+          ...publicChunk(chunk),
+          score: rawScore,
+          lexicalScore: candidate.lexicalScore,
+          vectorScore: candidate.vectorScore,
+        },
+        tokens: new Set(chunk.tokens),
+      }
+    })
+  }
   const ranked: RankedChunk[] = []
   for (const chunk of input.chunks) {
     const lexicalScore = input.lexical.get(chunk.id) ?? 0
@@ -508,7 +639,10 @@ function rankChunks(input: {
     const hybrid =
       input.config.textWeight * lexicalScore +
       input.config.vectorWeight * vectorScore
-    const baseScore = lexicalScore > 0 ? Math.max(lexicalScore, hybrid) : hybrid
+    const baseScore =
+      input.config.lexicalSafetyFloor && lexicalScore > 0
+        ? Math.max(lexicalScore, hybrid)
+        : hybrid
     const decay = temporalDecay(chunk, input.now, input.config)
     const sourceWeight = input.config.sourceWeights[chunk.source]
     const accessBoost = 1 + Math.log1p(chunk.accessCount ?? 0) * 0.05
@@ -546,37 +680,47 @@ function temporalDecay(
 function mmrRerank(
   ranked: readonly RankedChunk[],
   config: HybridMemoryMmrConfig,
+  maxResults: number,
 ): RankedChunk[] {
+  const limit = Math.min(ranked.length, Math.max(0, Math.trunc(maxResults)))
   if (!config.enabled || config.lambda >= 1 || ranked.length < 2)
-    return [...ranked]
-  const remaining = [...ranked]
+    return ranked.slice(0, limit)
+  const remaining = ranked.map((item) => ({ item, redundancy: 0 }))
   const selected: RankedChunk[] = []
   const max = Math.max(...ranked.map((item) => item.rawScore))
   const min = Math.min(...ranked.map((item) => item.rawScore))
   const range = Math.max(Number.EPSILON, max - min)
-  while (remaining.length) {
+  // Search only consumes the first maxResults entries. Stopping there preserves
+  // the observable ranking while avoiding a full O(n^3) ordering of candidates
+  // that can never be returned.
+  while (remaining.length && selected.length < limit) {
     let bestIndex = 0
     let bestScore = Number.NEGATIVE_INFINITY
     for (let index = 0; index < remaining.length; index += 1) {
-      const candidate = remaining[index]!
+      const entry = remaining[index]!
+      const candidate = entry.item
       const relevance = (candidate.rawScore - min) / range
-      const redundancy = selected.reduce(
-        (highest, item) =>
-          Math.max(highest, jaccard(candidate.tokens, item.tokens)),
-        0,
-      )
-      const mmr = config.lambda * relevance - (1 - config.lambda) * redundancy
+      const mmr =
+        config.lambda * relevance - (1 - config.lambda) * entry.redundancy
       if (
         mmr > bestScore ||
         (mmr === bestScore &&
-          candidate.result.id.localeCompare(remaining[bestIndex]!.result.id) <
-            0)
+          candidate.result.id.localeCompare(
+            remaining[bestIndex]!.item.result.id,
+          ) < 0)
       ) {
         bestIndex = index
         bestScore = mmr
       }
     }
-    selected.push(remaining.splice(bestIndex, 1)[0]!)
+    const winner = remaining.splice(bestIndex, 1)[0]!.item
+    selected.push(winner)
+    for (const entry of remaining) {
+      entry.redundancy = Math.max(
+        entry.redundancy,
+        jaccard(entry.item.tokens, winner.tokens),
+      )
+    }
   }
   return selected
 }
@@ -699,3 +843,11 @@ function abortError(signal: AbortSignal): Error {
     ? signal.reason
     : new DOMException('The operation was aborted', 'AbortError')
 }
+import {
+  applyRerankerScores,
+  decideMemoryAdmission,
+  reciprocalRankFusion,
+  type MemoryAdmissionConfig,
+  type MemoryAdmissionDecision,
+  type MemoryReranker,
+} from './hybrid-ranking'

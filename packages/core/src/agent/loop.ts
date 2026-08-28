@@ -101,6 +101,8 @@ import type {
 } from '../memory/hybrid-retrieval'
 import { TeiEmbeddingProvider } from '../memory/tei-embedding-provider'
 import { PostgresHybridMemoryVectorStore } from '../memory/postgres-vector-store'
+import { TeiMemoryReranker } from '../memory/tei-reranker'
+import type { MemoryReranker } from '../memory/hybrid-ranking'
 import {
   effectiveCodeIntelligenceCapability,
   resolveCodeIntelligenceMode,
@@ -242,6 +244,7 @@ import type { TeamSubagentRegistry } from '../team/manager'
 import {
   LoadSkill,
   RunCommand,
+  SaveLongTermMemoryTool,
   SaveUserProfileTool,
   TodoStore,
   UpdateTodos,
@@ -362,6 +365,8 @@ export interface AgentLoopCreateOptions {
   memoryEmbeddingProvider?: MemoryEmbeddingProvider | null
   /** Optional derived vector store. Failures fall back to the in-memory index. */
   memoryVectorStore?: HybridMemoryVectorStore | null
+  /** Optional local cross-encoder; failures degrade to RRF. */
+  memoryReranker?: MemoryReranker | null
   /** Provider-bound offline evaluation receipt required before prompt mutation. */
   hybridMemoryEvaluationGate?: HybridMemoryEvaluationGateReceipt | null
   /** Experimental code intelligence remains inert unless a verified gate enables it. */
@@ -800,6 +805,7 @@ export class AgentLoop {
       ),
       embeddingProvider: opts.memoryEmbeddingProvider ?? null,
       vectorStore: opts.memoryVectorStore ?? null,
+      reranker: opts.memoryReranker ?? null,
       evaluationGate: opts.hybridMemoryEvaluationGate ?? null,
     })
     this.codeIntelligence = new CodeIntelligenceService({
@@ -1176,6 +1182,9 @@ export class AgentLoop {
           ),
         })
       : null
+    const configuredReranker = localConfig.memory.reranker
+      ? new TeiMemoryReranker(localConfig.memory.reranker)
+      : null
     const configuredEvaluationGate = loadHybridMemoryEvaluationGate(
       localConfig.memory.evaluationReceiptPath,
     )
@@ -1216,6 +1225,10 @@ export class AgentLoop {
           opts.memoryVectorStore === undefined
             ? configuredVectorStore
             : opts.memoryVectorStore,
+        memoryReranker:
+          opts.memoryReranker === undefined
+            ? configuredReranker
+            : opts.memoryReranker,
         hybridMemoryEvaluationGate:
           opts.hybridMemoryEvaluationGate === undefined
             ? configuredEvaluationGate
@@ -4012,6 +4025,11 @@ export class AgentLoop {
           (sessionId
             ? this.sessionRuntimes.get(sessionId)?.bindings.todoStore
             : null) ?? this.todoStore,
+      ),
+    )
+    this.registry.register(
+      new SaveLongTermMemoryTool(this.sharedMemory, () =>
+        this.refreshRuntimeContext(),
       ),
     )
     this.registry.register(

@@ -155,7 +155,9 @@ describe('desktop release packaging', () => {
     expect(Object.values(pkg.dependencies ?? {})).not.toContain('file:..')
     expect(pkg.devDependencies?.typescript).toBeUndefined()
     expect(viteConfig).toContain('externalizeDepsPlugin')
-    expect(viteConfig).toContain("include: ['typescript', 'node-pty']")
+    expect(viteConfig).toContain(
+      "include: ['typescript', 'node-pty', 'pg-native']",
+    )
     expect(pkg.scripts?.['terminal:smoke']).toContain('smoke-node-pty.cjs')
     expect(pkg.scripts?.build).toContain('node scripts/audit-preload.cjs')
   })

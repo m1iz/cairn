@@ -6,7 +6,11 @@ const repoRoot = resolve(__dirname, '..')
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin({ include: ['typescript', 'node-pty'] })],
+    plugins: [
+      externalizeDepsPlugin({
+        include: ['typescript', 'node-pty', 'pg-native'],
+      }),
+    ],
     build: { outDir: 'out/main' },
   },
   preload: {
