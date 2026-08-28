@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp, unlink, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -45,5 +45,23 @@ describe('withLock', () => {
       timeoutMs: 1000,
     })
     expect(out).toBe('ok')
+  })
+
+  it('does not reclaim an old lock while its owner process is alive', async () => {
+    const target = join(dir, 'live.json')
+    const lockPath = `${target}.lock`
+    await writeFile(lockPath, String(process.pid), 'utf8')
+    const old = new Date(Date.now() - 60_000)
+    await utimes(lockPath, old, old)
+
+    await expect(
+      withLock(target, async () => 'unreachable', {
+        staleMs: 0,
+        timeoutMs: 50,
+        retryMs: 5,
+      }),
+    ).rejects.toThrow('timed out acquiring')
+    expect(existsSync(lockPath)).toBe(true)
+    await unlink(lockPath)
   })
 })

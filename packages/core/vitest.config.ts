@@ -8,7 +8,7 @@ export default defineConfig({
     // Git/process-heavy integration suites contend badly at the default
     // machine-wide worker count and can cross their safety timeout despite
     // passing in isolation. Bound concurrency without relaxing normal tests.
-    minWorkers: 2,
-    maxWorkers: 6,
+    minWorkers: process.platform === 'win32' ? 1 : 2,
+    maxWorkers: process.platform === 'win32' ? 2 : 6,
   },
 })

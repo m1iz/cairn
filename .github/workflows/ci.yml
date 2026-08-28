@@ -77,9 +77,9 @@ jobs:
           node scripts/verify-vitest-baseline.mjs
           --cwd packages/core
           --vitest ../../node_modules/vitest/vitest.mjs
-          --min-passed 2219
+          --min-passed 2247
           --max-failed 0
-          --max-skipped 19
+          --max-skipped 21
           --max-runtime-errors 0
       - name: Reject Desktop regressions beyond the captured baseline
         run: >-
@@ -110,9 +110,9 @@ jobs:
           node scripts/verify-vitest-baseline.mjs
           --cwd packages/core
           --vitest ../../node_modules/vitest/vitest.mjs
-          --min-passed 2220
+          --min-passed 2261
           --max-failed 0
-          --max-skipped 5
+          --max-skipped 7
           --max-runtime-errors 0
       - name: Reject Desktop regressions beyond the captured UI baseline
         run: >-

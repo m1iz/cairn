@@ -1,4 +1,4 @@
-import { open, stat, unlink } from 'node:fs/promises'
+import { open, readFile, stat, unlink } from 'node:fs/promises'
 
 /**
  * 文件锁。
@@ -29,13 +29,32 @@ async function acquire(lockPath: string, staleMs: number): Promise<boolean> {
     // 锁已存在：若 stale 则回收一次再让下一轮重试。
     try {
       const s = await stat(lockPath)
-      if (Date.now() - s.mtimeMs > staleMs) {
+      if (
+        Date.now() - s.mtimeMs > staleMs &&
+        !(await lockOwnerIsAlive(lockPath))
+      ) {
         await unlink(lockPath).catch(() => {})
       }
     } catch {
       // 锁文件刚好被别人释放，下一轮重试即可。
     }
     return false
+  }
+}
+
+async function lockOwnerIsAlive(lockPath: string): Promise<boolean> {
+  let pid = 0
+  try {
+    pid = Number.parseInt((await readFile(lockPath, 'utf8')).trim(), 10)
+  } catch {
+    return false
+  }
+  if (!Number.isSafeInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== 'ESRCH'
   }
 }
 
