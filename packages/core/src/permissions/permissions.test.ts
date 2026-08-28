@@ -163,6 +163,8 @@ describe('PermissionPolicy (test_permissions.py)', () => {
       'manage_subagent',
       'request_plan_mode',
       'save_long_term_memory',
+      'update_long_term_memory',
+      'delete_long_term_memory',
     ]) {
       expect(
         policy.assess(toolName, {}, PermissionMode.ASK_BEFORE_EDIT),

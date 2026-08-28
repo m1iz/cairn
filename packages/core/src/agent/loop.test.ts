@@ -333,6 +333,8 @@ describe('AgentLoop', () => {
     expect(loop.registry.has('scheduler')).toBe(true)
     expect(loop.registry.has('spawn_teammate')).toBe(true)
     expect(loop.registry.has('save_long_term_memory')).toBe(true)
+    expect(loop.registry.has('update_long_term_memory')).toBe(true)
+    expect(loop.registry.has('delete_long_term_memory')).toBe(true)
     expect(loop.environmentCatalog.catalog.catalogId).toBe(
       'cairn-environment-tools',
     )

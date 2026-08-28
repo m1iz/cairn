@@ -242,11 +242,13 @@ import {
 import { TeamManager } from '../team/manager'
 import type { TeamSubagentRegistry } from '../team/manager'
 import {
+  DeleteLongTermMemoryTool,
   LoadSkill,
   RunCommand,
   SaveLongTermMemoryTool,
   SaveUserProfileTool,
   TodoStore,
+  UpdateLongTermMemoryTool,
   UpdateTodos,
   WebFetch,
   type SkillsLoader as ToolSkillsLoader,
@@ -4028,9 +4030,22 @@ export class AgentLoop {
       ),
     )
     this.registry.register(
-      new SaveLongTermMemoryTool(this.sharedMemory, () =>
-        this.refreshRuntimeContext(),
-      ),
+      new SaveLongTermMemoryTool(this.sharedMemory, () => {
+        this.hybridMemory.invalidateSource()
+        this.refreshRuntimeContext()
+      }),
+    )
+    this.registry.register(
+      new UpdateLongTermMemoryTool(this.sharedMemory, () => {
+        this.hybridMemory.invalidateSource()
+        this.refreshRuntimeContext()
+      }),
+    )
+    this.registry.register(
+      new DeleteLongTermMemoryTool(this.sharedMemory, () => {
+        this.hybridMemory.invalidateSource()
+        this.refreshRuntimeContext()
+      }),
     )
     this.registry.register(
       new SaveUserProfileTool(

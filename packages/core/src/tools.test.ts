@@ -1158,3 +1158,96 @@ describe('SaveLongTermMemoryTool', () => {
     expect(memory.readMemory()).toBe(before)
   })
 })
+
+describe('managed long-term memory mutation tools', () => {
+  it('updates one exact fact, versions the change, and refreshes runtime context', async () => {
+    const { mkdtempSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const { MemoryStore } = await import('./memory/store')
+    const { SaveLongTermMemoryTool, UpdateLongTermMemoryTool } =
+      await import('./tools/builtin')
+    const dir = mkdtempSync(join(tmpdir(), 'cairn-update-memory-'))
+    const memory = new MemoryStore(
+      join(dir, 'memory'),
+      join(dir, 'USER.local.md'),
+    )
+    await new SaveLongTermMemoryTool(memory).execute({
+      content: '处理复杂任务时，用户偏好先看三行摘要，再看详细步骤。',
+    })
+    let refreshes = 0
+    const tool = new UpdateLongTermMemoryTool(memory, () => {
+      refreshes += 1
+    })
+
+    const result = await tool.execute({
+      current_content: '处理复杂任务时，用户偏好先看三行摘要，再看详细步骤。',
+      new_content: '处理复杂任务时，用户偏好直接查看详细内容，不先提供摘要。',
+    })
+
+    expect(result).toContain('更新全局私有长期记忆')
+    expect(memory.readMemory()).not.toContain('先看三行摘要')
+    expect(memory.readMemory()).toContain('不先提供摘要')
+    expect(memory.versions.list({ target: 'memory' })).toHaveLength(2)
+    expect(refreshes).toBe(1)
+  })
+
+  it('does not approximate a missing update target or invoke refresh', async () => {
+    const { mkdtempSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const { MemoryStore } = await import('./memory/store')
+    const { UpdateLongTermMemoryTool } = await import('./tools/builtin')
+    const dir = mkdtempSync(join(tmpdir(), 'cairn-update-missing-'))
+    const memory = new MemoryStore(
+      join(dir, 'memory'),
+      join(dir, 'USER.local.md'),
+    )
+    const before = memory.readMemory()
+    let refreshes = 0
+    const tool = new UpdateLongTermMemoryTool(memory, () => {
+      refreshes += 1
+    })
+
+    const result = await tool.execute({
+      current_content: '不存在的旧事实',
+      new_content: '不能被隐式追加的新事实',
+    })
+
+    expect(result).toContain('memory_item_not_found')
+    expect(memory.readMemory()).toBe(before)
+    expect(refreshes).toBe(0)
+  })
+
+  it('deletes an exact fact, including secret-like legacy content, with a recoverable version', async () => {
+    const { mkdtempSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const { MemoryStore } = await import('./memory/store')
+    const { DeleteLongTermMemoryTool } = await import('./tools/builtin')
+    const dir = mkdtempSync(join(tmpdir(), 'cairn-delete-memory-'))
+    const memory = new MemoryStore(
+      join(dir, 'memory'),
+      join(dir, 'USER.local.md'),
+    )
+    writeFileSync(
+      memory.memoryFile,
+      '# Long-term Memory\n\n## Key Facts\n- api_key=sk-legacy-secret-1234567890\n- keep me\n',
+      'utf8',
+    )
+    let refreshes = 0
+    const tool = new DeleteLongTermMemoryTool(memory, () => {
+      refreshes += 1
+    })
+
+    const result = await tool.execute({
+      content: 'api_key=sk-legacy-secret-1234567890',
+    })
+
+    expect(result).toContain('删除指定的全局私有长期记忆')
+    expect(memory.readMemory()).not.toContain('sk-legacy-secret')
+    expect(memory.readMemory()).toContain('- keep me')
+    expect(memory.versions.list({ target: 'memory' })).toHaveLength(1)
+    expect(refreshes).toBe(1)
+  })
+})

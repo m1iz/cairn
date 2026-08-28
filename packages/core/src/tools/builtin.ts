@@ -305,9 +305,7 @@ export class SaveLongTermMemoryTool extends Tool {
   }
 
   execute(args: Record<string, unknown>): string {
-    const content = String(args.content ?? '')
-      .replace(/\s+/g, ' ')
-      .trim()
+    const content = normalizeLongTermMemoryContent(args.content)
     if (!content)
       return 'Error: save_long_term_memory rejected: content is required.'
     if (content.length > 2_000)
@@ -352,6 +350,155 @@ export class SaveLongTermMemoryTool extends Tool {
     return result.appliedOperations > 0
       ? '已通过受控 memory patch 写入全局私有长期记忆。'
       : '该事实已存在于全局私有长期记忆，无需重复写入。'
+  }
+}
+
+export class UpdateLongTermMemoryTool extends Tool {
+  override name = 'update_long_term_memory'
+  override description =
+    '修改一条已经存在的全局私有长期记忆。current_content 必须复制已注入长期记忆中的完整旧事实，new_content 是替换后的单条事实。' +
+    '只在用户表达跨对话持续生效的更正、替换或新偏好时使用；“这次/当前对话”不使用。工具只允许唯一精确匹配，找不到或存在歧义时不会写入。'
+  override parameters = toolParamsSchema(
+    {
+      current_content: S('现有 Key Facts 条目中的完整旧事实，不包含列表符号'),
+      new_content: S('替换后的单条完整事实，不包含 Markdown 标题'),
+    },
+    ['current_content', 'new_content'],
+  )
+  override readOnly = false
+  override evidencePolicy = 'forbidden' as const
+
+  private readonly writer: LongTermMemoryWriter
+  private readonly onSaved: (() => void) | null
+
+  constructor(writer: LongTermMemoryWriter, onSaved?: (() => void) | null) {
+    super()
+    this.writer = writer
+    this.onSaved = onSaved ?? null
+  }
+
+  execute(args: Record<string, unknown>): string {
+    const currentContent = normalizeLongTermMemoryContent(args.current_content)
+    const newContent = normalizeLongTermMemoryContent(args.new_content)
+    if (!currentContent || !newContent)
+      return 'Error: update_long_term_memory rejected: current_content and new_content are required.'
+    if (currentContent.length > 2_000 || newContent.length > 2_000)
+      return 'Error: update_long_term_memory rejected: memory items must not exceed 2000 characters.'
+    if (!isPatchCapableMemoryWriter(this.writer))
+      return 'Error: update_long_term_memory rejected: patch-capable Core memory writer is required.'
+
+    const current = this.writer.readMemory()
+    const result = applyMemoryPatchToFile(
+      {
+        target: { kind: 'global' },
+        baseVersion: this.writer.versions.nextVersionForPath(
+          this.writer.memoryFile,
+          { target: 'memory' },
+        ),
+        baseHash: memoryContentHash(current),
+        operations: [
+          {
+            op: 'replace_section_item',
+            section: 'Key Facts',
+            currentItem: currentContent,
+            newItem: newContent,
+          },
+        ],
+        rationale: 'update_long_term_memory',
+      },
+      memoryPatchFileOptions(this.writer),
+    )
+    if (!result.ok)
+      return `Error: update_long_term_memory rejected: ${result.errors.join(', ')}`
+    if (result.appliedOperations > 0) this.onSaved?.()
+    return result.appliedOperations > 0
+      ? '已通过受控 memory patch 更新全局私有长期记忆。'
+      : '长期记忆已经是目标内容，无需更新。'
+  }
+}
+
+export class DeleteLongTermMemoryTool extends Tool {
+  override name = 'delete_long_term_memory'
+  override description =
+    '删除一条用户明确要求忘记或移除的全局私有长期记忆。content 必须复制已注入长期记忆中 Key Facts 的完整事实。' +
+    '工具只允许唯一精确匹配，不做语义猜测；找不到或存在歧义时不会删除。删除前由 Core 自动保存可恢复版本。'
+  override parameters = toolParamsSchema(
+    { content: S('要删除的 Key Facts 完整事实，不包含列表符号') },
+    ['content'],
+  )
+  override readOnly = false
+  override evidencePolicy = 'forbidden' as const
+
+  private readonly writer: LongTermMemoryWriter
+  private readonly onSaved: (() => void) | null
+
+  constructor(writer: LongTermMemoryWriter, onSaved?: (() => void) | null) {
+    super()
+    this.writer = writer
+    this.onSaved = onSaved ?? null
+  }
+
+  execute(args: Record<string, unknown>): string {
+    const content = normalizeLongTermMemoryContent(args.content)
+    if (!content)
+      return 'Error: delete_long_term_memory rejected: content is required.'
+    if (content.length > 2_000)
+      return 'Error: delete_long_term_memory rejected: content exceeds 2000 characters.'
+    if (!isPatchCapableMemoryWriter(this.writer))
+      return 'Error: delete_long_term_memory rejected: patch-capable Core memory writer is required.'
+
+    const current = this.writer.readMemory()
+    const result = applyMemoryPatchToFile(
+      {
+        target: { kind: 'global' },
+        baseVersion: this.writer.versions.nextVersionForPath(
+          this.writer.memoryFile,
+          { target: 'memory' },
+        ),
+        baseHash: memoryContentHash(current),
+        operations: [
+          {
+            op: 'remove_section_item',
+            section: 'Key Facts',
+            item: content,
+          },
+        ],
+        rationale: 'delete_long_term_memory',
+      },
+      memoryPatchFileOptions(this.writer),
+    )
+    if (!result.ok)
+      return `Error: delete_long_term_memory rejected: ${result.errors.join(', ')}`
+    if (result.appliedOperations > 0) this.onSaved?.()
+    return result.appliedOperations > 0
+      ? '已通过受控 memory patch 删除指定的全局私有长期记忆。'
+      : '指定长期记忆已经不存在，无需删除。'
+  }
+}
+
+function normalizeLongTermMemoryContent(value: unknown): string {
+  return String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function isPatchCapableMemoryWriter(
+  writer: LongTermMemoryWriter,
+): writer is Required<LongTermMemoryWriter> {
+  return Boolean(
+    writer.readMemory &&
+    writer.memoryFile &&
+    writer.memoryDir &&
+    writer.versions,
+  )
+}
+
+function memoryPatchFileOptions(writer: Required<LongTermMemoryWriter>) {
+  return {
+    targetPath: writer.memoryFile,
+    versions: writer.versions,
+    versionTarget: 'memory' as const,
+    ledgerPath: join(writer.memoryDir, 'patch-ledger.jsonl'),
   }
 }
 

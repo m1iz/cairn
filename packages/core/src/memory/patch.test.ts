@@ -75,6 +75,155 @@ describe('MemoryPatch validation and application', () => {
     expect(result.content.match(/- make check/g)).toHaveLength(1)
   })
 
+  it('replaces exactly one matching section item without touching similar facts', () => {
+    const current = [
+      '# Global Long-Term Memory',
+      '',
+      '## Key Facts',
+      '- 处理复杂任务时，用户偏好先看三行摘要，再看详细步骤。',
+      '- 处理简单任务时，用户偏好一句话回答。',
+      '',
+    ].join('\n')
+    const patch: MemoryPatch = {
+      target: { kind: 'global' },
+      baseVersion: 1,
+      baseHash: memoryContentHash(current),
+      operations: [
+        {
+          op: 'replace_section_item',
+          section: 'Key Facts',
+          currentItem: '处理复杂任务时，用户偏好先看三行摘要，再看详细步骤。',
+          newItem: '处理复杂任务时，用户偏好直接查看详细内容，不先提供摘要。',
+        },
+      ],
+      rationale: 'update_long_term_memory',
+    }
+
+    const result = applyMemoryPatch(patch, current)
+
+    expect(result.ok).toBe(true)
+    expect(result.appliedOperations).toBe(1)
+    expect(result.content).not.toContain('先看三行摘要')
+    expect(result.content).toContain(
+      '- 处理复杂任务时，用户偏好直接查看详细内容，不先提供摘要。',
+    )
+    expect(result.content).toContain('- 处理简单任务时，用户偏好一句话回答。')
+  })
+
+  it('removes exactly one matching section item and permits deleting secret-like legacy content', () => {
+    const current = [
+      '# Global Long-Term Memory',
+      '',
+      '## Key Facts',
+      '- api_key=sk-legacy-secret-1234567890',
+      '- harmless fact',
+      '',
+    ].join('\n')
+    const patch: MemoryPatch = {
+      target: { kind: 'global' },
+      baseVersion: 1,
+      baseHash: memoryContentHash(current),
+      operations: [
+        {
+          op: 'remove_section_item',
+          section: 'Key Facts',
+          item: 'api_key=sk-legacy-secret-1234567890',
+        },
+      ],
+      rationale: 'delete_long_term_memory',
+    }
+
+    const result = applyMemoryPatch(patch, current)
+
+    expect(result.ok).toBe(true)
+    expect(result.appliedOperations).toBe(1)
+    expect(result.content).not.toContain('sk-legacy-secret')
+    expect(result.content).toContain('- harmless fact')
+  })
+
+  it('leaves all content untouched when an exact item mutation has no unique match', () => {
+    const current = [
+      '# Global Long-Term Memory',
+      '',
+      '## Key Facts',
+      '- duplicate fact',
+      '- duplicate fact',
+      '',
+    ].join('\n')
+    const missing: MemoryPatch = {
+      target: { kind: 'global' },
+      baseVersion: 1,
+      baseHash: memoryContentHash(current),
+      operations: [
+        {
+          op: 'remove_section_item',
+          section: 'Key Facts',
+          item: 'missing fact',
+        },
+      ],
+      rationale: 'delete_long_term_memory',
+    }
+    const ambiguous: MemoryPatch = {
+      ...missing,
+      operations: [
+        {
+          op: 'replace_section_item',
+          section: 'Key Facts',
+          currentItem: 'duplicate fact',
+          newItem: 'replacement fact',
+        },
+      ],
+    }
+
+    const missingResult = applyMemoryPatch(missing, current)
+    const ambiguousResult = applyMemoryPatch(ambiguous, current)
+
+    expect(missingResult).toMatchObject({
+      ok: false,
+      content: current,
+      errors: ['memory_item_not_found'],
+      appliedOperations: 0,
+    })
+    expect(ambiguousResult).toMatchObject({
+      ok: false,
+      content: current,
+      errors: ['ambiguous_memory_item'],
+      appliedOperations: 0,
+    })
+  })
+
+  it('deduplicates an update whose replacement already exists', () => {
+    const current = [
+      '# Global Long-Term Memory',
+      '',
+      '## Key Facts',
+      '- old preference',
+      '- current preference',
+      '',
+    ].join('\n')
+    const patch: MemoryPatch = {
+      target: { kind: 'global' },
+      baseVersion: 1,
+      baseHash: memoryContentHash(current),
+      operations: [
+        {
+          op: 'replace_section_item',
+          section: 'Key Facts',
+          currentItem: 'old preference',
+          newItem: 'current preference',
+        },
+      ],
+      rationale: 'update_long_term_memory',
+    }
+
+    const result = applyMemoryPatch(patch, current)
+
+    expect(result.ok).toBe(true)
+    expect(result.appliedOperations).toBe(1)
+    expect(result.content).not.toContain('old preference')
+    expect(result.content.match(/current preference/g)).toHaveLength(1)
+  })
+
   it('rejects base hash mismatches before applying operations', () => {
     const current = '# Global Long-Term Memory\n\n## Open Questions\n- Q\n'
     const patch: MemoryPatch = {

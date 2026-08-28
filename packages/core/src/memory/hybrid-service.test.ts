@@ -178,6 +178,27 @@ describe('HybridMemoryService', () => {
     expect((await service.retrieve(input)).search?.strategy).toBe('hybrid')
     expect(calls).toBe(3)
   })
+
+  it('allows a managed memory mutation to invalidate the indexed source', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'cairn-hybrid-invalidate-'))
+    const service = serviceFor(root, 'eval')
+    const first = await service.retrieve({
+      query: 'old preference',
+      documents: [document('memory', '## Key Facts\n\n- old preference')],
+      scope: { mode: 'chat', sessionId: 's1' },
+    })
+
+    service.invalidateSource()
+    const second = await service.retrieve({
+      query: 'new preference',
+      documents: [document('memory', '## Key Facts\n\n- new preference')],
+      scope: { mode: 'chat', sessionId: 's1' },
+    })
+
+    expect(first.sourceDigest).not.toBe(second.sourceDigest)
+    expect(second.search?.results[0]?.text).toContain('new preference')
+    expect(second.search?.results[0]?.text).not.toContain('old preference')
+  })
 })
 
 function serviceFor(

@@ -853,11 +853,13 @@ const INTERNAL_AGENT_STATE_MUTATIONS = new Set([
   'block_goal',
   'complete_goal',
   'define_goal_contract',
+  'delete_long_term_memory',
   'dispatch_subagent',
   'manage_subagent',
   'record_goal_evidence',
   'request_plan_mode',
   'save_long_term_memory',
+  'update_long_term_memory',
   'update_todos',
 ])
 

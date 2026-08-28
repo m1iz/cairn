@@ -20,6 +20,13 @@ export type MemoryScope =
 export type MemoryPatchOperation =
   | { op: 'append_section_item'; section: string; item: string }
   | { op: 'replace_section'; section: string; content: string }
+  | {
+      op: 'replace_section_item'
+      section: string
+      currentItem: string
+      newItem: string
+    }
+  | { op: 'remove_section_item'; section: string; item: string }
   | { op: 'mark_deprecated'; itemId: string; reason: string }
   | { op: 'update_item'; itemId: string; content: string }
 
@@ -90,6 +97,33 @@ export function applyMemoryPatch(
     } else if (op.op === 'replace_section') {
       next = replaceSection(next, op.section, op.content)
       appliedOperations += 1
+    } else if (op.op === 'replace_section_item') {
+      const mutation = replaceExactSectionItem(
+        next,
+        op.section,
+        op.currentItem,
+        op.newItem,
+      )
+      if (mutation.error)
+        return {
+          ok: false,
+          content: current,
+          errors: [mutation.error],
+          appliedOperations: 0,
+        }
+      next = mutation.content
+      appliedOperations += mutation.changed ? 1 : 0
+    } else if (op.op === 'remove_section_item') {
+      const mutation = removeExactSectionItem(next, op.section, op.item)
+      if (mutation.error)
+        return {
+          ok: false,
+          content: current,
+          errors: [mutation.error],
+          appliedOperations: 0,
+        }
+      next = mutation.content
+      appliedOperations += mutation.changed ? 1 : 0
     } else if (op.op === 'mark_deprecated') {
       next = appendSectionItem(
         next,
@@ -173,6 +207,15 @@ export function validateMemoryPatch(
     ) {
       errors.push('destructive_profile_replacement')
     }
+    if (
+      op.op === 'replace_section_item' &&
+      (!normalizeMemoryItem(op.currentItem) || !normalizeMemoryItem(op.newItem))
+    ) {
+      errors.push('memory_item_content_required')
+    }
+    if (op.op === 'remove_section_item' && !normalizeMemoryItem(op.item)) {
+      errors.push('memory_item_content_required')
+    }
   }
 
   return unique(errors)
@@ -189,6 +232,8 @@ function schemaKindForScope(scope: MemoryScope): MemoryMarkdownKind | null {
 function operationText(op: MemoryPatchOperation): string {
   if (op.op === 'append_section_item') return op.item
   if (op.op === 'replace_section') return op.content
+  if (op.op === 'replace_section_item') return op.newItem
+  if (op.op === 'remove_section_item') return ''
   if (op.op === 'mark_deprecated') return `${op.itemId}\n${op.reason}`
   return `${op.itemId}\n${op.content}`
 }
@@ -207,10 +252,96 @@ function sectionContainsItem(
 
 function normalizeMemoryItem(value: string): string {
   return String(value ?? '')
+    .normalize('NFKC')
     .trim()
     .replace(/^\s*[-*]\s+/, '')
     .replace(/\s+/g, ' ')
     .toLowerCase()
+}
+
+interface ExactSectionItemMutation {
+  content: string
+  changed: boolean
+  error: string | null
+}
+
+function replaceExactSectionItem(
+  markdown: string,
+  section: string,
+  currentItem: string,
+  newItem: string,
+): ExactSectionItemMutation {
+  const body = sectionBody(markdown, section)
+  const lines = body.split('\n')
+  const target = normalizeMemoryItem(currentItem)
+  const matches = matchingLineIndexes(lines, target)
+  if (matches.length === 0)
+    return unchangedMutation(markdown, 'memory_item_not_found')
+  if (matches.length > 1)
+    return unchangedMutation(markdown, 'ambiguous_memory_item')
+
+  const index = matches[0]!
+  const replacement = normalizeBulletItem(newItem)
+  const normalizedReplacement = normalizeMemoryItem(replacement)
+  if (normalizedReplacement === target)
+    return { content: markdown, changed: false, error: null }
+
+  const duplicate = lines.some(
+    (line, lineIndex) =>
+      lineIndex !== index &&
+      normalizeMemoryItem(line) === normalizedReplacement,
+  )
+  if (duplicate) lines.splice(index, 1)
+  else lines[index] = replacement
+  return {
+    content: replaceSection(markdown, section, lines.join('\n')),
+    changed: true,
+    error: null,
+  }
+}
+
+function removeExactSectionItem(
+  markdown: string,
+  section: string,
+  item: string,
+): ExactSectionItemMutation {
+  const body = sectionBody(markdown, section)
+  const lines = body.split('\n')
+  const matches = matchingLineIndexes(lines, normalizeMemoryItem(item))
+  if (matches.length === 0)
+    return unchangedMutation(markdown, 'memory_item_not_found')
+  if (matches.length > 1)
+    return unchangedMutation(markdown, 'ambiguous_memory_item')
+  lines.splice(matches[0]!, 1)
+  return {
+    content: replaceSection(markdown, section, lines.join('\n')),
+    changed: true,
+    error: null,
+  }
+}
+
+function matchingLineIndexes(lines: string[], target: string): number[] {
+  if (!target) return []
+  const matches: number[] = []
+  lines.forEach((line, index) => {
+    if (normalizeMemoryItem(line) === target) matches.push(index)
+  })
+  return matches
+}
+
+function normalizeBulletItem(value: string): string {
+  const content = String(value ?? '')
+    .trim()
+    .replace(/^\s*[-*]\s+/, '')
+    .replace(/\s+/g, ' ')
+  return `- ${content}`
+}
+
+function unchangedMutation(
+  content: string,
+  error: string,
+): ExactSectionItemMutation {
+  return { content, changed: false, error }
 }
 
 function containsSecret(text: string): boolean {

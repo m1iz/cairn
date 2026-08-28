@@ -152,6 +152,11 @@ export class HybridMemoryService {
     }
   }
 
+  /** Force the next retrieval to rebuild derived and vector indexes from Markdown. */
+  invalidateSource(): void {
+    this.indexedDigest = null
+  }
+
   private async ensureIndexed(
     sourceDigest: string,
     chunks: Parameters<HybridMemoryRetriever['replace']>[0],
