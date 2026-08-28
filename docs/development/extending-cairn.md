@@ -144,13 +144,12 @@ flowchart LR
 - 会进入模型调用关键路径的 memory、skills、MCP 或环境读取接入 `PromptPrefetchCoordinator`，声明 required/optional 与 timeout，接受父 `AbortSignal`；required 失败必须保留稳定领域错误并 fail closed。
 - 自动语义压缩使用显式 runner option 控制，不能再与日志轮转、环境变量或 provider cache hit 绑定。保留三次失败 breaker、已提交回复不回滚和 history 副本测试。
 
-### Hybrid Memory 评估与启用
+### Hybrid Memory 启用
 
 - `cairn.local.json` 的 `memory.hybridMemory` 只能是 `off`、`eval` 或 `on`，缺失/非法值必须回到 `off`；通过 `ConfigResolver` 解释来源，未信任 project 只能收紧，不能启用。
 - 新 embedding provider 必须有稳定 `id` 和固定 `dimensions`，实现批量 `embed(texts, signal)` 并尊重 abort。provider/index/query 失败必须回退 FTS；不得把原始异常、记忆正文或绝对路径写入普通 runtime event。
-- 先运行 `npm run eval:hybrid-memory --workspace @cairn/core`。门禁必须证明 factual hit 提升、stale violation 降低、cross-project pollution 为零且不回归、真实 embedding 故障可降级，并记录 dataset SHA-256、延迟和派生磁盘增量。
-- 离线 fixture 的通过结果不能替代生产证明。运行时 receipt 必须绑定同一 `embeddingProviderId` 和 dataset SHA-256；缺 provider、receipt 未通过或 provider ID 不匹配时，显式 `on` 仍降为 `eval`，不允许修改 prompt。
-- Markdown 继续是权威源，`memory/hybrid-index/` 必须可删除重建。修改 chunk、BM25、时间衰减、source weight、MMR 或 scope 策略时必须固定评估数据版本并重新跑跨项目污染用例。
+- 运行时 capability receipt 必须绑定当前 `embeddingProviderId`；缺 provider、receipt 未通过或 provider ID 不匹配时，显式 `on` 仍降为 `eval`，不允许修改 prompt。
+- Markdown 继续是权威源，`memory/hybrid-index/` 必须可删除重建。修改 chunk、BM25、时间衰减、source weight、MMR 或 scope 策略时必须重新验证跨项目隔离与 embedding 故障降级。
 
 ### Code Intelligence / LSP 评估与启用
 

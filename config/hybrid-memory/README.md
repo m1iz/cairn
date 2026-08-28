@@ -19,17 +19,12 @@ The stack binds only to loopback:
   `intfloat/multilingual-e5-small` (384 dimensions).
 - PostgreSQL + pgvector at `127.0.0.1:54329`.
 
-## Evaluation gate
+## Activation
 
-The fixed bilingual dataset is
-`packages/core/src/memory/fixtures/hybrid-memory-eval-v2.json`. The live
-integration evaluation requires `CAIRN_MEMORY_INTEGRATION=1`,
-`CAIRN_MEMORY_DATABASE_URL`, and optional report/receipt output paths. The
-receipt is bound to both the dataset hash and embedding provider ID; Cairn will
-not mutate model prompts in `on` mode without a matching passing receipt.
-
-Local database files, downloaded model weights, passwords, reports, and
-receipts belong outside the repository and must not be committed.
+Hybrid memory activation is controlled by trusted local configuration and a
+provider-bound capability receipt. Without a matching receipt, Cairn does not
+project derived memory into model prompts. Local database files, downloaded
+model weights, passwords, and runtime state belong outside the repository.
 
 The optional local cross-encoder is started with
 `docker compose --profile reranker up -d`. It uses the NVIDIA GPU and stores
@@ -57,16 +52,3 @@ The production path uses reciprocal-rank fusion, reranks at most twenty
 candidates, and applies an admission decision before any memory is projected
 into the model prompt. A weak top result therefore produces an explicit empty
 memory result instead of injecting the nearest unrelated chunk.
-
-## Public LongMemEval retrieval evaluation
-
-The opt-in `npm run eval:longmemeval --workspace @cairn/core` benchmark reads
-the official cleaned LongMemEval-S dataset from `CAIRN_LONGMEMEVAL_DATA` and
-writes its report to `CAIRN_LONGMEMEVAL_REPORT`. It never calls the configured
-chat model. Document embeddings are cached in the separate PostgreSQL database
-specified by `CAIRN_LONGMEMEVAL_DATABASE_URL`, so an interrupted first run can
-reuse completed embedding work without polluting the normal memory database.
-The report keeps strict BM25-only and vector-only baselines separate from a
-neutral fusion baseline and the Cairn production-default strategy. Its scores
-use each question's official haystack; they are not global-corpus retrieval
-scores.

@@ -54,6 +54,17 @@ coverage/
 /packages/core/pnpm-workspace.yaml
 /packages/core/src/agent/swe-sample-eval.live.test.ts
 
+# Local memory evaluation harnesses and datasets (never publish)
+/packages/core/src/memory/fixtures/hybrid-memory-eval-v2.json
+/packages/core/src/memory/hybrid-eval.ts
+/packages/core/src/memory/hybrid-eval.test.ts
+/packages/core/src/memory/hybrid-offline-eval.test.ts
+/packages/core/src/memory/hybrid-real-eval.integration.test.ts
+/packages/core/src/memory/longmemeval-eval.ts
+/packages/core/src/memory/longmemeval-eval.test.ts
+/packages/core/src/memory/longmemeval-retrieval.integration.test.ts
+/packages/core/src/memory/longmemeval-global.integration.test.ts
+
 # Logs / local automation state
 /logs/
 npm-debug.log*

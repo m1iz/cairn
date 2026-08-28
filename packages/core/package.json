@@ -18,9 +18,6 @@
     "headless:acp": "npm run build:acp && node dist/bin/cairn-acp.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "eval:hybrid-memory": "vitest run src/memory/hybrid-offline-eval.test.ts --reporter=verbose",
-    "eval:longmemeval": "vitest run src/memory/longmemeval-retrieval.integration.test.ts --reporter=verbose",
-    "eval:longmemeval-global": "vitest run src/memory/longmemeval-global.integration.test.ts --reporter=verbose",
     "eval:code-intelligence": "node --expose-gc ../../node_modules/vitest/vitest.mjs run src/code-intelligence/offline-eval.test.ts --reporter=verbose",
     "eval:soft-git-rewind": "vitest run src/checkpoints/soft-git-rewind.test.ts src/checkpoints/soft-git-rewind-eval.test.ts --reporter=verbose",
     "lint": "eslint src --max-warnings=0"

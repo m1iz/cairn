@@ -21,7 +21,6 @@
     <a href="#快速开始">快速开始</a> ·
     <a href="#核心能力">核心能力</a> ·
     <a href="#系统架构">系统架构</a> ·
-    <a href="#评测">评测</a> ·
     <a href="docs/README.md">完整文档</a>
   </p>
 </div>
@@ -114,7 +113,6 @@ flowchart LR
 Renderer 不直接持有本机权限。Electron Main 对 IPC 操作重新授权，Core 负责输入校验、领域服务组合、工具权限与持久状态；默认私有数据根为 `~/.cairn`。
 
 详细设计见[架构总览](docs/architecture/overview.md)与[控制和权限](docs/architecture/control-and-permissions.md)。
-
 
 ## 文档导航
 
