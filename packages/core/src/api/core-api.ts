@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { DRAFT_SESSION_PREFIX } from '../sessions/constants'
 import { dirname, join, resolve } from 'node:path'
+import { windowsPowerShellExecutable } from '../util/windows-system'
 import { AttachmentStore } from '../attachments/store'
 import {
   AgentLoop,
@@ -2001,17 +2002,8 @@ function unavailablePtyHost(): PtyHost {
 
 function defaultSystemShell(): { executable: string; args: string[] } {
   if (process.platform === 'win32') {
-    const windowsRoot = process.env.SystemRoot || process.env.WINDIR
     return {
-      executable: windowsRoot
-        ? join(
-            windowsRoot,
-            'System32',
-            'WindowsPowerShell',
-            'v1.0',
-            'powershell.exe',
-          )
-        : 'powershell.exe',
+      executable: windowsPowerShellExecutable(),
       args: ['-NoLogo'],
     }
   }

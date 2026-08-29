@@ -31,6 +31,7 @@ import { S, toolParamsSchema } from './schema'
 import { isReadonlyCommand } from './resolvers'
 import { pathsEqual } from '../util/paths'
 import { analyzeShellCommandFailClosed } from '../permissions/shell-ast'
+import { windowsSystemExecutable } from '../util/windows-system'
 
 export { GlobTool, GrepTool } from './search'
 export { WebFetch } from './web-fetch'
@@ -721,7 +722,7 @@ export class RunCommand extends Tool {
         const owned = await this.ownedRunner.run({
           executable:
             process.platform === 'win32'
-              ? process.env.ComSpec || 'cmd.exe'
+              ? windowsSystemExecutable('cmd.exe')
               : '/bin/sh',
           args:
             process.platform === 'win32'

@@ -2,6 +2,9 @@ import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { uptime } from 'node:os'
+import { windowsPowerShellExecutable } from './windows-system'
+
+const WINDOWS_IDENTITY_TIMEOUT_MS = 5_000
 
 export type StableProcessStartIdentity =
   | {
@@ -58,14 +61,14 @@ export function systemBootMarker(): string | null {
     }
     if (process.platform === 'win32') {
       const value = execFileSync(
-        'powershell.exe',
+        windowsPowerShellExecutable(),
         [
           '-NoProfile',
           '-NonInteractive',
           '-Command',
           '(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToFileTimeUtc()',
         ],
-        { encoding: 'utf8', timeout: 2_000 },
+        { encoding: 'utf8', timeout: WINDOWS_IDENTITY_TIMEOUT_MS },
       ).trim()
       return /^\d+$/.test(value) ? sha256(`win32:${value}`) : null
     }
@@ -116,7 +119,7 @@ export function stableProcessStartIdentity(
     }
     if (process.platform === 'win32') {
       const value = execFileSync(
-        'powershell.exe',
+        windowsPowerShellExecutable(),
         [
           '-NoProfile',
           '-NonInteractive',
@@ -125,7 +128,7 @@ export function stableProcessStartIdentity(
         ],
         {
           encoding: 'utf8',
-          timeout: 2_000,
+          timeout: WINDOWS_IDENTITY_TIMEOUT_MS,
           stdio: ['ignore', 'pipe', 'pipe'],
         },
       ).trim()

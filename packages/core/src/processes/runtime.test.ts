@@ -87,41 +87,38 @@ describe('OwnedProcessRuntime receipts', () => {
     expect(result).toMatchObject({ status: 'completed', exitCode: 0 })
   })
 
-  it.skipIf(process.platform === 'win32')(
-    'kills the complete process tree when its owner is cancelled',
-    async () => {
-      const root = mkdtempSync(join(tmpdir(), 'cairn-owned-tree-'))
-      const ready = join(root, 'grandchild-started')
-      const marker = join(root, 'grandchild-finished')
-      const runtime = new OwnedProcessRuntime(root)
-      const childScript = `require('node:fs').writeFileSync(${JSON.stringify(ready)},'ready');setTimeout(()=>require('node:fs').writeFileSync(${JSON.stringify(marker)},'done'),500)`
-      const parentScript = [
-        'const {spawn}=require("node:child_process")',
-        `spawn(process.execPath,['-e',${JSON.stringify(childScript)}],{detached:true,stdio:'ignore'}).unref()`,
-        'setTimeout(()=>{},5000)',
-      ].join(';')
-      const running = runtime.run({
-        executable: process.execPath,
-        args: ['-e', parentScript],
-        cwd: root,
-        env: { PATH: process.env.PATH ?? '' },
-        owner,
-        containment: containment(root),
-        timeoutMs: 5_000,
-      })
-      await waitFor(() => runtime.list({ activeOnly: true }).length === 1)
-      await waitFor(() => existsSync(ready))
+  it('kills the complete process tree when its owner is cancelled', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'cairn-owned-tree-'))
+    const ready = join(root, 'grandchild-started')
+    const marker = join(root, 'grandchild-finished')
+    const runtime = new OwnedProcessRuntime(root)
+    const childScript = `require('node:fs').writeFileSync(${JSON.stringify(ready)},'ready');setTimeout(()=>require('node:fs').writeFileSync(${JSON.stringify(marker)},'done'),500)`
+    const parentScript = [
+      'const {spawn}=require("node:child_process")',
+      `spawn(process.execPath,['-e',${JSON.stringify(childScript)}],{detached:${process.platform !== 'win32'},stdio:'ignore'}).unref()`,
+      'setTimeout(()=>{},5000)',
+    ].join(';')
+    const running = runtime.run({
+      executable: process.execPath,
+      args: ['-e', parentScript],
+      cwd: root,
+      env: { PATH: process.env.PATH ?? '' },
+      owner,
+      containment: containment(root),
+      timeoutMs: 5_000,
+    })
+    await waitFor(() => runtime.list({ activeOnly: true }).length === 1)
+    await waitFor(() => existsSync(ready))
 
-      await runtime.cancelOwner(owner, 'session closed')
-      await expect(running).resolves.toMatchObject({ status: 'cancelled' })
-      await delay(700)
-      expect(existsSync(marker)).toBe(false)
-      expect(runtime.list()[0]).toMatchObject({
-        status: 'cancelled',
-        terminalReason: 'session closed',
-      })
-    },
-  )
+    await runtime.cancelOwner(owner, 'session closed')
+    await expect(running).resolves.toMatchObject({ status: 'cancelled' })
+    await delay(700)
+    expect(existsSync(marker)).toBe(false)
+    expect(runtime.list()[0]).toMatchObject({
+      status: 'cancelled',
+      terminalReason: 'session closed',
+    })
+  })
 
   it('requires the current lease for explicit same-session reparenting', async () => {
     const root = mkdtempSync(join(tmpdir(), 'cairn-reparent-'))

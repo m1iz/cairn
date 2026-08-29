@@ -39,6 +39,7 @@ import {
 import { mainWindowWebPreferences } from './window-security'
 import { NodePtyHost } from './terminal-host'
 import { TerminalEventBridge } from './terminal-event-bridge'
+import { installSingleInstanceGuard } from './single-instance'
 import { TERMINAL_SUBSCRIPTION_CHANNEL } from '../shared/ipc-contract'
 
 const mainDir = moduleDirFromUrl(import.meta.url)
@@ -60,6 +61,8 @@ const terminalEventBridge = new TerminalEventBridge()
 let runtimeReady = false
 let mainWindow: BrowserWindow | null = null
 let didLoadRetry = false
+const isPrimaryInstance =
+  packagedSmoke !== null || installSingleInstanceGuard(app, () => mainWindow)
 const trustedRendererPolicy = createTrustedRendererPolicy({
   productionUrl: 'app://bundle/index.html',
   developmentUrl: process.env.ELECTRON_RENDERER_URL ?? null,
@@ -401,18 +404,21 @@ async function startup(): Promise<void> {
   createWindow()
 }
 
-app.whenReady().then(startup)
+if (isPrimaryInstance) {
+  app.whenReady().then(startup)
 
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0 && runtimeReady) createWindow()
-})
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0 && runtimeReady)
+      createWindow()
+  })
 
-app.on('window-all-closed', () => {
-  if (packagedSmoke) return
-  closeCoreHost()
-  app.quit()
-})
+  app.on('window-all-closed', () => {
+    if (packagedSmoke) return
+    closeCoreHost()
+    app.quit()
+  })
 
-app.on('before-quit', () => {
-  closeCoreHost()
-})
+  app.on('before-quit', () => {
+    closeCoreHost()
+  })
+}

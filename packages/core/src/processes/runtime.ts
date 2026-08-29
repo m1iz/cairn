@@ -19,6 +19,7 @@ import {
 import { dirname, join, resolve } from 'node:path'
 import type { Readable, Writable } from 'node:stream'
 import { syncFileBestEffortSync } from '../util/fs-durability'
+import { windowsSystemExecutable } from '../util/windows-system'
 import {
   type OwnedProcessRequest,
   type OwnedProcessResult,
@@ -1017,10 +1018,14 @@ function processLeaseId(): string {
 
 function defaultKillProcessTree(pid: number, platform: NodeJS.Platform): void {
   if (platform === 'win32') {
-    const killer = spawn('taskkill.exe', ['/pid', String(pid), '/t', '/f'], {
-      windowsHide: true,
-      stdio: 'ignore',
-    })
+    const killer = spawn(
+      windowsSystemExecutable('taskkill.exe'),
+      ['/pid', String(pid), '/t', '/f'],
+      {
+        windowsHide: true,
+        stdio: 'ignore',
+      },
+    )
     killer.once('error', () => {
       try {
         process.kill(pid, 'SIGKILL')

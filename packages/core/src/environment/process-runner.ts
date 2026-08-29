@@ -5,6 +5,7 @@ import {
   type ProcessContainmentPolicy,
   type ProcessContainmentReceipt,
 } from './sandbox'
+import { windowsSystemExecutable } from '../util/windows-system'
 
 const DEFAULT_TIMEOUT_MS = 5_000
 const MAX_TIMEOUT_MS = 30 * 60 * 1_000
@@ -158,7 +159,7 @@ export class NodeEnvironmentProcessRunner implements EnvironmentProcessRunner {
         if (process.platform === 'win32' && child.pid) {
           try {
             const killer = spawn(
-              'taskkill.exe',
+              windowsSystemExecutable('taskkill.exe'),
               ['/pid', String(child.pid), '/t', '/f'],
               {
                 shell: false,
