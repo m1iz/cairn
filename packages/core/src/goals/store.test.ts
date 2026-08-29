@@ -124,7 +124,11 @@ describe('GoalStore durable ledger', () => {
     const secondCreate = second.create(draft('goal_root_b', 'session-root-b'))
     const rootsRanInParallel = await Promise.race([
       secondReached.promise.then(() => true),
-      new Promise<false>((resolve) => setTimeout(() => resolve(false), 25)),
+      // Hosted runners can take well over one scheduler tick to begin the
+      // second filesystem operation under load. Keep a bounded deadline so a
+      // real process-wide lock still fails, without treating a 25 ms dispatch
+      // delay as lifecycle serialization.
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), 1_000)),
     ])
     releaseFirst.resolve()
     releaseSecond.resolve()
