@@ -2,7 +2,7 @@
 
 > 文档状态：Active<br>
 > 面向读者：用户、维护者、数据与迁移开发者<br>
-> 最后核验：2026-07-23<br>
+> 最后核验：2026-08-29<br>
 > 事实源：`packages/core/src/runtime/paths.ts`、`packages/core/src/runtime/migrate-state-root.ts`、各领域 Store
 
 ## 两个根的区分
@@ -131,15 +131,15 @@ Cairn 区分两个互不重叠的根目录概念：
 
 ### Hybrid Memory 派生索引
 
-`memory/hybrid-index/index.v1.json` 不是记忆事实源。全局 `MEMORY.local.md`、项目 `AGENTS.local.md` 和相应 session/project scope 才是权威输入；索引只保存确定性分块、source/path/line provenance、source digest 和检索所需派生数据。文件损坏或被删除时，Core 忽略旧派生物并从 Markdown 重建，不会反向改写原始记忆。
+`memory/hybrid-index/index.v1.json` 不是记忆事实源。运行时索引输入限定为全局 `MEMORY.local.md` 和每个已登记项目的 `AGENTS.local.md`；检索时再按 Chat/global 或 Build/精确 project scope 过滤。索引只保存确定性分块、source/path/line provenance、source digest 和检索所需派生数据。文件损坏或被删除时，Core 忽略旧派生物并从 Markdown 重建，不会反向改写原始记忆。
 
-索引采用同目录临时文件、file `fsync`、rename 与 directory `fsync`，文件权限为 `0600`。Chat 只可检索 global 和同 session 的 unbound session 记忆；Build 只可检索精确 project 的 project/session 记忆，不能读 global 或其他 project。模式 `off` 不创建索引，`eval` 只记录影子结果，只有 provider-bound 评估门禁通过的 `on` 才能注入 prompt。embedding 失败会自动使用 FTS，并只暴露稳定原因码与计数，不记录 provider 原始异常。
+索引采用同目录临时文件、file `fsync`、rename 与 directory `fsync`，文件权限为 `0600`。当前 Chat 只检索 global，Build 只检索精确 project，不能读 global 或其他 project。模式 `off` 不创建索引，`eval` 只记录影子结果，只有 provider-bound 评估门禁通过的 `on` 才能注入 prompt。embedding 失败会自动使用 FTS；相关性准入拒绝的结果不会形成 Hybrid prompt 投影。配置 PostgreSQL 时，embedding、provenance 和 `access_count` 保存在外部派生表，命中后按 scope 原子递增；连接失败不会改写 Markdown。可选 TEI reranker 失败时回退融合排序。诊断只暴露稳定原因码与计数，不记录 provider 原始异常、连接串或记忆正文。
 
 ### Code Intelligence 派生数据
 
 `code-intelligence/projects/<workspace-digest>/graph.v1.json.gz` 不是源码事实源。它只保存 workspace-relative location、content digest 与 parser revision；损坏、revision/root digest 不匹配或删除后会从项目源码重建。写入使用 `0600` 临时文件、gzip、file `fsync`、rename 与 directory `fsync`；增量事件在 single owner 内更新 COW state，并以 debounce 合并派生 cache 写入，正常关闭强制 flush。
 
-Code Graph 最多索引 200 个受支持文件、累计 5 MiB、单文件 5 MiB；symlink、binary、unsupported、oversized、capacity 和 parse error 都只形成计数/稳定 limitation，不把原文写入 Diagnostics。`code-intelligence/lsp/<owner-digest>/` 只是 LSP 的隔离 scratch/HOME；实际项目以只读 root 提供，网络为 deny。模式 `off` 不创建这些目录；当前发行物默认关闭且没有 production LSP descriptor。
+Code Graph 最多索引 200 个受支持文件、累计 5 MiB、单文件 5 MiB；symlink、binary、unsupported、oversized、capacity 和 parse error 都只形成计数/稳定 limitation，不把原文写入 Diagnostics。`code-intelligence/lsp/<owner-digest>/` 只是 LSP 的隔离 scratch/HOME；实际项目以只读 root 提供，网络为 deny。模式 `off` 不创建这些目录，descriptor 与评估 receipt 由 composition root 注入。
 
 ### Owned process receipt
 

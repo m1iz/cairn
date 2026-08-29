@@ -2,7 +2,7 @@
 
 > 文档状态：Active<br>
 > 面向读者：希望扩展 Agent 能力的用户<br>
-> 最后核验：2026-08-05<br>
+> 最后核验：2026-08-29<br>
 > 事实源：ToolRegistry、SkillManager、MCP config/client、插件页
 
 “插件”页面分成 Skills、Tools 和 MCP 三个标签。三者作用不同：Tool 是可执行接口，Skill 是按需加载的工作说明和资源包，MCP 把外部 server 暴露的工具接入当前 ToolRegistry。
@@ -15,9 +15,7 @@
 - 命令与网页：`run_command`、`web_search`、`web_fetch`；
 - 控制与计划：`ask_user`、`propose_plan`、`request_plan_mode`、`update_todos`；
 - 长任务与协作：Goal tools、Scheduler、subagent 和 Team tools；
-- 上下文：`load_skill`、用户档案和其他受控管理工具。
-
-源码中还包含默认关闭的 `code_intelligence` 实验工具。只有当前配置请求 `on`、parser-bound 真实仓库评估 receipt 通过且 Build session 绑定项目时，它才会注册；Chat 不可调用。它支持按符号查定义/引用和按文件位置跳转，输出会标明 `graph`、`lsp` 或 `graph_fallback`，以及是否因容量、大文件、symlink 或 parse error 形成 partial result。当前发行物没有 production LSP descriptor/发行 receipt，因此普通用户的 `/tools` 不会看到它，也没有设置页开关。
+- 上下文：`load_skill`、`save_long_term_memory`、`update_long_term_memory`、`delete_long_term_memory`、用户档案和其他受控管理工具。
 
 实际可用列表取决于会话类型、Goal 状态、已加载 MCP 和权限模式。输入 `/tools` 或打开“插件 → 工具”查看当前注册结果。
 
@@ -28,6 +26,8 @@
 `read_file`、`edit_file`、`apply_patch` 和 PDF 文本 sidecar 共用 8 MiB 单文件读取上限，超限会在完整载入或写回前拒绝，并响应 turn 取消。`edit_file` 拒绝空 needle；精确和 trim 匹配失败后可按空白差异定位真实源码跨度，多处命中仍要求更多上下文或 `replace_all=true`，实际内容不变时不会写盘或生成修改事件。`apply_patch` 是单文件精确文本 patch，不做模糊匹配；`delete_file` 只删除普通文件，`rename_file` 不覆盖既有目标，两者都拒绝目录和符号链接。删除与重命名在 `ask_before_edit` 和 `smart_auto` 下需要显式批准；同一次模型回复中的多个精确目标只出现一张权限卡，卡片列出全部操作，批准只对该批次有效。`full_access` 直接执行，但明确 deny、Plan 只读和 workspace containment 仍生效。rename 的来源和目标会同时进入权限 path rule 与 workspace 检查。可选文件检查点启用后，这五种写工具会在执行边界保存 before/after。
 
 `ask_user` 只用于目标或范围不明确。例如“删除项目内文件”可以先询问具体删除哪些；用户回答“全部删除”后，Agent 应直接调用删除工具，不能再用普通对话要求确认。是否弹出权限卡由当前权限模式和 Core 权限层决定。
+
+长期记忆的新增、更新和删除只操作 Core 管理的全局 `Key Facts`，并通过 memory patch、版本快照和精确匹配执行。模型不能用文件工具绕过这条链路，也不能把“本轮不要这样做”自动升级为跨会话记忆；只有用户表达长期、持续或明确遗忘意图时才应调用对应工具。
 
 ## Skills
 

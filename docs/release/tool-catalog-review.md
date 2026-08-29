@@ -2,7 +2,7 @@
 
 > 文档状态：Active<br>
 > 面向读者：修改 ToolCatalog 的开发者与发布审核者<br>
-> 最后核验：2026-07-19<br>
+> 最后核验：2026-08-29<br>
 > 事实源：`packages/core/src/environment/tool-catalog.json`、catalog schema、环境安装 adapters、`packages/core/src/environment/sandbox.ts`
 
 `packages/core/src/environment/tool-catalog.json` 是随应用签名发布的静态执行策略，不是普通展示数据。catalog 决定可探测、下载和执行的程序；任何变更都按供应链与命令执行安全变更审核。
@@ -43,7 +43,7 @@
 
 - [ ] 更新 catalog schema、allowlist、adapter、download 与 process runner 的 RED/GREEN 测试。
 - [ ] 执行 `npm test --workspace @cairn/core`、Core typecheck/lint 和 `make check`。
-- [ ] 在对应平台 internal workflow 生成 adapter receipt；receipt 不含 HOME、用户名、token 或完整 PATH。
+- [ ] 在对应平台的受管验证任务中生成 adapter receipt；receipt 不含 HOME、用户名、token 或完整 PATH。
 - [ ] packaged smoke 证明最小 PATH 下应用可启动，且不会自动安装工具。
 - [ ] packaged smoke 的 Diagnostics receipt 包含 `sandbox.backend/status/provenance=host-os`；macOS 必须是可用 Seatbelt，Linux 必须明确 bwrap available/unavailable/error，Windows 必须明确 unsupported。receipt 不包含 helper 绝对路径、profile、HOME 或 PATH。
 - [ ] PR/commit 记录 catalog revision、来源、摘要核验方式、许可结论和平台 receipt。

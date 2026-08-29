@@ -2,7 +2,7 @@
 
 > 文档状态：Active<br>
 > 面向读者：需要控制权限、审阅方案或持续推进长任务的用户<br>
-> 最后核验：2026-08-05<br>
+> 最后核验：2026-08-29<br>
 > 事实源：Core command platform、ControlManager、PermissionPipeline、GoalCoordinator 与 Completion Gate
 
 Plan（规划模式）和 Goal（目标模式）解决不同问题，但在 Composer 中是互斥的顶层模式。Plan 控制“先提出什么方案、何时允许执行”；Goal 管理“跨多少回合持续推进、满足什么条件才算完成”。Goal 可以在内部使用 Plan 引擎，界面仍只显示 Goal。

@@ -1,6 +1,11 @@
 # 更新日志
 
-本文件记录 Cairn 的用户可感知变化，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。当前项目尚未在这里固定公开版本段；待版本正式发布时，再把 `Unreleased` 内容移动到带日期的版本标题下。
+> 文档状态：Active<br>
+> 面向读者：用户、发布维护者<br>
+> 最后核验：2026-08-29<br>
+> 事实源：用户可感知代码变更、根目录 README 与当前发布状态
+
+本文件记录 Cairn 的用户可感知变化，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。发布版本时，把 `Unreleased` 内容移动到带日期的版本标题下。
 
 ## [Unreleased]
 
@@ -18,6 +23,10 @@
 - 增加 MCP 工具结果的不可信标记和协议 `isError` 传递。
 - 增加 token 使用热日志的按月归档，同时保持聚合统计覆盖热数据与归档数据。
 - 建立中文优先的文档中心、完整用户手册、当前架构与扩展指南，并为发布、安全、归档和文档维护定义统一机制。
+- 增加中断消息的原位置编辑与重新发送；旧 partial 保留为中断记录，底部 Composer 可继续独立使用。
+- 为 DeepSeek OpenAI 兼容配置接入 Provider-hosted Responses `web_search`，普通对话仍使用原 Chat Completions 路径。
+- 增加 Hybrid Memory 的 TEI embedding、PostgreSQL 向量存储、可选 TEI reranker、相关性准入和命中访问计数；能力默认关闭且通过 provider-bound 评估门禁后才可修改 prompt。
+- 增加长期记忆的精确更新与删除工具，写入继续经过 memory patch、版本和 scope 校验。
 
 ### Changed
 
@@ -29,15 +38,17 @@
 - Composer 的模型 / 模式菜单逻辑收敛到共享 helper。
 - Chat 消息列表滚动监听改为跟踪最新可见消息签名，避免深度监听完整时间线。
 - README 改为面向普通用户的产品入口，并把详细操作、架构、发布与维护内容分层到文档中心。
+- 会话切换期间显示居中的加载状态，不再短暂回退到首页；聊天内容区按可用工作区居中。
 
 ### Fixed
 
 - 修复 `packages/core/src/memory/history.ts` 源码签名中的二进制 NUL 字节。
 - 完成 TypeScript / Electron 迁移审计后的主线加固与 parity 收尾。
+- 修复窗口级滚动导致整个界面和顶部栏移动，以及页面底部溢出的问题。
+- 修复 Windows 高负载测试中活跃文件锁被误判为 stale、继而造成随机 Store 并发失败的问题。
 
 ### Security
 
 - Git、Files 和 Terminal 由 Core 按 Build session 所有权授权；Renderer 不获得 Node/fs/shell，Git mutation 使用 revision/确认，Files 拒绝 traversal/symlink escape，Terminal 高频字节流不进入聊天或持久事件。
 - Electron 主界面显式运行在 renderer sandbox 中；preload 改为受构建/打包审计的最小 CommonJS，packaged smoke 会真实验证 Core bridge 与受管附件协议。
 - 明确 MCP、Web 与外部消息是不可信输入，Goal 完成态只能由 Core Completion Gate 提交。
-- 发布文档区分当前未签名 Preview 与尚未启用的受信 Stable 流程。

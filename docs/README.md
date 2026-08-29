@@ -2,7 +2,7 @@
 
 > 文档状态：Active<br>
 > 面向读者：用户、维护者、开发者<br>
-> 最后核验：2026-08-05<br>
+> 最后核验：2026-08-29<br>
 > 事实源：当前 TypeScript / Electron 主线、根目录 `README.md` 与 `AGENTS.md`
 
 这里是 Cairn 的文档入口。根目录 [README](../README.md) 负责介绍产品和最短使用路径；本目录保存操作手册、架构说明、开发指南、发布流程和历史记录。
@@ -22,7 +22,7 @@
 | 了解系统为什么这样设计            | [架构总览](architecture/overview.md)                         |
 | 修改或扩展项目                    | [开发指南](development/README.md)                            |
 | 通过 ACP stdio 运行 Headless Core | [Headless ACP operator preview](development/headless-acp.md) |
-| 构建公开 Preview                  | [Preview 发布手册](release/preview-release-runbook.md)       |
+| 构建和验证 Preview 候选包         | [Preview 发布手册](release/preview-release-runbook.md)       |
 
 ## 当前维护的文档
 

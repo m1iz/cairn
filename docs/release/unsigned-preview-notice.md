@@ -1,16 +1,16 @@
 # Cairn {{tag}} · UNSIGNED-PREVIEW / 未签名预览版
 
 > 文档状态：Active<br>
-> 面向读者：安装 Preview 的用户<br>
-> 最后核验：2026-07-16<br>
+> 面向读者：安装 Preview 的用户、发布维护者<br>
+> 最后核验：2026-08-29<br>
 > 事实源：Preview electron-builder 配置、发布 contract 与 `scripts/publish-preview-release.sh`
 
 > **Unsigned Preview / 未签名预览版**  
 > `channel: preview` · `signingStatus: unsigned`
 
-这是面向测试用户的公开预览版，不是 Stable。macOS 文件没有 Developer ID 签名且未经 Apple 公证；Windows 安装程序会显示 `Unknown publisher`，并可能触发 Microsoft Defender SmartScreen。只有在你确认下载来源并核对 SHA-256 后才应继续。
+这是未签名 Preview 的 Release notes 模板。该版本不是 Stable：macOS 文件没有 Developer ID 签名且未经 Apple 公证；Windows 安装程序会显示 `Unknown publisher`，并可能触发 Microsoft Defender SmartScreen。只有在确认下载来源并核对 SHA-256 后才应继续。
 
-This public preview is for testing and is not a Stable release. The macOS files have no Developer ID signature and are not notarized by Apple. The Windows installer has no trusted publisher signature and may trigger Microsoft Defender SmartScreen. Continue only after confirming the download source and verifying its SHA-256 digest.
+This is the release-notes template for an unsigned Preview. It is for testing and is not a Stable release. The macOS files are unsigned and not notarized. The Windows installer has no trusted publisher signature and may trigger Microsoft Defender SmartScreen.
 
 ## 下载前验证 / Verify before running
 

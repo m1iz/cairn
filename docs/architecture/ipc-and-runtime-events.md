@@ -2,7 +2,7 @@
 
 > 文档状态：Active<br>
 > 面向读者：桌面端与 Core 开发者<br>
-> 最后核验：2026-07-23<br>
+> 最后核验：2026-08-29<br>
 > 事实源：`desktop/src/main/core-host.ts`、`desktop/src/preload/`、`packages/core/src/runtime/events.ts`、`packages/core/src/runtime/envelope.ts`、`packages/core/src/runtime/store.ts`、`desktop/src/renderer/src/runtime/`
 
 Electron renderer 不直接导入 Core，也不访问本地 Store。同步请求通过 preload 的 Core IPC contract，异步过程通过 runtime events。两条链路共同构成桌面主路径。

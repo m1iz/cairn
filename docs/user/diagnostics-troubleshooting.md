@@ -2,7 +2,7 @@
 
 > 文档状态：Active<br>
 > 面向读者：遇到启动、模型、会话、工具或打包问题的用户和开发者<br>
-> 最后核验：2026-08-05<br>
+> 最后核验：2026-08-29<br>
 > 事实源：DiagnosticsService、桌面诊断面板、当前构建与运行脚本
 
 先进入“设置 → 诊断”。诊断页会集中显示生效路径、配置文件状态、workspace fence、生命周期、迁移结果、环境能力和 Scheduler 信息。不要先手工删除 `stateRoot`。
@@ -57,7 +57,7 @@ Diagnostics 的 `Command OS Sandbox` 行显示实际 backend 和 capability：
 
 Sandboxed 命令默认不能访问 `stateRoot`、workspace 外文件或网络。依赖 HOME 配置、联网下载或写系统目录的命令因此失败是策略结果，不要通过 symlink、子 shell 或换解释器绕过；应改用受管安装/网络能力，或等待对应平台 backend/policy 明确开放。
 
-Diagnostics 的 `Owned Process Runtime` 行是另一层状态：`owned · process_group/taskkill` 表示 owner/lease/reparent/orphan reconcile 已启用，不表示所有平台都有同等 sandbox。当前只提供受管 interactive stdio，没有 PTY 和 resize，也没有独立桌面终端。命令、Hook 和 MCP stdio 都有明确 output quota；普通 `run_command` 超额会终止，Hook 使用逐流尾部截断策略。应用关闭默认清理所有 owned process，不支持让 daemon 脱离 Cairn 长期存活。
+Diagnostics 的 `Owned Process Runtime` 行是另一层状态：`owned · process_group/taskkill` 表示 Agent/Hook/MCP 等受管进程的 owner、lease、reparent 和 orphan reconcile 已启用，不表示所有平台都有同等 sandbox。这条 runtime 只提供受管 stdio，不提供 PTY 和 resize；右侧工作台 Terminal 是独立的用户直控 PTY 通道，不属于 Agent Owned Process。命令、Hook 和 MCP stdio 都有明确 output quota；普通 `run_command` 超额会终止，Hook 使用逐流尾部截断策略。应用关闭默认清理所有 owned process，不支持让 daemon 脱离 Cairn 长期存活。
 
 ## 有效配置与来源
 

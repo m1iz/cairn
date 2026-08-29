@@ -2,7 +2,7 @@
 
 > 文档状态：Active<br>
 > 面向读者：使用普通会话或项目会话的用户<br>
-> 最后核验：2026-07-24<br>
+> 最后核验：2026-08-29<br>
 > 事实源：SessionStore、ProjectStateStore、ContextBuilder、桌面会话入口
 
 Chat（普通对话）和 Build（项目工作）是会话类型。它们决定 Agent 能看到哪些长期上下文，不决定权限级别。
@@ -67,6 +67,8 @@ Composer 输入 `/` 后显示由 Core 返回的命令和 active Skill。候选�
 - 删除是持久操作。删除带有活动 Goal 的 session 时，Core 会先取消并等待 Goal 收口，再删除相关状态。
 - 切换会话不会把进行中的后台 turn 重新绑定到新会话；runtime event 仍写入原 owner session。
 
+被用户停止、插话替代或异常中断的用户消息会在原时间线位置显示“编辑”。点击后直接在该消息气泡内修改，并选择取消或重新发送；底部 Composer 继续保留且不与行内编辑共享草稿。重新发送会建立新的消息/回答分支，旧 partial 保留为中断记录，不会原地改写已经持久化的历史。
+
 ## 运行中继续发送
 
 Agent 正在回复时，Composer 仍可输入文字、添加附件并引用 Skill 或 MCP。每个会话只有一个用户可见队列槽：槽空闲时按 Enter 或发送按钮默认排队，已排队消息以与 Composer 同宽的附着栏显示在输入框顶部：
@@ -100,7 +102,7 @@ Build 绑定目录并不意味着 Agent 可以任意访问整台机器。每次�
 4. pending Ask/Plan 与其他 Core mutation guard。
 5. 对 shell 命令，操作系统 containment capability 与实际 backend receipt。
 
-`full_access` 只关闭普通权限审批，不会关闭这些检查。workspace 外路径或 Core deny 仍会直接拒绝。批准命令不代表系统会假装存在 sandbox：macOS 使用 Seatbelt，Linux 需要可用的 bwrap；所有 `run_command` 都要求真实 containment receipt，backend 不可用、返回 `unsandboxed` 或平台不支持时命令不会启动。诊断面板会显示当前平台真实能力。
+`full_access` 只关闭普通权限审批，不会关闭这些检查。workspace 外路径或 Core deny 仍会直接拒绝。批准命令不代表系统会假装存在 sandbox：macOS 使用 Seatbelt，Linux 需要可用的 bwrap。Shell AST 能严格证明为只读的 `run_command` 使用 `preferred` containment；backend 不可用时可在明确记录 `unsandboxed` receipt 后运行。可能写入或无法证明只读的命令使用 `required`，backend 不可用、平台不支持或没有得到 `sandboxed` receipt 时不会启动。诊断面板会显示当前平台真实能力。
 
 Agent 实际启动的命令还会绑定当前 session；子代理内的命令绑定对应 Task。取消 turn/Task、关闭 session 或退出应用会清理完整进程组，输出超过命令配额也会终止进程。Cairn 当前不提供可脱离应用长期存活的 daemon。右侧 Terminal 是另一条明确的用户直控 PTY：用户键入的命令不属于 Agent 工具调用，不进入三档 Agent 权限审批、聊天历史、模型上下文或持久 runtime event；它仍由 Core 校验 owner session、项目初始 cwd、terminal ID 和最多 8 个标签，并在 session/app 关闭时清理。
 

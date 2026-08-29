@@ -1,44 +1,23 @@
-# Stable 受信发布手册
+# 受信候选包手册
 
-> 文档状态：Frozen<br>
-> 面向读者：未来的发布维护者<br>
-> 冻结说明：workflow 和验证链已保留，但当前公开渠道不是 Stable；Stable tag 不会自动触发，仓库变量 `CAIRN_STABLE_RELEASE_ENABLED` 在解冻前必须保持未设置<br>
-> 最后核验：2026-07-19<br>
-> 事实源：`scripts/build_desktop_release.sh`、`scripts/verify-*-release.*`、`scripts/publish-release.sh`
+> 文档状态：Active<br>
+> 面向读者：发布维护者<br>
+> 最后核验：2026-08-29<br>
+> 事实源：`scripts/build_desktop_release.sh`、`scripts/verify-*-release.*`、`scripts/assemble-release-bundle.mjs`、`scripts/publish-release.sh`
 
-本手册描述仓库中已存在但尚未作为当前公开渠道启用的受信发布链。不能因为 workflow 文件存在，就对外宣称已经提供 Stable 包。
+本手册记录仓库现有的受信候选包构建、验证、聚合与发布脚本。受信 bundle 只接受签名状态、平台 receipt 和文件清单均通过 contract 的资产；`UNSIGNED-INTERNAL` 与 `UNSIGNED-PREVIEW` 资产会被拒绝。
 
-## 启用门槛
+## 平台要求
 
-- macOS Developer ID 证书与 App Store Connect API 凭证可用，arm64 / x64 均能签名并 notarize。
-- Windows Azure Artifact Signing 配置、publisher 和服务凭证可用，NSIS 包通过 Authenticode 验证。
-- Linux AppImage / DEB 在受支持 Ubuntu 矩阵完成安装、smoke 与移除。
-- 三平台 candidate receipt、聚合 contract、checksum、SBOM 和 attestation 完整通过。
-- 在非公开 tag 或受控演练中完成一次端到端候选验收，并由维护者明确解除 Frozen 状态。
-- README、Security、Changelog 与 Release notes 已从 Preview 边界切换到 Stable 事实。
+- macOS arm64 / x64：Developer ID 签名、notarization、DMG/ZIP 与 packaged smoke；
+- Windows x64：Authenticode 签名、NSIS 安装包、安装/卸载与 packaged smoke；
+- Linux x64：AppImage/DEB，以及 Ubuntu 22.04 / 24.04 安装、smoke 和移除 receipt。
 
-任一条件未满足时，继续使用[未签名 Preview 渠道](preview-release-runbook.md)。不得把 unsigned candidate 放进 Stable workflow，也不得删除签名校验以求通过。
+各平台 verification script 必须确认签名身份、安装资产、checksum 和 smoke receipt。Windows 在 Job Object + ACL backend 实现前应如实报告 `windows-unsupported`，不能伪造 sandboxed receipt。
 
-## 手动触发与机器门禁
+## 凭证边界
 
-Stable 发布只接受显式的 `stable_tag` 输入，推送任何 Stable tag 都不会自动运行。维护者必须显式输入现有 `stable_tag`；`release-policy` 会在任何候选 job 前验证：
-
-- tag 只能是无 prerelease 后缀的 `v<major>.<minor>.<patch>`；
-- tag 必须已经存在且是 annotated tag；
-- tag 必须与其 commit 中 `desktop/package.json` 的版本一致；
-- tag commit 必须位于默认分支历史中。
-
-`publish=false` 只执行签名候选、smoke、receipt、SBOM 与 attestation 演练，不创建 GitHub Release。公开发布同时要求：
-
-1. 手动输入 `publish=true`；
-2. 仓库变量 `CAIRN_STABLE_RELEASE_ENABLED` 明确设置为 `true`；
-3. `stable-release` GitHub Environment 配置 required reviewers 并通过审批。
-
-当前 Frozen 期间必须保持 `CAIRN_STABLE_RELEASE_ENABLED` 未设置，即使误触手动 workflow 也不能进入 `publish-release`。解除冻结必须先按本手册完成候选演练，再通过单独 code review 同时变更仓库变量和 Environment 保护设置。
-
-## 凭证
-
-macOS job fail closed 地要求：
+macOS 构建使用：
 
 - `MACOS_CERTIFICATE`
 - `MACOS_CERTIFICATE_PASSWORD`
@@ -47,7 +26,7 @@ macOS job fail closed 地要求：
 - `APPLE_API_ISSUER`
 - `APPLE_TEAM_ID`
 
-Windows job fail closed 地要求：
+Windows 构建使用：
 
 - `WINDOWS_SIGNING_ENDPOINT`
 - `WINDOWS_SIGNING_PROFILE`
@@ -57,42 +36,41 @@ Windows job fail closed 地要求：
 - `AZURE_CLIENT_ID`
 - `AZURE_CLIENT_SECRET`
 
-凭证只进入 GitHub Actions secrets，不写入仓库、receipt、日志、SBOM 或安装资产。
+凭证只进入受控构建环境，不写入仓库、receipt、日志、SBOM 或安装资产。
 
-## 候选与验证链
+## 聚合验证
 
-```mermaid
-flowchart LR
-  Manual["Manual stable_tag input"] --> Policy["Annotated tag + default branch policy"]
-  Policy --> Mac["Signed + notarized macOS"]
-  Policy --> Win["Authenticode Windows"]
-  Policy --> Linux["Linux build + lifecycle smoke"]
-  Mac --> Aggregate["Fail-closed aggregate"]
-  Win --> Aggregate
-  Linux --> Aggregate
-  Aggregate --> Attest["Checksums + SBOM + attestations"]
-  Attest --> Gate["publish=true + repository variable + protected environment"]
-  Gate --> Publish["Atomic GitHub Release"]
+tag 必须与 `desktop/package.json` 的版本完全一致：
+
+```text
+v<major>.<minor>.<patch>
 ```
 
-- macOS：构建签名候选，验证签名、notarization、DMG 和 packaged smoke；smoke 必须报告可用 `macos-seatbelt`。
-- Windows：构建签名 NSIS，验证 Authenticode，并完成安装、smoke、卸载；在 Job Object + ACL backend 实现前必须报告 `windows-unsupported`，不能伪装 sandboxed。
-- Linux：构建 AppImage / DEB，在 Ubuntu 22.04 / 24.04 验证完整生命周期，并记录 `linux-bwrap` 的真实 available/unavailable/error capability。
-- 所有平台的 packaged smoke schema 2 必须显示 Lifecycle Supervisor 为 `ready`，全部 required service 为 ready，并由真实 ASAR renderer 证明 Node globals absent、Core bridge/bootstrap、attachment 字节、sandbox/context-isolation/node-integration 全部通过；缺项、failed、stop timeout 或非 Linux 平台关闭 Chromium sandbox 都不得进入聚合发布。
-- Aggregate：只接受完整平台矩阵和 receipt，生成合并 SBOM 与 checksum，并上传 GitHub attestations。
-- Publish：重新核验所有材料，先 draft、核对 inventory，再原子公开。
+将平台资产和 receipt 放入同一输入目录后运行：
 
-平台 build job 没有发布权限。唯一公开入口是通过 aggregate 后的 `publish-release` job。
+```bash
+node scripts/assemble-release-bundle.mjs \
+  <candidate-input-dir> <bundle-output-dir> \
+  <stable-tag> <full-commit-sha>
+```
 
-## 启用时的最终验收
+聚合器要求完整的平台矩阵、每组 checksum、packaged smoke schema 2 和 Linux lifecycle receipt。它拒绝目录、符号链接、额外资产、签名状态不一致、commit 不匹配及 checksum 覆盖不完整，并生成 release manifest、全 bundle `SHA256SUMS.txt` 和合并 SBOM。
 
-- [ ] 两个 macOS 架构均显示预期 Developer ID，notarization ticket 可验证。
-- [ ] Windows EXE publisher 与 policy 中的 publisher 完全一致。
-- [ ] Linux 两个 Ubuntu 版本的安装、smoke、移除 receipts 齐全。
-- [ ] 所有资产通过 `SHA256SUMS.txt` 和 GitHub attestation 验证。
-- [ ] SBOM 与发布 commit、lockfile 和资产 inventory 一致。
-- [ ] GitHub Release 不是 Pre-release，且没有 `UNSIGNED` 标识。
-- [ ] 从全新用户环境安装并完成模型配置、Chat 与 Build smoke。
-- [ ] 回滚方案是撤下 Release 并发布新版本，不是原地替换同名二进制。
+## 发布脚本
 
-解除 Frozen 状态必须单独 code review，同时更新文档中心、README 和 Security 支持范围。
+发布前应确保 GitHub CLI 已登录目标仓库、tag 已存在、同名 Release 不存在，并再次验证 bundle checksum。设置 `CAIRN_RELEASE_TAG` 或 `GITHUB_REF_NAME` 后运行：
+
+```bash
+scripts/publish-release.sh <release-bundle>
+```
+
+脚本先创建 draft，上传 bundle，比较远端和本地资产清单，完全一致后才公开。中途失败会删除本次创建的 draft。
+
+## 最终验收
+
+- 两个 macOS 架构均显示预期 Developer ID，notarization ticket 可验证。
+- Windows EXE publisher 与签名策略完全一致。
+- Linux 两个 Ubuntu 版本的安装、smoke、移除 receipt 齐全。
+- 所有资产通过 `SHA256SUMS.txt`，SBOM 与发布 commit、lockfile 和资产 inventory 一致。
+- 从全新用户环境完成安装、模型配置、Chat 与 Build smoke。
+- 发现错误时撤下 Release 并发布新版本，不原地替换同名二进制。

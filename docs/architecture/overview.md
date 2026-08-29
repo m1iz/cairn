@@ -2,7 +2,7 @@
 
 > 文档状态：Active<br>
 > 面向读者：维护者、开发者、希望理解产品边界的用户<br>
-> 最后核验：2026-07-23<br>
+> 最后核验：2026-08-29<br>
 > 事实源：`packages/core/src/api/core-api.ts`、`desktop/src/main/`、`desktop/src/preload/`、`desktop/src/renderer/src/`
 
 Cairn 的桌面主产品是本地单用户 Electron 应用。Electron main 进程内创建一个 TypeScript `CoreApi` host；Vue renderer 只能通过 preload 暴露的 IPC contract 请求 Core，并通过 runtime events 接收过程状态。源码还提供默认不随桌面安装包开放的 ACP V1 stdio operator preview，它为受信本机 client 创建独立的 TypeScript `CoreApi` host。当前产品主线没有 Python runtime、Python CLI、HTTP backend 或 WebSocket backend。
@@ -71,9 +71,9 @@ MCP service ready 与单个外部 server ready 是两层状态。`MCPConnectionS
 
 跨领域的配置解释由 `ConfigResolver` 提供统一的 `Resolved<T>`，显式区分 builtin、user、project、session 和 managed。顺序不依赖 loader 输入次序，managed 最后应用；untrusted project 默认不能替换值，只有声明了专用 restriction reducer 的 key 才能接受单向收紧。当前接入 permission、runtime/AgentDefinition sandbox、MCP、当前 session 的 Skills 和 AgentDefinition；旧 `cairn.local.json`、`mcp_config.json`、Skill 目录与 manifest 仍是事实源，没有新增统一配置文件或破坏性迁移。
 
-长期记忆检索另有默认关闭的 `memory.hybrid` 能力，取值为 `off | eval | on`。它从 Markdown 权威记忆重建全文与向量派生索引，检索时组合 BM25、向量相似度、时间衰减、source 权重和 MMR，并在 embedding 失败时降级到全文检索。`eval` 只执行影子检索和诊断，不改变 prompt；`on` 也只有在当前 embedding provider 与通过的离线评估 receipt 精确绑定时才允许改变 prompt，否则有效模式自动降为 `eval`。当前发行物没有内置生产 embedding provider，因此默认配置不会启用 prompt 注入。
+长期记忆检索另有默认关闭的 `memory.hybrid` 能力，取值为 `off | eval | on`。组合根可从 `cairn.local.json` 创建 TEI embedding、PostgreSQL 向量存储和可选 TEI reranker；检索从 Markdown 权威记忆重建派生索引，组合 BM25、向量相似度、RRF、时间/source 权重、rerank、相关性准入和 MMR，embedding 失败时降级到全文检索。`eval` 只执行影子检索和诊断，不改变 prompt；`on` 也只有在当前 embedding provider 与通过的本地评估 receipt 精确绑定时才允许改变 prompt，否则有效模式自动降为 `eval`。默认配置仍为 `off`，设置页也没有启用入口；外部 TEI/PostgreSQL 不是应用自动下载或启动的服务。
 
-Code Intelligence 也是默认关闭的 `off | eval | on` 能力。它以 lazy TypeScript extractor、single-owner mailbox、immutable COW snapshot 和可重建 gzip cache 提供受界定义/引用查询；受管文件工具成功后提交增量 event，外部编辑在查询前 refresh。图层硬限制为 200 个文件、累计 5 MiB 源码和单文件 5 MiB，超过时结果明确标记 partial，并由 grep 或受信 LSP 兜底。LSP descriptor 只能由 composition root 注入，进程经 `OwnedProcessRuntime` 绑定 session owner、只读 workspace、禁网、协议大小与三次重启上限。只有 parser-bound benchmark receipt 匹配的 `on` 才会在 Build session 注册 `code_intelligence`；Chat、project manifest、renderer 或模型参数都不能自行启用或覆盖 workspace。当前发行组合根没有 production LSP descriptor/发行 receipt，因此默认不会暴露该工具。
+Code Intelligence 也是默认关闭的 `off | eval | on` 能力。它以 lazy TypeScript extractor、single-owner mailbox、immutable COW snapshot 和可重建 gzip cache 提供受界定义/引用查询；受管文件工具成功后提交增量 event，外部编辑在查询前 refresh。图层硬限制为 200 个文件、累计 5 MiB 源码和单文件 5 MiB，超过时结果明确标记 partial，并由 grep 或受信 LSP 兜底。LSP descriptor 只能由 composition root 注入，进程经 `OwnedProcessRuntime` 绑定 session owner、只读 workspace、禁网、协议大小与三次重启上限。只有 composition root 注入 descriptor、parser-bound benchmark receipt 匹配且模式为 `on` 时，Build session 才注册 `code_intelligence`；Chat、project manifest、renderer 或模型参数都不能自行启用或覆盖 workspace。
 
 Renderer 不在 runtime reducer 中调用 IPC 或启动 timer。Session、Task 与 replay 先经过各自的纯 action reducer；subscription、pending clear 和 memory refresh 作为 domain-local effect 执行，并把 success/error/cancel/timeout `TaskResult` 重新送回 reducer。历史 replay 复用相同 projection，但 effect 列表固定为空，因而不会在打开旧会话时重放 refresh、toast 或定时清理。
 

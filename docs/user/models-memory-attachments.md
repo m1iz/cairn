@@ -2,7 +2,7 @@
 
 > 文档状态：Active<br>
 > 面向读者：配置模型或管理本地上下文的用户<br>
-> 最后核验：2026-07-21<br>
+> 最后核验：2026-08-29<br>
 > 事实源：ModelConfig、Memory/Project stores、AttachmentStore、设置页
 
 ## 模型配置
@@ -66,7 +66,9 @@ Chat 压缩主要更新全局长期记忆和用户档案；Build 压缩把项目
 
 可以使用 `/memory` 查看摘要、`/memory log` 查看版本、`/memory restore <id>` 恢复指定快照。旧 `/memory-log` 和 `/memory-restore` 仍可执行一个迁移周期，但不会出现在普通命令面板。设置页的“记忆”也提供内容、上下文解释和版本操作。
 
-源码中包含默认关闭的 Hybrid Memory 实验路径。`off` 不建立派生索引；`eval` 只做影子检索并在诊断页显示有效模式、检索策略、fallback 次数和索引大小，不改变发送给模型的内容。即使配置为 `on`，缺少与当前 embedding provider 绑定的通过评估时也会自动降为 `eval`。当前发行物不内置生产 embedding provider，因此这不是设置页里可直接开启的正式功能；Markdown 记忆仍是权威数据，删除 `memory/hybrid-index/` 不会删除记忆。
+Agent 还注册了三种受控全局记忆工具：明确要求“记住”时使用 `save_long_term_memory`；要求永久更正时使用 `update_long_term_memory`；明确要求“忘记/删除”时使用 `delete_long_term_memory`。更新和删除只接受 `Key Facts` 中唯一、精确匹配的完整旧事实，不做语义猜测；每次写入前都会保存可恢复版本，并使 Hybrid 派生索引失效后重建。只对当前对话生效的要求不会写入长期记忆。
+
+Hybrid Memory 默认关闭，通过 `cairn.local.json` 接入 TEI embedding、PostgreSQL 向量存储和可选 TEI reranker：`off` 不检索；`eval` 只做影子检索并在诊断页显示有效模式、策略、fallback、索引和向量库状态，不改变 prompt；`on` 只有在当前 embedding provider 与通过的本地评估 receipt 精确绑定时才允许替换标准记忆段，否则自动降为 `eval`。检索融合 BM25、向量、RRF、可选 rerank 与 MMR，并经过相关性准入；无合格结果时不应用检索投影，继续使用原有 scope 的标准 Markdown 记忆上下文。命中结果写入已配置的 PostgreSQL 时会增加 `access_count`。Markdown 始终是权威数据，删除 `memory/hybrid-index/` 或重建向量表不会删除记忆正文。
 
 ## 会话压缩
 
@@ -96,7 +98,7 @@ Composer 一次最多保留 5 个待发送附件。支持：
 
 ## 备份与迁移
 
-备份时应先完全退出应用，再复制整个 `stateRoot`。只复制 `memory/` 会遗漏 sessions、Goal、Scheduler、MCP 和模型配置。
+备份时应先完全退出应用，再复制整个 `stateRoot`。只复制 `memory/` 会遗漏 sessions、Goal、Scheduler、MCP 和模型配置。若单独配置了 PostgreSQL Hybrid 向量库，它只保存可重建派生数据，不属于权威记忆备份；TEI 模型文件和本地评估材料也不在 `stateRoot` 中。
 
 旧布局迁移采用“只复制、不删除、不覆盖已有目标”的策略。迁移结果可在诊断页查看。不要在应用运行时手工改写 JSONL、Goal ledger 或 checkpoint。
 

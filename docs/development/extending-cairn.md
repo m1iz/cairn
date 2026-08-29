@@ -2,7 +2,7 @@
 
 > 文档状态：Active<br>
 > 面向读者：Core、Electron 与 renderer 开发者<br>
-> 最后核验：2026-08-05<br>
+> 最后核验：2026-08-29<br>
 > 事实源：当前 CoreApi / IPC / runtime event / domain service 分层与 `AGENTS.md`
 
 Cairn 的扩展通常横跨 Core、Electron contract、renderer 投影、持久化和文档。先确定权威状态属于哪个领域，再从 domain service 向外接入；不要把策略散落到组件或 prompt 文案。
@@ -70,7 +70,7 @@ flowchart LR
 - 新增权限来源通过 `PermissionRuleLayerInput.source` 由可信 composition root 注入，不得让 project/local rule 内容填写自己的 trust。规则解析后保留 source、candidate 和 precedence；任何新策略层都要覆盖 `deny > ask > allow`、同 action trust 顺序、引号混淆、命令边界和低信任层不可放宽测试。
 - 新工具必须兼容 Runner 两阶段批量预检：schema、Guard、PreToolUse、workspace 和 Permission 在副作用前完成；批次中任一失败不得让其他调用先执行。PermissionRequest Hook 的 `allow` 不能替代用户审批，updated input 必须触发整批重新判权。
 - Permission interaction 只能公开安全摘要和稳定 option ID。fingerprint、normalize 后参数、规则 trace/explanation 与一次性凭据只能进入私有 PermissionRequestStore/Diagnostics；不得新增 renderer 或 runtime event 字段泄漏这些数据。
-- Permission allow 与 OS containment 必须分开建模。新的命令入口复用 `OwnedProcessRunner` 与 `ProcessContainmentReceipt`；不得直接 `spawn`/`exec` 后声称 sandboxed。`run_command` 一律使用 required，backend unavailable/error/unsupported 或 runner 返回 `unsandboxed` 时 fail closed；如其他只读诊断入口确需 preferred，必须独立建模、记录真实 receipt，不能借此放宽 `run_command`。
+- Permission allow 与 OS containment 必须分开建模。新的命令入口复用 `OwnedProcessRunner` 与 `ProcessContainmentReceipt`；不得直接 `spawn`/`exec` 后声称 sandboxed。`run_command` 只有在 Shell AST 严格证明只读时使用 `preferred` 并允许明确的 `unsandboxed` receipt；可能写入或无法证明只读时必须使用 `required`，backend unavailable/error/unsupported 或 runner 返回 `unsandboxed` 时 fail closed。不得扩大只读分类来绕过 containment。
 - 扩展 sandbox backend 时同步 capability probe、固定 argv/profile 生成、stateRoot 隐藏、workspace 外读写、symlink、子进程、network 和 backend-missing 测试。profile/helper 不接受 renderer、模型或远程配置提供的命令、路径模板或 argv。
 - 联网工具把外部内容视为不可信输入，不把网页或 MCP 返回值当作系统指令。
 - 产物进入受管 attachment / media store，不把任意绝对路径直接交给 renderer。
@@ -148,8 +148,9 @@ flowchart LR
 
 - `cairn.local.json` 的 `memory.hybridMemory` 只能是 `off`、`eval` 或 `on`，缺失/非法值必须回到 `off`；通过 `ConfigResolver` 解释来源，未信任 project 只能收紧，不能启用。
 - 新 embedding provider 必须有稳定 `id` 和固定 `dimensions`，实现批量 `embed(texts, signal)` 并尊重 abort。provider/index/query 失败必须回退 FTS；不得把原始异常、记忆正文或绝对路径写入普通 runtime event。
+- 当前受信配置适配器是 TEI embedding、PostgreSQL vector store 与可选 TEI reranker。新增 provider/store/reranker 时保持连接配置只来自 `cairn.local.json`/本地 secret 展开，支持取消、超时、维度校验、scope 过滤和连接关闭；不得由模型、project memory 或 renderer 动态提供 endpoint/connection string。
 - 运行时 capability receipt 必须绑定当前 `embeddingProviderId`；缺 provider、receipt 未通过或 provider ID 不匹配时，显式 `on` 仍降为 `eval`，不允许修改 prompt。
-- Markdown 继续是权威源，`memory/hybrid-index/` 必须可删除重建。修改 chunk、BM25、时间衰减、source weight、MMR 或 scope 策略时必须重新验证跨项目隔离与 embedding 故障降级。
+- Markdown 继续是权威源，`memory/hybrid-index/` 与 PostgreSQL 表必须可删除重建。修改 chunk、BM25、RRF、rerank、准入阈值、时间衰减、source weight、MMR、scope 或 `access_count` 策略时必须重新验证跨项目隔离、无关查询、embedding/reranker/vector-store 故障降级和命中计数不因重建丢失。
 
 ### Code Intelligence / LSP 评估与启用
 

@@ -2,7 +2,7 @@
 
 > 文档状态：Active<br>
 > 面向读者：维护者、Skill 作者和桌面端开发者<br>
-> 最后核验：2026-08-05<br>
+> 最后核验：2026-08-29<br>
 > 事实源：`packages/core/src/commands/`、CoreApi `commands.*`、`desktop/src/renderer/src/composables/useSlashCommands.ts`
 
 Cairn 的斜杠命令由 Core 注册、解析、校验和调度。Renderer 只展示候选、补全参数、打开界面并投影结果；它不能提供 handler、Skill 路径、source、权限级别、Agent 或工具范围。

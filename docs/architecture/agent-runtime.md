@@ -2,7 +2,7 @@
 
 > 文档状态：Active<br>
 > 面向读者：维护者、Agent runtime 开发者<br>
-> 最后核验：2026-07-23<br>
+> 最后核验：2026-08-29<br>
 > 事实源：`packages/core/src/agent/`、`packages/core/src/api/services/`、`packages/core/src/runtime/`、`packages/core/src/sessions/`、`desktop/src/renderer/src/composables/useRuntime.ts`
 
 本文记录当前 TypeScript / Electron 主线的一次 Agent turn 如何进入 Core、构建上下文、调用模型、执行工具并持久化。旧 Python CLI、Web backend 和 HTTP / WebSocket fallback 不属于当前产品链路。
@@ -142,6 +142,8 @@ Core operation registry 在参数解析或领域调用前检查 lifecycle ready�
 
 上下文超出模型窗口时由 Core 压缩。压缩文本是导航摘要，不取代 session、Plan 或 Goal Store 中的权威状态。
 
+Hybrid Memory 非 `off` 时作为 `PromptPrefetchCoordinator` 的可选任务并发执行，当前文档集合来自全局 Markdown 记忆和所有已登记项目私有记忆，再按 Chat/global 或 Build/精确 project scope 过滤。`eval` 只留下诊断；通过 provider-bound gate 的 `on` 才用合格检索结果替换标准记忆段。没有通过相关性准入的结果时不应用 Hybrid 投影，保留原 ContextBuilder 的标准 scope 记忆。TEI embedding、PostgreSQL vector store 或 TEI reranker 的单项失败分别降级到可用的较低层检索路径，不改变 Markdown 权威源。
+
 ## 模型与工具循环
 
 当前配置允许保存多个模型条目，但全局只激活一个 `activeModelId`。Runner 通过 SamplingCoordinator 使用激活条目创建 Provider 请求；没有可用模型时返回可诊断错误，不静默切换到未激活配置。
@@ -171,6 +173,8 @@ MCP tool call 由 supervisor 分配 request ID，并把父 `AbortSignal` 与默�
 `run_command` 在 permission/workspace 通过后仍不能直接 spawn。`OwnedProcessRuntime` 先取得 OS capability 与 containment preparation：macOS Seatbelt、Linux bwrap 或明确 unsupported；未证明只读的命令要求真实 backend，不可用时 spawn 次数必须为零。它再提交脱敏 process receipt 后启动进程，默认 120 秒命令 deadline、组合输出超额即终止，并让 owner cancel 清理整个进程组。每次 containment 决定写入 correlated `process_containment` EventEnvelope，并把同一有界 sandbox receipt 放进工具 metadata，renderer 与 Diagnostics 显示实际 backend，而不是根据 permission mode 推断“已 sandbox”。
 
 `ask_user` 和 `propose_plan` 会创建可恢复 interaction。Runner 在等待用户时保存带真实 session 归属的 checkpoint，不用普通 assistant 文本伪造批准。它们属于 Control 工具，renderer 只显示专用 Ask/Plan 卡，不再同时显示工具参数、marker 或 IN/OUT JSON；旧 replay 也按 tool call ID 去重。
+
+全局长期记忆变更只通过 `save_long_term_memory`、`update_long_term_memory` 和 `delete_long_term_memory` 的 memory patch 边界完成。更新/删除要求 `Key Facts` 中唯一精确匹配，写入前建立版本，成功后使 Hybrid source digest 失效并刷新 runtime context；模型不能用普通文件工具绕过版本、scope、secret 和 prompt-injection 校验。
 
 WorkItem continuation 是当前 prompt 的 lease，而不是 session 历史中的永久执行开关。只有本回合实际修改独立 WorkItem、Plan 批准、Permission 恢复，或用户明确输入 `/continue`、`继续`、`继续执行`、`按原计划继续` 时，Runner 才继续未完成项；普通提问和新的不相关请求不会继承旧清单。主 Runner 不再用固定两次纠正把正常任务截断，未完成工作会继续交给同一回合推进，并统一受下述进展看门狗约束。
 

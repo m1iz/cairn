@@ -2,7 +2,7 @@
 
 > 文档状态：Active<br>
 > 面向读者：维护者、Goal 与 Agent runtime 开发者<br>
-> 最后核验：2026-07-17<br>
+> 最后核验：2026-08-29<br>
 > 事实源：`packages/core/src/goals/`、`packages/core/src/agent/goal-*`、Goal CoreApi 与 renderer runtime projection
 
 Goal 模式是 Cairn 的 TypeScript-only 长任务执行能力。它把“持续推进一个结果”建模为独立于单次模型回合的持久状态机，并复用现有 Session、Plan、Ask、权限、工具与 runtime event 链路。它不是 Python 教学实现的运行时移植，也不会启动 Python、HTTP 或 WebSocket fallback。

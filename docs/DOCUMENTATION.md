@@ -2,7 +2,7 @@
 
 > 文档状态：Active<br>
 > 面向读者：维护者、开发者、文档作者<br>
-> 最后核验：2026-07-16<br>
+> 最后核验：2026-08-29<br>
 > 事实源：仓库文档结构、`AGENTS.md`、`scripts/check.sh`、`scripts/check_public_docs.mjs`
 
 本规范解决三个问题：一份说明应该放在哪里，什么变化必须同步哪些文档，怎样判断文档可以合并。
@@ -15,7 +15,7 @@
 | `docs/user/`                              | 用户可以执行的操作、结果和限制         | 未开放入口、内部类名堆砌                     |
 | `docs/architecture/`                      | 当前系统边界、状态机、数据流和恢复语义 | 按日期写的实施进度                           |
 | `docs/development/`                       | 本地开发、扩展路径和同步清单           | 用户安装步骤的重复副本                       |
-| `docs/release/`                           | 当前或明确冻结的发布流程、安全提示     | 与某次发布绑定的临时 receipt                 |
+| `docs/release/`                           | 本地发布脚本、验证契约与安全提示       | 与某次发布绑定的临时 receipt                 |
 | `AGENTS.md`                               | 根目录下供 Codex/Agent 使用的工程约束  | 普通贡献者教程或面向用户的长篇说明           |
 | `docs/release/unsigned-preview-notice.md` | Preview 安全提示和系统拦截处理规则     | 普通故障排查                                 |
 | `docs/release/CHANGELOG.md`               | 用户可感知的版本变化                   | 提交日志、测试数量、内部过程记录             |
@@ -50,7 +50,7 @@ Active 文档使用下面的四行状态头：
 | `stateRoot` 路径或迁移      | runtime paths、store、migration service                                  | README、数据手册、存储架构、AGENTS                           |
 | Goal 状态或 Gate            | Goal models、coordinator、Gate、renderer projection                      | README、Plan/Goal 手册、Goal 架构                            |
 | Scheduler、Team、Hooks、MCP | 对应 service/store/schema 和当前 renderer 路由                           | 自动化手册、工具扩展手册、能力成熟度                         |
-| Release scripts             | `scripts/preview-*-contract.mjs`、发布脚本与验证脚本                     | Preview/Stable 手册、安全说明、README                        |
+| Release scripts             | 发布脚本、验证脚本与打包配置                                             | Preview/Stable 手册、安全说明、README                        |
 | 安全边界                    | IPC trust、permission、network/store policy                              | Preview 安全说明、用户安全说明、架构文档                     |
 
 ## 写作规则
