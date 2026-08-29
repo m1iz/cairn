@@ -22,7 +22,28 @@ describe('local config', () => {
     await saveLocalConfig(dir, {
       webui: { host: '127.0.0.2', port: 9999, openBrowser: true },
       prompt: { profile: 'classic' },
-      memory: { hybridMemory: 'eval' },
+      memory: {
+        hybridMemory: 'eval',
+        embedding: {
+          provider: 'tei',
+          endpoint: 'http://127.0.0.1:8088/',
+          model: 'intfloat/multilingual-e5-small',
+          dimensions: 384,
+          timeoutMs: 5_000,
+        },
+        vectorDatabase: {
+          provider: 'postgres',
+          connectionString: 'postgresql://local-only',
+          secretsFile: 'D:/CairnData/memory-services/.env',
+        },
+        reranker: {
+          provider: 'tei',
+          endpoint: 'http://127.0.0.1:8089/',
+          model: 'BAAI/bge-reranker-v2-m3',
+          timeoutMs: 2_000,
+        },
+        evaluationReceiptPath: 'D:/CairnData/evals/receipt.json',
+      },
       codeIntelligence: { mode: 'eval' },
       workspace: {
         fileCheckpoints: { enabled: true },
@@ -46,7 +67,28 @@ describe('local config', () => {
     expect(onDisk).toEqual({
       webui: { host: '127.0.0.2', port: 9999, openBrowser: true },
       prompt: { profile: 'classic' },
-      memory: { hybridMemory: 'eval' },
+      memory: {
+        hybridMemory: 'eval',
+        embedding: {
+          provider: 'tei',
+          endpoint: 'http://127.0.0.1:8088',
+          model: 'intfloat/multilingual-e5-small',
+          dimensions: 384,
+          timeoutMs: 5_000,
+        },
+        vectorDatabase: {
+          provider: 'postgres',
+          connectionString: 'postgresql://local-only',
+          secretsFile: 'D:/CairnData/memory-services/.env',
+        },
+        reranker: {
+          provider: 'tei',
+          endpoint: 'http://127.0.0.1:8089',
+          model: 'BAAI/bge-reranker-v2-m3',
+          timeoutMs: 2_000,
+        },
+        evaluationReceiptPath: 'D:/CairnData/evals/receipt.json',
+      },
       codeIntelligence: { mode: 'eval' },
       workspace: {
         fileCheckpoints: { enabled: true },
@@ -77,7 +119,7 @@ describe('local config', () => {
       openBrowser: true,
     })
     expect(loaded.prompt).toEqual({ profile: 'classic' })
-    expect(loaded.memory).toEqual({ hybridMemory: 'eval' })
+    expect(loaded.memory).toEqual(onDisk.memory)
     expect(loaded.codeIntelligence).toEqual({ mode: 'eval' })
     expect(loaded.workspace.fileCheckpoints).toEqual({ enabled: true })
     expect(loaded.workspace.gitRewind).toEqual({ mode: 'eval' })

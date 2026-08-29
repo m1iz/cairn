@@ -238,6 +238,9 @@ export async function saveLocalConfig(
             ),
           }
         : {}),
+      ...(config.memory?.reranker
+        ? { reranker: normalizeMemoryReranker(config.memory.reranker) }
+        : {}),
       ...optionalStringProperty(
         'evaluationReceiptPath',
         config.memory?.evaluationReceiptPath,
@@ -337,19 +340,23 @@ function parseMemoryReranker(
 ): { reranker: MemoryRerankerPreferences } | Record<string, never> {
   const input = objectOrEmpty(value)
   if (input.provider !== 'tei') return {}
+  return { reranker: normalizeMemoryReranker(input) }
+}
+
+function normalizeMemoryReranker(
+  value: Partial<MemoryRerankerPreferences>,
+): MemoryRerankerPreferences {
   return {
-    reranker: {
-      provider: 'tei',
-      endpoint: String(input.endpoint || 'http://127.0.0.1:8089').replace(
-        /\/+$/,
-        '',
-      ),
-      model: String(input.model || 'BAAI/bge-reranker-v2-m3'),
-      timeoutMs: Math.min(
-        30_000,
-        Math.max(100, Math.trunc(Number(input.timeoutMs) || 800)),
-      ),
-    },
+    provider: 'tei',
+    endpoint: String(value.endpoint || 'http://127.0.0.1:8089').replace(
+      /\/+$/,
+      '',
+    ),
+    model: String(value.model || 'BAAI/bge-reranker-v2-m3'),
+    timeoutMs: Math.min(
+      30_000,
+      Math.max(100, Math.trunc(Number(value.timeoutMs) || 800)),
+    ),
   }
 }
 
