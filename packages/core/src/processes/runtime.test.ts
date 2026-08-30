@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { describe, expect, it } from 'vitest'
+import { OsSandboxController } from '../environment/sandbox'
 import {
   OwnedProcessRuntime,
   ProcessLeaseConflictError,
@@ -35,12 +36,18 @@ function containment(root: string) {
   }
 }
 
+function unitRuntime(root: string): OwnedProcessRuntime {
+  return new OwnedProcessRuntime(root, {
+    sandbox: new OsSandboxController({ platform: 'freebsd' }),
+  })
+}
+
 describe('OwnedProcessRuntime receipts', () => {
   it(
     'persists owner, lease, cwd capability, sandbox and bounded quota without raw command data',
     async () => {
       const root = mkdtempSync(join(tmpdir(), 'cairn-owned-process-'))
-      const runtime = new OwnedProcessRuntime(root)
+      const runtime = unitRuntime(root)
       const secret = 'must-not-be-persisted'
 
       const result = await runtime.run({
@@ -81,7 +88,7 @@ describe('OwnedProcessRuntime receipts', () => {
     'contains stdin EPIPE when a short-lived child exits without reading input',
     async () => {
       const root = mkdtempSync(join(tmpdir(), 'cairn-owned-stdin-'))
-      const runtime = new OwnedProcessRuntime(root)
+      const runtime = unitRuntime(root)
 
       const result = await runtime.run({
         executable: process.execPath,
@@ -109,7 +116,7 @@ describe('OwnedProcessRuntime receipts', () => {
       const root = mkdtempSync(join(tmpdir(), 'cairn-owned-tree-'))
       const ready = join(root, 'grandchild-started')
       const marker = join(root, 'grandchild-finished')
-      const runtime = new OwnedProcessRuntime(root)
+      const runtime = unitRuntime(root)
       const childScript = `require('node:fs').writeFileSync(${JSON.stringify(ready)},'ready');setTimeout(()=>require('node:fs').writeFileSync(${JSON.stringify(marker)},'done'),500)`
       const parentScript = [
         'const {spawn}=require("node:child_process")',
@@ -142,7 +149,7 @@ describe('OwnedProcessRuntime receipts', () => {
 
   it('requires the current lease for explicit same-session reparenting', async () => {
     const root = mkdtempSync(join(tmpdir(), 'cairn-reparent-'))
-    const runtime = new OwnedProcessRuntime(root)
+    const runtime = unitRuntime(root)
     const running = runtime.run({
       executable: process.execPath,
       args: ['-e', 'setTimeout(()=>{},5000)'],
@@ -176,7 +183,7 @@ describe('OwnedProcessRuntime receipts', () => {
 
   it('terminates a producer at the combined output quota and records the policy', async () => {
     const root = mkdtempSync(join(tmpdir(), 'cairn-output-quota-'))
-    const runtime = new OwnedProcessRuntime(root)
+    const runtime = unitRuntime(root)
     const result = await runtime.run({
       executable: process.execPath,
       args: [
@@ -204,7 +211,7 @@ describe('OwnedProcessRuntime receipts', () => {
 
   it('owns timeout termination instead of leaving cleanup to the caller', async () => {
     const root = mkdtempSync(join(tmpdir(), 'cairn-owned-timeout-'))
-    const runtime = new OwnedProcessRuntime(root)
+    const runtime = unitRuntime(root)
 
     await expect(
       runtime.run({
@@ -226,7 +233,7 @@ describe('OwnedProcessRuntime receipts', () => {
 
   it('offers owned interactive stdio without persisting unrecoverable stream handles', async () => {
     const root = mkdtempSync(join(tmpdir(), 'cairn-owned-stdio-'))
-    const runtime = new OwnedProcessRuntime(root)
+    const runtime = unitRuntime(root)
     const handle = await runtime.spawn({
       executable: process.execPath,
       args: [
