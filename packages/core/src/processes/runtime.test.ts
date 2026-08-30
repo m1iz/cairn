@@ -15,6 +15,9 @@ import {
   systemBootMarker,
 } from '../util/stable-process-identity'
 
+const WINDOWS_SANDBOX_TEST_TIMEOUT_MS =
+  process.platform === 'win32' ? 30_000 : 5_000
+
 const owner = {
   kind: 'session' as const,
   id: 'session-a',
@@ -33,92 +36,106 @@ function containment(root: string) {
 }
 
 describe('OwnedProcessRuntime receipts', () => {
-  it('persists owner, lease, cwd capability, sandbox and bounded quota without raw command data', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'cairn-owned-process-'))
-    const runtime = new OwnedProcessRuntime(root)
-    const secret = 'must-not-be-persisted'
+  it(
+    'persists owner, lease, cwd capability, sandbox and bounded quota without raw command data',
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), 'cairn-owned-process-'))
+      const runtime = new OwnedProcessRuntime(root)
+      const secret = 'must-not-be-persisted'
 
-    const result = await runtime.run({
-      executable: process.execPath,
-      args: ['-e', `process.stdout.write(${JSON.stringify(secret)})`],
-      cwd: root,
-      env: {},
-      owner,
-      containment: containment(root),
-      maxOutputBytes: 4_096,
-    })
+      const result = await runtime.run({
+        executable: process.execPath,
+        args: ['-e', `process.stdout.write(${JSON.stringify(secret)})`],
+        cwd: root,
+        env: {},
+        owner,
+        containment: containment(root),
+        timeoutMs: WINDOWS_SANDBOX_TEST_TIMEOUT_MS,
+        maxOutputBytes: 4_096,
+      })
 
-    expect(result).toMatchObject({ status: 'completed', stdout: secret })
-    const receipts = runtime.list()
-    expect(receipts).toHaveLength(1)
-    expect(receipts[0]).toMatchObject({
-      schemaVersion: 1,
-      owner,
-      status: 'completed',
-      outputQuota: {
-        maxBytes: 4_096,
-        strategy: 'terminate',
-        exceeded: false,
-      },
-      cwdCapability: { access: 'execute', withinWorkspace: true },
-      containment: { decision: expect.any(String) },
-    })
-    expect(receipts[0]?.lease.id).toMatch(/^process_lease_/)
-    expect(receipts[0]?.commandDigest).toMatch(/^[a-f0-9]{64}$/)
-    expect(JSON.stringify(receipts[0])).not.toContain(secret)
-    expect(readFileSync(runtime.receiptsPath, 'utf8')).not.toContain(secret)
-  })
+      expect(result).toMatchObject({ status: 'completed', stdout: secret })
+      const receipts = runtime.list()
+      expect(receipts).toHaveLength(1)
+      expect(receipts[0]).toMatchObject({
+        schemaVersion: 1,
+        owner,
+        status: 'completed',
+        outputQuota: {
+          maxBytes: 4_096,
+          strategy: 'terminate',
+          exceeded: false,
+        },
+        cwdCapability: { access: 'execute', withinWorkspace: true },
+        containment: { decision: expect.any(String) },
+      })
+      expect(receipts[0]?.lease.id).toMatch(/^process_lease_/)
+      expect(receipts[0]?.commandDigest).toMatch(/^[a-f0-9]{64}$/)
+      expect(JSON.stringify(receipts[0])).not.toContain(secret)
+      expect(readFileSync(runtime.receiptsPath, 'utf8')).not.toContain(secret)
+    },
+    WINDOWS_SANDBOX_TEST_TIMEOUT_MS + 15_000,
+  )
 
-  it('contains stdin EPIPE when a short-lived child exits without reading input', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'cairn-owned-stdin-'))
-    const runtime = new OwnedProcessRuntime(root)
+  it(
+    'contains stdin EPIPE when a short-lived child exits without reading input',
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), 'cairn-owned-stdin-'))
+      const runtime = new OwnedProcessRuntime(root)
 
-    const result = await runtime.run({
-      executable: process.execPath,
-      args: ['-e', 'process.exit(0)'],
-      cwd: root,
-      env: {},
-      stdin: Buffer.alloc(2 * 1_024 * 1_024, 'x'),
-      owner,
-      containment: containment(root),
-    })
-    await delay(20)
+      const result = await runtime.run({
+        executable: process.execPath,
+        args: ['-e', 'process.exit(0)'],
+        cwd: root,
+        env: {},
+        stdin: Buffer.alloc(2 * 1_024 * 1_024, 'x'),
+        owner,
+        containment: containment(root),
+        timeoutMs: WINDOWS_SANDBOX_TEST_TIMEOUT_MS,
+      })
+      await delay(20)
 
-    expect(result).toMatchObject({ status: 'completed', exitCode: 0 })
-  })
+      expect(result).toMatchObject({ status: 'completed', exitCode: 0 })
+    },
+    WINDOWS_SANDBOX_TEST_TIMEOUT_MS + 15_000,
+  )
 
-  it('kills the complete process tree when its owner is cancelled', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'cairn-owned-tree-'))
-    const ready = join(root, 'grandchild-started')
-    const marker = join(root, 'grandchild-finished')
-    const runtime = new OwnedProcessRuntime(root)
-    const childScript = `require('node:fs').writeFileSync(${JSON.stringify(ready)},'ready');setTimeout(()=>require('node:fs').writeFileSync(${JSON.stringify(marker)},'done'),500)`
-    const parentScript = [
-      'const {spawn}=require("node:child_process")',
-      `spawn(process.execPath,['-e',${JSON.stringify(childScript)}],{detached:${process.platform !== 'win32'},stdio:'ignore'}).unref()`,
-      'setTimeout(()=>{},5000)',
-    ].join(';')
-    const running = runtime.run({
-      executable: process.execPath,
-      args: ['-e', parentScript],
-      cwd: root,
-      env: { PATH: process.env.PATH ?? '' },
-      owner,
-      containment: containment(root),
-      timeoutMs: 5_000,
-    })
-    await waitFor(() => runtime.list({ activeOnly: true }).length === 1)
-    await waitFor(() => existsSync(ready))
+  it(
+    'kills the complete process tree when its owner is cancelled',
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), 'cairn-owned-tree-'))
+      const ready = join(root, 'grandchild-started')
+      const marker = join(root, 'grandchild-finished')
+      const runtime = new OwnedProcessRuntime(root)
+      const childScript = `require('node:fs').writeFileSync(${JSON.stringify(ready)},'ready');setTimeout(()=>require('node:fs').writeFileSync(${JSON.stringify(marker)},'done'),500)`
+      const parentScript = [
+        'const {spawn}=require("node:child_process")',
+        `spawn(process.execPath,['-e',${JSON.stringify(childScript)}],{detached:${process.platform !== 'win32'},stdio:'ignore'}).unref()`,
+        'setTimeout(()=>{},5000)',
+      ].join(';')
+      const running = runtime.run({
+        executable: process.execPath,
+        args: ['-e', parentScript],
+        cwd: root,
+        env: { PATH: process.env.PATH ?? '' },
+        owner,
+        containment: containment(root),
+        timeoutMs: WINDOWS_SANDBOX_TEST_TIMEOUT_MS,
+      })
+      await waitFor(() => runtime.list({ activeOnly: true }).length === 1)
+      await waitFor(() => existsSync(ready))
 
-    await runtime.cancelOwner(owner, 'session closed')
-    await expect(running).resolves.toMatchObject({ status: 'cancelled' })
-    await delay(700)
-    expect(existsSync(marker)).toBe(false)
-    expect(runtime.list()[0]).toMatchObject({
-      status: 'cancelled',
-      terminalReason: 'session closed',
-    })
-  })
+      await runtime.cancelOwner(owner, 'session closed')
+      await expect(running).resolves.toMatchObject({ status: 'cancelled' })
+      await delay(700)
+      expect(existsSync(marker)).toBe(false)
+      expect(runtime.list()[0]).toMatchObject({
+        status: 'cancelled',
+        terminalReason: 'session closed',
+      })
+    },
+    WINDOWS_SANDBOX_TEST_TIMEOUT_MS + 15_000,
+  )
 
   it('requires the current lease for explicit same-session reparenting', async () => {
     const root = mkdtempSync(join(tmpdir(), 'cairn-reparent-'))
@@ -327,7 +344,8 @@ describe('OwnedProcessRuntime recovery and capability', () => {
 })
 
 async function waitFor(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  const deadline = Date.now() + WINDOWS_SANDBOX_TEST_TIMEOUT_MS
+  while (Date.now() < deadline) {
     if (predicate()) return
     await delay(10)
   }

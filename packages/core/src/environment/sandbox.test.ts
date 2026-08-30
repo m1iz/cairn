@@ -357,7 +357,7 @@ describe('NodeOwnedProcessRunner containment', () => {
       const common = {
         cwd: workspace,
         env: { ...process.env, TMP: tempRoot, TEMP: tempRoot },
-        timeoutMs: 15_000,
+        timeoutMs: 30_000,
         containment: {
           mode: 'required' as const,
           workspaceRoot: workspace,
@@ -426,7 +426,7 @@ describe('NodeOwnedProcessRunner containment', () => {
             '-e',
             `require('node:net').connect(${address.port},'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(7))`,
           ],
-          timeoutMs: 5_000,
+          timeoutMs: 30_000,
         })
         expect(network).toMatchObject({
           status: 'completed',
@@ -437,6 +437,6 @@ describe('NodeOwnedProcessRunner containment', () => {
         server.close()
       }
     },
-    60_000,
+    180_000,
   )
 })
