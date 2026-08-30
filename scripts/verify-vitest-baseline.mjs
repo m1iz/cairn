@@ -60,7 +60,14 @@ if (failures.length) {
   for (const suite of report.testResults ?? []) {
     for (const assertion of suite.assertionResults ?? []) {
       if (assertion.status === 'failed')
-        process.stderr.write(`FAILED ${suite.name}: ${assertion.fullName}\n`)
+        process.stderr.write(
+          [
+            `FAILED ${suite.name}: ${assertion.fullName}`,
+            ...(assertion.failureMessages ?? []).map((message) =>
+              indentFailureMessage(message),
+            ),
+          ].join('\n') + '\n',
+        )
     }
   }
   process.exit(1)
@@ -91,4 +98,11 @@ function number(value) {
 
 function countRuntimeErrors(stderr) {
   return (stderr.match(/Unhandled Rejection|Uncaught Exception/g) ?? []).length
+}
+
+function indentFailureMessage(message) {
+  return String(message)
+    .split(/\r?\n/)
+    .map((line) => `  ${line}`)
+    .join('\n')
 }
