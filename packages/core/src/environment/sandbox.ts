@@ -338,9 +338,10 @@ export class OsSandboxController implements ProcessContainmentController {
   }
 
   private probeWindows(): ProcessSandboxCapability {
-    const helper = windowsSandboxHelperCandidates(this.windowsHelperPath).find(
-      this.pathExists,
-    )
+    const helper = windowsSandboxHelperCandidates(
+      this.windowsHelperPath,
+      this.platform,
+    ).find(this.pathExists)
     if (!helper)
       return unavailableCapability(
         this.platform,
@@ -577,9 +578,13 @@ function windowsSandboxArgs(
   return out
 }
 
-function windowsSandboxHelperCandidates(explicit: string | null): string[] {
+function windowsSandboxHelperCandidates(
+  explicit: string | null,
+  platform: NodeJS.Platform,
+): string[] {
   const filename = 'cairn-windows-sandbox.exe'
   const cwd = process.cwd()
+  const resolveCandidate = platform === 'win32' ? win32.resolve : resolve
   return uniqueRoots(
     [
       explicit,
@@ -608,7 +613,7 @@ function windowsSandboxHelperCandidates(explicit: string | null): string[] {
       join(dirname(process.execPath), filename),
     ]
       .filter((value): value is string => Boolean(value))
-      .map((value) => resolve(value)),
+      .map((value) => resolveCandidate(value)),
   )
 }
 
