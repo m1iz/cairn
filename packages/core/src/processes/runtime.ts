@@ -1175,7 +1175,12 @@ function cleanReason(value: unknown, fallback: string): string {
 }
 
 function isBenignStdinClosure(error: NodeJS.ErrnoException): boolean {
-  return error.code === 'EPIPE' || error.code === 'ERR_STREAM_DESTROYED'
+  return (
+    error.code === 'EPIPE' ||
+    error.code === 'EOF' ||
+    error.code === 'ECONNRESET' ||
+    error.code === 'ERR_STREAM_DESTROYED'
+  )
 }
 
 function noFollowFlag(): number {

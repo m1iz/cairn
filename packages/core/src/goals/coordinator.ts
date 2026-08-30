@@ -140,10 +140,14 @@ export class GoalCoordinator {
   }
 
   async resume(goalId: string, displayContent = ''): Promise<GoalRecord> {
-    const goal = await this.requireGoal(goalId)
-    if (goal.runtime.phase !== 'paused')
-      throw new Error('Only a paused Goal can be resumed.')
-    return await this.start(goal.id, CONTINUE_PROMPT, displayContent)
+    return await this.serializeLaunch(async () => {
+      const goal = await this.requireGoal(goalId)
+      if (goal.runtime.phase !== 'paused')
+        throw new Error('Only a paused Goal can be resumed.')
+      const retiring = this.handles.get(goalId)
+      if (retiring?.abortController.signal.aborted) await retiring.promise
+      return await this.startUnlocked(goal.id, CONTINUE_PROMPT, displayContent)
+    })
   }
 
   async resumeAfterControl(

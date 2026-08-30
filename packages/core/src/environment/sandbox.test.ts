@@ -253,7 +253,7 @@ describe('NodeOwnedProcessRunner containment', () => {
         executable: '/bin/sh',
         args: ['-c', `printf inside > "${workspaceWrite}"`],
       })
-      expect(inside).toMatchObject({
+      expect(inside, JSON.stringify(inside)).toMatchObject({
         status: 'completed',
         exitCode: 0,
         containment: { decision: 'sandboxed' },
@@ -373,7 +373,7 @@ describe('NodeOwnedProcessRunner containment', () => {
         executable: cmd,
         args: ['/d', '/s', '/c', 'echo inside>inside.txt'],
       })
-      expect(inside).toMatchObject({
+      expect(inside, JSON.stringify(inside)).toMatchObject({
         status: 'completed',
         exitCode: 0,
         containment: { decision: 'sandboxed', backend: 'windows-native' },

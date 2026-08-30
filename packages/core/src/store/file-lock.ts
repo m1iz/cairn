@@ -25,7 +25,12 @@ async function acquire(lockPath: string, staleMs: number): Promise<boolean> {
     await fh.close()
     return true
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+    const code = (err as NodeJS.ErrnoException).code
+    if (!isLockContention(code)) throw err
+    // Windows can briefly surface a competing create/open as EPERM, EACCES,
+    // or EBUSY while another writer (or a filesystem filter) owns the path.
+    // Those states are retryable but do not prove that a stale lock exists.
+    if (code !== 'EEXIST') return false
     // 锁已存在：若 stale 则回收一次再让下一轮重试。
     try {
       const s = await stat(lockPath)
@@ -40,6 +45,14 @@ async function acquire(lockPath: string, staleMs: number): Promise<boolean> {
     }
     return false
   }
+}
+
+function isLockContention(code: string | undefined): boolean {
+  return (
+    code === 'EEXIST' ||
+    (process.platform === 'win32' &&
+      (code === 'EPERM' || code === 'EACCES' || code === 'EBUSY'))
+  )
 }
 
 async function lockOwnerIsAlive(lockPath: string): Promise<boolean> {

@@ -95,7 +95,10 @@ describe('OwnedProcessRuntime receipts', () => {
       })
       await delay(20)
 
-      expect(result).toMatchObject({ status: 'completed', exitCode: 0 })
+      expect(result, JSON.stringify(result)).toMatchObject({
+        status: 'completed',
+        exitCode: 0,
+      })
     },
     WINDOWS_SANDBOX_TEST_TIMEOUT_MS + 15_000,
   )

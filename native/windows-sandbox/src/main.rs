@@ -176,13 +176,13 @@ mod windows_main {
     struct AppContainerCleanup {
         profile_name: String,
         sid: String,
-        acl_roots: Vec<PathBuf>,
+        acl_roots: Vec<(PathBuf, bool)>,
     }
 
     impl Drop for AppContainerCleanup {
         fn drop(&mut self) {
-            for path in &self.acl_roots {
-                remove_acl(path, &self.sid);
+            for (path, recursive) in &self.acl_roots {
+                remove_acl(path, &self.sid, *recursive);
             }
             cleanup_profile(&self.profile_name);
         }
@@ -387,6 +387,7 @@ mod windows_main {
                     let mut appcontainer_command_line = command_line.clone();
                     launch_appcontainer(
                         policy,
+                        &executable,
                         &read_only,
                         &mut appcontainer_command_line,
                         &cwd_w,
@@ -541,6 +542,7 @@ mod windows_main {
 
     fn launch_appcontainer(
         policy: &LaunchPolicy,
+        executable: &Path,
         read_only: &[PathBuf],
         command_line: &mut [u16],
         cwd: &[u16],
@@ -571,20 +573,26 @@ mod windows_main {
             sid: sid_string.clone(),
             acl_roots: Vec::new(),
         };
-        cleanup.acl_roots.push(policy.workspace.clone());
+        cleanup.acl_roots.push((policy.workspace.clone(), true));
         grant_acl(&policy.workspace, &sid_string, "M", true)?;
         if policy.temp != policy.workspace {
-            cleanup.acl_roots.push(policy.temp.clone());
+            cleanup.acl_roots.push((policy.temp.clone(), true));
             grant_acl(&policy.temp, &sid_string, "M", true)?;
         }
+        if !is_windows_runtime_root(executable) {
+            cleanup.acl_roots.push((executable.to_path_buf(), false));
+            grant_acl(executable, &sid_string, "RX", false)?;
+        }
+        let executable_parent = executable.parent();
         for path in read_only {
             if !is_windows_runtime_root(path) {
-                cleanup.acl_roots.push(path.clone());
-                grant_acl(path, &sid_string, "RX", true)?;
+                let recursive = executable_parent != Some(path.as_path());
+                cleanup.acl_roots.push((path.clone(), recursive));
+                grant_acl(path, &sid_string, "RX", recursive)?;
             }
         }
         for path in &policy.denied {
-            cleanup.acl_roots.push(path.clone());
+            cleanup.acl_roots.push((path.clone(), true));
             deny_acl(path, &sid_string)?;
         }
 
@@ -662,7 +670,11 @@ mod windows_main {
         if acl_has_rights(path, sid, rights) {
             return Ok(());
         }
-        let principal = format!("*{sid}:(OI)(CI){rights}");
+        let principal = if recursive {
+            format!("*{sid}:(OI)(CI){rights}")
+        } else {
+            format!("*{sid}:{rights}")
+        };
         let mut command = std::process::Command::new(system_executable("icacls.exe"));
         command.arg(path).arg("/grant").arg(principal);
         if recursive {
@@ -719,16 +731,15 @@ mod windows_main {
         Ok(())
     }
 
-    fn remove_acl(path: &Path, sid: &str) {
+    fn remove_acl(path: &Path, sid: &str, recursive: bool) {
         let principal = format!("*{sid}");
         for flag in ["/remove:g", "/remove:d"] {
-            let _ = std::process::Command::new(system_executable("icacls.exe"))
-                .arg(path)
-                .arg(flag)
-                .arg(&principal)
-                .args(["/T", "/C", "/Q"])
-                .creation_flags(CREATE_NO_WINDOW)
-                .output();
+            let mut command = std::process::Command::new(system_executable("icacls.exe"));
+            command.arg(path).arg(flag).arg(&principal);
+            if recursive {
+                command.args(["/T", "/C", "/Q"]);
+            }
+            let _ = command.creation_flags(CREATE_NO_WINDOW).output();
         }
     }
 
