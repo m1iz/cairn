@@ -11,4 +11,3 @@ quota, cancellation, ownership, and durable receipts remain in `@cairn/core`.
 
 The SandboxSpec wire layout follows Microsoft's public MXC schema (MIT):
 `external/windows-sdk/BaseContainerSpecification.fbs`.
-
