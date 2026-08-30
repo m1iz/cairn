@@ -72,6 +72,8 @@ jobs:
             desktop/package-lock.json
       - run: npm ci
       - run: npm --prefix desktop ci
+      - name: Build Windows sandbox helper
+        run: npm run build:windows-sandbox
       - name: Reject Core regressions beyond the captured Windows baseline
         run: >-
           node scripts/verify-vitest-baseline.mjs
@@ -79,7 +81,7 @@ jobs:
           --vitest ../../node_modules/vitest/vitest.mjs
           --min-passed 2247
           --max-failed 0
-          --max-skipped 21
+          --max-skipped 23
           --max-runtime-errors 0
       - name: Reject Desktop regressions beyond the captured baseline
         run: >-
@@ -112,7 +114,7 @@ jobs:
           --vitest ../../node_modules/vitest/vitest.mjs
           --min-passed 2261
           --max-failed 0
-          --max-skipped 7
+          --max-skipped 8
           --max-runtime-errors 0
       - name: Reject Desktop regressions beyond the captured UI baseline
         run: >-

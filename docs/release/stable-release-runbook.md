@@ -13,7 +13,7 @@
 - Windows x64：Authenticode 签名、NSIS 安装包、安装/卸载与 packaged smoke；
 - Linux x64：AppImage/DEB，以及 Ubuntu 22.04 / 24.04 安装、smoke 和移除 receipt。
 
-各平台 verification script 必须确认签名身份、安装资产、checksum 和 smoke receipt。Windows 在 Job Object + ACL backend 实现前应如实报告 `windows-unsupported`，不能伪造 sandboxed receipt。
+各平台 verification script 必须确认签名身份、安装资产、checksum 和 smoke receipt。Windows 包必须包含原生 sandbox helper，且 packaged smoke 只有在 helper 的负向隔离自检通过并报告 `windows-native · available` 时才可生成候选包。
 
 ## 凭证边界
 

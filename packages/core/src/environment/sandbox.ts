@@ -1,17 +1,13 @@
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { dirname, posix, win32 } from 'node:path'
+import { dirname, join, posix, resolve, win32 } from 'node:path'
 import { canonicalizeExistingPath } from '../util/paths'
 
 export type ProcessContainmentMode = 'required' | 'preferred'
 export type ProcessNetworkPolicy = 'deny' | 'allow'
 export type ProcessSandboxBackend =
-  | 'macos-seatbelt'
-  | 'linux-bwrap'
-  | 'windows-unsupported'
-  | 'unsupported'
-  | 'none'
+  'macos-seatbelt' | 'linux-bwrap' | 'windows-native' | 'unsupported' | 'none'
 export type ProcessSandboxCapabilityStatus =
   'available' | 'unavailable' | 'unsupported' | 'error'
 
@@ -20,7 +16,7 @@ export interface ProcessSandboxCapability {
   backend: ProcessSandboxBackend
   status: ProcessSandboxCapabilityStatus
   filesystem: 'workspace-write' | 'unavailable'
-  network: 'policy-controlled' | 'unavailable'
+  network: 'policy-controlled' | 'deny-only' | 'unavailable'
   processTree: boolean
   reason: string
 }
@@ -51,12 +47,46 @@ export interface PreparedContainedProcess {
   receipt: ProcessContainmentReceipt
 }
 
+export function containedProcessEnvironment(
+  requested: Record<string, string>,
+  containment: ProcessContainmentReceipt,
+  platform: NodeJS.Platform = process.platform,
+): Record<string, string> {
+  const env = { ...requested }
+  if (platform !== 'win32' || containment.backend !== 'windows-native')
+    return env
+
+  // CreateProcessW needs these locations while constructing an AppContainer
+  // environment. They do not grant filesystem access; the restricted token
+  // and path ACLs remain authoritative.
+  copyWindowsEnvironmentIfMissing(env, 'SystemRoot')
+  copyWindowsEnvironmentIfMissing(env, 'WINDIR')
+  copyWindowsEnvironmentIfMissing(env, 'LOCALAPPDATA')
+  return env
+}
+
+function copyWindowsEnvironmentIfMissing(
+  target: Record<string, string>,
+  name: string,
+): void {
+  if (
+    Object.keys(target).some((key) => key.toLowerCase() === name.toLowerCase())
+  )
+    return
+  const sourceKey = Object.keys(process.env).find(
+    (key) => key.toLowerCase() === name.toLowerCase(),
+  )
+  const value = sourceKey ? process.env[sourceKey] : undefined
+  if (value) target[name] = value
+}
+
 export interface ProcessContainmentController {
   capability(): ProcessSandboxCapability
   prepare(
     executable: string,
     args: string[],
     policy: ProcessContainmentPolicy,
+    cwd?: string,
   ): PreparedContainedProcess
 }
 
@@ -69,6 +99,7 @@ export interface OsSandboxControllerOptions {
   platform?: NodeJS.Platform
   pathExists?: (path: string) => boolean
   probeProcess?: (executable: string, args: string[]) => ProbeResult
+  windowsHelperPath?: string
 }
 
 const MACOS_SANDBOX_EXEC = '/usr/bin/sandbox-exec'
@@ -112,11 +143,13 @@ export class OsSandboxController implements ProcessContainmentController {
   ) => ProbeResult
   private cachedCapability: ProcessSandboxCapability | null = null
   private helperPath: string | null = null
+  private readonly windowsHelperPath: string | null
 
   constructor(opts: OsSandboxControllerOptions = {}) {
     this.platform = opts.platform ?? process.platform
     this.pathExists = opts.pathExists ?? existsSync
     this.probeProcess = opts.probeProcess ?? defaultProbeProcess
+    this.windowsHelperPath = opts.windowsHelperPath ?? null
   }
 
   capability(): ProcessSandboxCapability {
@@ -130,6 +163,7 @@ export class OsSandboxController implements ProcessContainmentController {
     executable: string,
     args: string[],
     rawPolicy: ProcessContainmentPolicy,
+    cwd?: string,
   ): PreparedContainedProcess {
     const policy = normalizePolicy(rawPolicy, this.platform)
     const capability = this.capability()
@@ -193,6 +227,36 @@ export class OsSandboxController implements ProcessContainmentController {
         receipt: sandboxedReceipt(capability, policy, policyHash),
       }
     }
+    if (capability.backend === 'windows-native') {
+      if (policy.network === 'allow' && capability.network === 'deny-only') {
+        if (policy.mode === 'preferred')
+          return {
+            executable,
+            args: [...args],
+            receipt: {
+              decision: 'unsandboxed',
+              backend: 'none',
+              capabilityStatus: capability.status,
+              filesystem: 'unrestricted',
+              network: 'unrestricted',
+              processTree: false,
+              policyHash,
+              reason:
+                'The verified Windows backend supports network-denied commands only on this host.',
+            },
+          }
+        return deniedReceipt(
+          capability,
+          policyHash,
+          'The verified Windows backend supports network-denied commands only on this host.',
+        )
+      }
+      return {
+        executable: this.helperPath,
+        args: windowsSandboxArgs(executable, args, policy, cwd),
+        receipt: sandboxedReceipt(capability, policy, policyHash),
+      }
+    }
     return {
       executable: null,
       args: [],
@@ -212,13 +276,7 @@ export class OsSandboxController implements ProcessContainmentController {
   private probeCapability(): ProcessSandboxCapability {
     if (this.platform === 'darwin') return this.probeMacos()
     if (this.platform === 'linux') return this.probeLinux()
-    if (this.platform === 'win32')
-      return unavailableCapability(
-        this.platform,
-        'windows-unsupported',
-        'Windows Job Object plus ACL containment is not implemented; mutating shell commands fail closed.',
-        'unsupported',
-      )
+    if (this.platform === 'win32') return this.probeWindows()
     return unavailableCapability(
       this.platform,
       'unsupported',
@@ -278,21 +336,70 @@ export class OsSandboxController implements ProcessContainmentController {
     this.helperPath = helper
     return availableCapability(this.platform, 'linux-bwrap', result.detail)
   }
+
+  private probeWindows(): ProcessSandboxCapability {
+    const helper = windowsSandboxHelperCandidates(this.windowsHelperPath).find(
+      this.pathExists,
+    )
+    if (!helper)
+      return unavailableCapability(
+        this.platform,
+        'windows-native',
+        'cairn-windows-sandbox.exe is not built or packaged; mutating shell commands fail closed.',
+      )
+    const result = this.probeProcess(helper, ['--self-test'])
+    if (!result.ok)
+      return unavailableCapability(
+        this.platform,
+        'windows-native',
+        `Windows sandbox negative self-test failed: ${result.detail}`,
+        'error',
+      )
+    this.helperPath = helper
+    return availableCapability(
+      this.platform,
+      'windows-native',
+      result.detail,
+      'deny-only',
+    )
+  }
 }
 
 function availableCapability(
   platform: NodeJS.Platform,
   backend: ProcessSandboxBackend,
   reason: string,
+  network: ProcessSandboxCapability['network'] = 'policy-controlled',
 ): ProcessSandboxCapability {
   return {
     platform,
     backend,
     status: 'available',
     filesystem: 'workspace-write',
-    network: 'policy-controlled',
+    network,
     processTree: true,
     reason,
+  }
+}
+
+function deniedReceipt(
+  capability: ProcessSandboxCapability,
+  policyHash: string,
+  reason: string,
+): PreparedContainedProcess {
+  return {
+    executable: null,
+    args: [],
+    receipt: {
+      decision: 'denied',
+      backend: capability.backend,
+      capabilityStatus: capability.status,
+      filesystem: 'workspace-write',
+      network: 'unavailable',
+      processTree: capability.processTree,
+      policyHash,
+      reason,
+    },
   }
 }
 
@@ -448,6 +555,63 @@ function linuxBwrapArgs(
   return out
 }
 
+function windowsSandboxArgs(
+  executable: string,
+  args: string[],
+  policy: ProcessContainmentPolicy,
+  cwd?: string,
+): string[] {
+  const out = [
+    '--workspace',
+    policy.workspaceRoot,
+    '--temp',
+    policy.tempRoot,
+    '--network',
+    policy.network,
+    '--cwd',
+    resolve(cwd ?? policy.workspaceRoot),
+  ]
+  if (policy.stateRoot) out.push('--deny', policy.stateRoot)
+  for (const root of policy.readOnlyRoots) out.push('--read-only', root)
+  out.push('--', executable, ...args)
+  return out
+}
+
+function windowsSandboxHelperCandidates(explicit: string | null): string[] {
+  const filename = 'cairn-windows-sandbox.exe'
+  const cwd = process.cwd()
+  return uniqueRoots(
+    [
+      explicit,
+      process.env.CAIRN_WINDOWS_SANDBOX_HELPER ?? null,
+      join(cwd, 'native', 'windows-sandbox', 'target', 'release', filename),
+      join(
+        cwd,
+        '..',
+        'native',
+        'windows-sandbox',
+        'target',
+        'release',
+        filename,
+      ),
+      join(
+        cwd,
+        '..',
+        '..',
+        'native',
+        'windows-sandbox',
+        'target',
+        'release',
+        filename,
+      ),
+      join(dirname(process.execPath), 'resources', 'native', filename),
+      join(dirname(process.execPath), filename),
+    ]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => resolve(value)),
+  )
+}
+
 function containmentPolicyHash(policy: ProcessContainmentPolicy): string {
   return createHash('sha256')
     .update(
@@ -485,7 +649,7 @@ function defaultProbeProcess(executable: string, args: string[]): ProbeResult {
       shell: false,
       windowsHide: true,
       stdio: 'pipe',
-      timeout: 3_000,
+      timeout: 10_000,
       encoding: 'utf8',
     })
     const detail = String(result.stderr || result.error?.message || '')

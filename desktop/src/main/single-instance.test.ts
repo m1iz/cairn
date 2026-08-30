@@ -72,9 +72,7 @@ function fakeApp(granted: boolean): {
   }
 }
 
-function fakeWindow(
-  opts: { minimized?: boolean; destroyed?: boolean } = {},
-): {
+function fakeWindow(opts: { minimized?: boolean; destroyed?: boolean } = {}): {
   value: ExistingMainWindow
   restore: ReturnType<typeof vi.fn>
   show: ReturnType<typeof vi.fn>

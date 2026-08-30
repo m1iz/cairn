@@ -372,9 +372,11 @@ function packagedSandboxReceipt(
     )
   if (
     platform === 'win32' &&
-    (backend !== 'windows-unsupported' || status !== 'unsupported')
+    (backend !== 'windows-native' || status !== 'available')
   )
-    throw new Error('packaged Windows smoke must report sandbox unsupported')
+    throw new Error(
+      'packaged Windows smoke requires the verified native sandbox backend',
+    )
   return { backend, status, provenance: 'host-os' }
 }
 

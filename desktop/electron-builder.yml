@@ -67,6 +67,9 @@ mac:
   artifactName: Cairn-Agent-${version}-mac-${arch}.${ext}
 
 win:
+  extraResources:
+    - from: build/cairn-windows-sandbox.exe
+      to: native/cairn-windows-sandbox.exe
   target:
     - nsis
   artifactName: Cairn-Agent-${version}-win-${arch}.${ext}

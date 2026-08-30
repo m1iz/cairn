@@ -1,5 +1,6 @@
 import { spawn, type SpawnOptions } from 'node:child_process'
 import {
+  containedProcessEnvironment,
   OsSandboxController,
   type ProcessContainmentController,
   type ProcessContainmentPolicy,
@@ -275,6 +276,7 @@ export class NodeOwnedProcessRunner implements OwnedProcessRunner {
       request.executable,
       request.args,
       request.containment,
+      request.cwd,
     )
     await request.onContainment?.(prepared.receipt)
     if (prepared.receipt.decision === 'denied' || !prepared.executable) {
@@ -292,7 +294,7 @@ export class NodeOwnedProcessRunner implements OwnedProcessRunner {
       executable: prepared.executable,
       args: prepared.args,
       ...(request.cwd ? { cwd: request.cwd } : {}),
-      env: { ...request.env },
+      env: containedProcessEnvironment(request.env, prepared.receipt),
       ...(request.timeoutMs !== undefined
         ? { timeoutMs: request.timeoutMs }
         : {}),

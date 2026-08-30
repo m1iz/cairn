@@ -711,7 +711,7 @@ describe('RunCommand OS containment contract', () => {
     const runner: OwnedProcessRunner = {
       capability: () => ({
         platform: 'win32',
-        backend: 'windows-unsupported',
+        backend: 'windows-native',
         status: 'unsupported',
         filesystem: 'unavailable',
         network: 'unavailable',

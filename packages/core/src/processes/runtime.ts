@@ -26,6 +26,7 @@ import {
   type OwnedProcessRunner,
 } from '../environment/process-runner'
 import {
+  containedProcessEnvironment,
   OsSandboxController,
   type ProcessContainmentController,
   type ProcessContainmentReceipt,
@@ -235,6 +236,7 @@ export class OwnedProcessRuntime implements OwnedProcessRunner {
       request.executable,
       request.args,
       request.containment,
+      request.cwd,
     )
     await request.onContainment?.(prepared.receipt)
     if (prepared.receipt.decision === 'denied' || !prepared.executable)
@@ -298,7 +300,11 @@ export class OwnedProcessRuntime implements OwnedProcessRunner {
     return await new Promise<OwnedProcessResult>((resolveResult) => {
       const options: SpawnOptionsWithoutStdio = {
         cwd,
-        env: { ...request.env },
+        env: containedProcessEnvironment(
+          request.env,
+          prepared.receipt,
+          this.platform,
+        ),
         shell: false,
         detached: this.platform !== 'win32',
         windowsHide: true,
@@ -444,6 +450,7 @@ export class OwnedProcessRuntime implements OwnedProcessRunner {
       request.executable,
       request.args,
       request.containment,
+      request.cwd,
     )
     await request.onContainment?.(prepared.receipt)
     if (prepared.receipt.decision === 'denied' || !prepared.executable)
@@ -487,7 +494,11 @@ export class OwnedProcessRuntime implements OwnedProcessRunner {
 
     const child = spawn(prepared.executable, [...prepared.args], {
       cwd,
-      env: { ...request.env },
+      env: containedProcessEnvironment(
+        request.env,
+        prepared.receipt,
+        this.platform,
+      ),
       shell: false,
       detached: this.platform !== 'win32',
       windowsHide: true,

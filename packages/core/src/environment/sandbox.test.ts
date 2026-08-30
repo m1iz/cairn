@@ -110,17 +110,104 @@ describe('OsSandboxController capability and preparation', () => {
       }).receipt,
     ).toMatchObject({ decision: 'unsandboxed', backend: 'none' })
 
-    const windows = new OsSandboxController({ platform: 'win32' })
+    const windows = new OsSandboxController({
+      platform: 'win32',
+      windowsHelperPath: 'C:\\missing\\cairn-windows-sandbox.exe',
+      pathExists: () => false,
+    })
     expect(windows.capability()).toMatchObject({
-      backend: 'windows-unsupported',
-      status: 'unsupported',
+      backend: 'windows-native',
+      status: 'unavailable',
+    })
+  })
+
+  it('prepares the verified Windows helper without shell interpolation', () => {
+    const helper = 'C:\\Cairn\\cairn-windows-sandbox.exe'
+    const controller = new OsSandboxController({
+      platform: 'win32',
+      windowsHelperPath: helper,
+      pathExists: (path) => path === helper,
+      probeProcess: (executable, args) => ({
+        ok: executable === helper && args[0] === '--self-test',
+        detail: 'negative self-test passed',
+      }),
+    })
+    expect(controller.capability()).toMatchObject({
+      backend: 'windows-native',
+      status: 'available',
+      network: 'deny-only',
+      processTree: true,
+    })
+    const prepared = controller.prepare(
+      'C:\\Windows\\System32\\cmd.exe',
+      ['/d', '/s', '/c', 'echo "hello world"'],
+      {
+        mode: 'required',
+        workspaceRoot: 'C:\\workspace',
+        stateRoot: 'C:\\workspace\\.cairn',
+        tempRoot: 'C:\\workspace\\.tmp',
+        readOnlyRoots: ['C:\\runtime\\bin'],
+        network: 'deny',
+      },
+    )
+    expect(prepared).toMatchObject({
+      executable: helper,
+      receipt: {
+        decision: 'sandboxed',
+        backend: 'windows-native',
+        network: 'denied',
+      },
+    })
+    expect(prepared.args.slice(-5)).toEqual(
+      [
+        '--',
+        'C:\\Windows\\System32\\cmd.exe',
+        '/d',
+        '/s',
+        '/c',
+        'echo "hello world"',
+      ].slice(-5),
+    )
+    expect(prepared.args).toContain('--deny')
+    expect(prepared.args).toContain('--read-only')
+  })
+
+  it('does not silently weaken network-allowed Windows requests', () => {
+    const helper = 'C:\\Cairn\\cairn-windows-sandbox.exe'
+    const controller = new OsSandboxController({
+      platform: 'win32',
+      windowsHelperPath: helper,
+      pathExists: () => true,
+      probeProcess: () => ({ ok: true, detail: 'passed' }),
+    })
+    const required = controller.prepare('tool.exe', [], {
+      ...policy('C:\\workspace'),
+      mode: 'required',
+      network: 'allow',
+    })
+    expect(required.receipt).toMatchObject({
+      decision: 'denied',
+      backend: 'windows-native',
+      network: 'unavailable',
+    })
+    const preferred = controller.prepare('tool.exe', [], {
+      ...policy('C:\\workspace'),
+      mode: 'preferred',
+      network: 'allow',
+    })
+    expect(preferred.receipt).toMatchObject({
+      decision: 'unsandboxed',
+      backend: 'none',
+      network: 'unrestricted',
     })
   })
 })
 
 describe('NodeOwnedProcessRunner containment', () => {
   const realController = new OsSandboxController()
-  const runnable = realController.capability().status === 'available'
+  const runnable =
+    process.platform !== 'win32' &&
+    realController.capability().status === 'available'
 
   it.runIf(runnable)(
     'blocks outside read/write, state-root access, symlink escape, child escape, and network while allowing workspace writes',
@@ -216,7 +303,140 @@ describe('NodeOwnedProcessRunner containment', () => {
       } finally {
         server.close()
       }
+
+      const timed = await runner.run({
+        ...common,
+        executable: process.execPath,
+        args: [
+          '-e',
+          `const {spawn}=require('node:child_process');const c=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});console.log(c.pid);setInterval(()=>{},1000)`,
+        ],
+        timeoutMs: 750,
+      })
+      expect(timed.status).toBe('timeout')
+      const descendantPid = Number(timed.stdout.trim().split(/\s+/)[0])
+      expect(Number.isInteger(descendantPid)).toBe(true)
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      let descendantAlive = true
+      try {
+        process.kill(descendantPid, 0)
+      } catch {
+        descendantAlive = false
+      }
+      expect(descendantAlive).toBe(false)
     },
     20_000,
+  )
+
+  const windowsRunnable =
+    process.platform === 'win32' &&
+    realController.capability().status === 'available'
+
+  it.runIf(windowsRunnable)(
+    'enforces Windows workspace, state, descendant, and network boundaries through the real helper',
+    async () => {
+      const workspace = mkdtempSync(join(tmpdir(), 'cairn-win-workspace-'))
+      const outside = mkdtempSync(join(tmpdir(), 'cairn-win-outside-'))
+      cleanup.push(workspace, outside)
+      const stateRoot = join(workspace, '.cairn')
+      const tempRoot = join(workspace, '.sandbox-tmp')
+      const nestedRoot = join(workspace, 'nested')
+      mkdirSync(stateRoot, { recursive: true })
+      mkdirSync(tempRoot, { recursive: true })
+      mkdirSync(nestedRoot, { recursive: true })
+      writeFileSync(join(outside, 'secret.txt'), 'outside-secret', 'utf8')
+      writeFileSync(join(stateRoot, 'secret.txt'), 'state-secret', 'utf8')
+      const junction = join(workspace, 'outside-junction')
+      symlinkSync(outside, junction, 'junction')
+      const runner = new NodeOwnedProcessRunner({ sandbox: realController })
+      const cmd = join(
+        process.env.SystemRoot ?? 'C:\\Windows',
+        'System32',
+        'cmd.exe',
+      )
+      const common = {
+        cwd: workspace,
+        env: { ...process.env, TMP: tempRoot, TEMP: tempRoot },
+        timeoutMs: 15_000,
+        containment: {
+          mode: 'required' as const,
+          workspaceRoot: workspace,
+          stateRoot,
+          tempRoot,
+          readOnlyRoots: [dirname(process.execPath)],
+          network: 'deny' as const,
+        },
+      }
+      const inside = await runner.run({
+        ...common,
+        env: {},
+        executable: cmd,
+        args: ['/d', '/s', '/c', 'echo inside>inside.txt'],
+      })
+      expect(inside).toMatchObject({
+        status: 'completed',
+        exitCode: 0,
+        containment: { decision: 'sandboxed', backend: 'windows-native' },
+      })
+      expect(readFileSync(join(workspace, 'inside.txt'), 'utf8')).toContain(
+        'inside',
+      )
+
+      const nested = await runner.run({
+        ...common,
+        cwd: nestedRoot,
+        executable: cmd,
+        args: ['/d', '/s', '/c', 'echo nested>from-nested.txt'],
+      })
+      expect(nested).toMatchObject({ status: 'completed', exitCode: 0 })
+      expect(
+        readFileSync(join(nestedRoot, 'from-nested.txt'), 'utf8'),
+      ).toContain('nested')
+
+      for (const command of [
+        `type "${join(outside, 'secret.txt')}"`,
+        `echo escaped>"${join(outside, 'escaped.txt')}"`,
+        `type "${join(stateRoot, 'secret.txt')}"`,
+        `echo escaped>"${join(junction, 'junction-escaped.txt')}"`,
+        `cmd /d /s /c echo escaped>"${join(outside, 'child-escaped.txt')}"`,
+      ]) {
+        const result = await runner.run({
+          ...common,
+          executable: cmd,
+          args: ['/d', '/s', '/c', command],
+        })
+        expect(result.exitCode, command).not.toBe(0)
+        expect(result.containment.decision, command).toBe('sandboxed')
+      }
+      expect(existsSync(join(outside, 'escaped.txt'))).toBe(false)
+      expect(existsSync(join(outside, 'child-escaped.txt'))).toBe(false)
+      expect(existsSync(join(outside, 'junction-escaped.txt'))).toBe(false)
+
+      const server = createServer()
+      await new Promise<void>((resolve) =>
+        server.listen(0, '127.0.0.1', resolve),
+      )
+      try {
+        const address = server.address()
+        if (!address || typeof address === 'string') throw new Error('no port')
+        const network = await runner.run({
+          ...common,
+          executable: process.execPath,
+          args: [
+            '-e',
+            `require('node:net').connect(${address.port},'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(7))`,
+          ],
+          timeoutMs: 5_000,
+        })
+        expect(network).toMatchObject({
+          status: 'completed',
+          exitCode: 7,
+          containment: { decision: 'sandboxed', network: 'denied' },
+        })
+      } finally {
+        server.close()
+      }
+    },
+    60_000,
   )
 })

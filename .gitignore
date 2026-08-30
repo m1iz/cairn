@@ -29,6 +29,9 @@ __pycache__/
 
 # JavaScript / TypeScript dependencies and build caches
 node_modules/
+.tools/
+native/windows-sandbox/target/
+/.sandbox-debug/
 desktop/node_modules/
 packages/*/dist/
 packages/*/coverage/
@@ -43,6 +46,7 @@ coverage/
 /desktop/out/
 /desktop/dist/
 /desktop/build/backend/
+/desktop/build/cairn-windows-sandbox.exe
 /desktop/build/runtime-defaults-manifest.json*
 /desktop/screenshots/
 /desktop/test-results/

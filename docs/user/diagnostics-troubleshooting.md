@@ -52,7 +52,7 @@ Diagnostics 的 `Command OS Sandbox` 行显示实际 backend 和 capability：
 
 - `macos-seatbelt · 可用`：命令由系统 Seatbelt profile 包装；
 - `linux-bwrap · 可用/不可用`：同时反映 helper 与 user namespace probe，不以文件存在冒充可执行；
-- `windows-unsupported · 不支持`：当前没有 Job Object + ACL 等价实现；严格证明只读的命令可带 `decision=unsandboxed` receipt 执行，mutation 或无法证明只读的命令会在 spawn 前拒绝；
+- `windows-native · 可用/不可用`：原生 helper 通过 AppContainer/PSEC、Job Object 和 ACL 策略隔离进程；启动 probe 会实际验证工作区写入、外部路径拒绝、子进程继承和网络阻断，任一失败都会在 spawn 前关闭严格执行路径；
 - `run_command` 对 mutation/未证明只读命令要求 `decision=sandboxed`。这类命令若返回 `unsandboxed`、`denied` 或 `containment_unavailable`，工具会按失败处理且不接受结果；只读命令的 `unsandboxed` receipt 仍会完整进入诊断与审计。
 
 Sandboxed 命令默认不能访问 `stateRoot`、workspace 外文件或网络。依赖 HOME 配置、联网下载或写系统目录的命令因此失败是策略结果，不要通过 symlink、子 shell 或换解释器绕过；应改用受管安装/网络能力，或等待对应平台 backend/policy 明确开放。

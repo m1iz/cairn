@@ -10,7 +10,8 @@
     "test": "npm test --workspace @cairn/core && npm --prefix desktop run test",
     "typecheck:test": "npm --prefix desktop run typecheck:test",
     "typecheck": "npm run typecheck --workspace @cairn/core && npm --prefix desktop run typecheck",
-    "build": "npm --prefix desktop run build"
+    "build": "npm --prefix desktop run build",
+    "build:windows-sandbox": "node scripts/build-windows-sandbox.mjs"
   },
   "workspaces": [
     "packages/*"
