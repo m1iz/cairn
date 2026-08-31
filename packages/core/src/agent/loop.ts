@@ -95,6 +95,7 @@ import {
   type HybridMemoryMode,
 } from '../memory/hybrid-capability'
 import type { HybridMemoryDocument } from '../memory/hybrid-index'
+import { hybridSessionDocuments } from '../memory/hybrid-session-source'
 import type {
   HybridMemoryVectorStore,
   MemoryEmbeddingProvider,
@@ -3339,7 +3340,10 @@ export class AgentLoop {
         run: async (taskSignal) =>
           await this.hybridMemory.retrieve({
             query: content,
-            documents: this.hybridMemoryDocuments(),
+            documents: this.hybridMemoryDocuments(
+              session,
+              bindings.conversationStore.loadActiveMemoryHistory(),
+            ),
             scope: {
               mode: session.mode === 'build' ? 'build' : 'chat',
               projectId: session.project_id,
@@ -4294,7 +4298,10 @@ export class AgentLoop {
     return new SessionMemoryStore(this.sharedMemory, conversation)
   }
 
-  private hybridMemoryDocuments(): HybridMemoryDocument[] {
+  private hybridMemoryDocuments(
+    session: SessionEntry,
+    history: readonly Msg[],
+  ): HybridMemoryDocument[] {
     const documents: HybridMemoryDocument[] = []
     const globalContent = this.sharedMemory.readMemory().trim()
     if (globalContent) {
@@ -4322,6 +4329,21 @@ export class AgentLoop {
           Math.max(0, Date.parse(project.updated_at) || 0),
       })
     }
+    const sessionDocuments = hybridSessionDocuments({
+      sessionId: session.id,
+      mode: session.mode,
+      projectId: session.project_id,
+      historyPath: join(
+        this.sessionStore.sessionDir(session.id),
+        'history.jsonl',
+      ),
+      history,
+      updatedAt:
+        fileModifiedAt(
+          join(this.sessionStore.sessionDir(session.id), 'history.jsonl'),
+        ) || Math.max(0, Date.parse(session.updated_at) || 0),
+    })
+    documents.push(...sessionDocuments)
     return documents
   }
 

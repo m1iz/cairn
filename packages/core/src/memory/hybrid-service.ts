@@ -61,6 +61,7 @@ export class HybridMemoryService {
   private indexedDigest: string | null = null
   private nextEmbeddingRetryAt = 0
   private indexQueue: Promise<void> = Promise.resolve()
+  private retrieveQueue: Promise<void> = Promise.resolve()
   private searches = 0
   private promptMutations = 0
   private embeddingFallbacks = 0
@@ -105,6 +106,18 @@ export class HybridMemoryService {
         derivedDiskBytes: 0,
       }
 
+    const run = () => this.retrieveFromSnapshot(input)
+    const result = this.retrieveQueue.then(run, run)
+    this.retrieveQueue = result.then(
+      () => undefined,
+      () => undefined,
+    )
+    return await result
+  }
+
+  private async retrieveFromSnapshot(
+    input: HybridMemoryRetrieveInput,
+  ): Promise<HybridMemoryRetrieveResult> {
     const sync = this.index.sync(input.documents)
     this.lastSourceDigest = sync.sourceDigest
     this.derivedDiskBytes = sync.derivedDiskBytes

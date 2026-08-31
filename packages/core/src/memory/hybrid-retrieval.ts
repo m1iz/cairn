@@ -539,12 +539,17 @@ function visibleInScope(
   if (scope.mode === 'build') {
     if (!projectId) return false
     if (chunk.source === 'project') return chunk.projectId === projectId
-    if (chunk.source === 'session') return chunk.projectId === projectId
+    if (chunk.source === 'session')
+      return (
+        Boolean(sessionId) &&
+        chunk.projectId === projectId &&
+        chunk.sessionId === sessionId
+      )
     return false
   }
   if (chunk.source === 'global') return true
   if (chunk.source !== 'session' || chunk.projectId) return false
-  return !chunk.sessionId || chunk.sessionId === sessionId
+  return Boolean(sessionId) && chunk.sessionId === sessionId
 }
 
 function bm25Scores(

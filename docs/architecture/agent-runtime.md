@@ -142,7 +142,9 @@ Core operation registry 在参数解析或领域调用前检查 lifecycle ready�
 
 上下文超出模型窗口时由 Core 压缩。压缩文本是导航摘要，不取代 session、Plan 或 Goal Store 中的权威状态。
 
-Hybrid Memory 非 `off` 时作为 `PromptPrefetchCoordinator` 的可选任务并发执行，当前文档集合来自全局 Markdown 记忆和所有已登记项目私有记忆，再按 Chat/global 或 Build/精确 project scope 过滤。`eval` 只留下诊断；通过 provider-bound gate 的 `on` 才用合格检索结果替换标准记忆段。没有通过相关性准入的结果时不应用 Hybrid 投影，保留原 ContextBuilder 的标准 scope 记忆。TEI embedding、PostgreSQL vector store 或 TEI reranker 的单项失败分别降级到可用的较低层检索路径，不改变 Markdown 权威源。
+Hybrid Memory 非 `off` 时作为 `PromptPrefetchCoordinator` 的可选任务并发执行。文档集合来自全局 Markdown 记忆、所有已登记项目私有记忆，以及当前 session 的活动 Conversation/Message Graph 分支投影；session 投影只收录可见 user/assistant 文本，不收录 system、tool、隐藏消息、checkpoint 或历史归档。Chat 检索 global 与精确 chat session，Build 检索精确 project 与同一 project 下的精确 session；缺少 `sessionId` 的旧派生 chunk 不可见。共享 Retriever 对“同步文档 → 检索”建立串行快照边界，两个并发 session 不会观察到对方刚替换的派生索引。
+
+`eval` 只留下诊断；通过 provider-bound gate 的 `on` 才用合格检索结果替换标准记忆段。没有通过相关性准入的结果时不应用 Hybrid 投影，保留原 ContextBuilder 的标准 scope 记忆。session 历史、全局/项目 Markdown 仍是权威源，Hybrid 索引只读且可重建。TEI embedding、PostgreSQL vector store 或 TEI reranker 的单项失败分别降级到可用的较低层检索路径，不改变权威源。
 
 ## 模型与工具循环
 

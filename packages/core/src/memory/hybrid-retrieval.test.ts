@@ -84,6 +84,42 @@ describe('HybridMemoryRetriever', () => {
     expect(result.results[1]!.score).toBeGreaterThan(result.results[2]!.score)
   })
 
+  it('requires an exact session match for session memory in chat and build modes', async () => {
+    const retriever = new HybridMemoryRetriever({ now: () => NOW })
+    await retriever.replace([
+      chunk('chat-a', 'chat session alpha marker QZ-101', 'session', {
+        sessionId: 'session-a',
+      }),
+      chunk('chat-unscoped', 'legacy unscoped marker QZ-101', 'session'),
+      chunk('build-a', 'build session alpha marker QZ-202', 'session', {
+        projectId: 'project-one',
+        sessionId: 'session-a',
+      }),
+      chunk('build-b', 'build session beta marker QZ-202', 'session', {
+        projectId: 'project-one',
+        sessionId: 'session-b',
+      }),
+    ])
+
+    const chat = await retriever.search({
+      query: 'marker QZ-101',
+      scope: { mode: 'chat', sessionId: 'session-a' },
+      maxResults: 4,
+    })
+    const build = await retriever.search({
+      query: 'marker QZ-202',
+      scope: {
+        mode: 'build',
+        projectId: 'project-one',
+        sessionId: 'session-a',
+      },
+      maxResults: 4,
+    })
+
+    expect(chat.results.map((item) => item.id)).toEqual(['chat-a'])
+    expect(build.results.map((item) => item.id)).toEqual(['build-a'])
+  })
+
   it('uses MMR to keep a diverse fact ahead of a near-duplicate', async () => {
     const retriever = new HybridMemoryRetriever({
       now: () => NOW,

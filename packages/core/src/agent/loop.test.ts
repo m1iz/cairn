@@ -1935,6 +1935,48 @@ describe('AgentLoop', () => {
     ).toMatchObject({ stability: 'dynamic' })
   })
 
+  it('indexes the active conversation branch as exact session-scoped hybrid memory', async () => {
+    const root = tmp('cairn-loop-hybrid-session-source-')
+    const provider = new QueueProvider([
+      response('The session deployment marker is SG-HYBRID-77.'),
+      response('done'),
+    ])
+    const loop = await AgentLoop.create({
+      root,
+      stateRoot: join(root, '.cairn'),
+      templatesDir: TEMPLATES_DIR,
+      modelRouter: fakeRouter(provider),
+      initializeMcp: false,
+      hybridMemoryMode: 'eval',
+    })
+
+    await loop.runUserTurn('Remember deployment marker SG-HYBRID-77.', {
+      turnId: 'turn_hybrid_session_seed',
+    })
+    await loop.runUserTurn('What was the deployment marker?', {
+      turnId: 'turn_hybrid_session_query',
+    })
+
+    const sessionChunks = loop.hybridMemory.index
+      .load()
+      .chunks.filter((chunk) => chunk.source === 'session')
+    expect(sessionChunks.length).toBeGreaterThan(0)
+    expect(sessionChunks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sessionId: loop.activeSessionId,
+          projectId: null,
+          path: expect.stringContaining(
+            `${loop.activeMemoryStore.historyFile}#seq:`,
+          ),
+        }),
+      ]),
+    )
+    expect(sessionChunks.map((chunk) => chunk.text).join('\n')).toContain(
+      'SG-HYBRID-77',
+    )
+  })
+
   it('starts the production scheduler exactly once and stops it with the loop', async () => {
     const root = tmp('cairn-loop-scheduler-lifecycle-')
     const start = vi.spyOn(SchedulerService.prototype, 'start')

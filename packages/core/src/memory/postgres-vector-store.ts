@@ -164,21 +164,26 @@ export class PostgresHybridMemoryVectorStore implements HybridMemoryVectorStore 
     let visibility: string
     if (scope.mode === 'build') {
       values.push(String(scope.projectId ?? ''))
-      visibility = `project_id = $3 AND source IN ('project', 'session')`
+      values.push(String(scope.sessionId ?? ''))
+      visibility = `(
+        (source = 'project' AND project_id = $3) OR
+        (source = 'session' AND project_id = $3 AND session_id = $4)
+      )`
     } else {
       values.push(String(scope.sessionId ?? ''))
       visibility = `(source = 'global' OR (
         source = 'session' AND project_id IS NULL AND
-        (session_id IS NULL OR session_id = $3)
+        session_id = $3
       ))`
     }
     values.push(limit)
+    const limitParameter = scope.mode === 'build' ? '$5' : '$4'
     const result = await this.pool.query<{ chunk_id: string; score: number }>(
       `SELECT chunk_id, GREATEST(0, 1 - (embedding <=> $1::vector)) AS score
          FROM memory_chunks
         WHERE embedding_provider = $2 AND ${visibility}
         ORDER BY embedding <=> $1::vector
-        LIMIT $4`,
+        LIMIT ${limitParameter}`,
       values,
     )
     this.recordSuccess()

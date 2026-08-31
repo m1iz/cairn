@@ -84,6 +84,14 @@ export class ConversationStore {
   }
 
   loadActiveHistory(): Row[] {
+    return visibleHistoryRows(this.loadActiveBranchRows())
+  }
+
+  loadActiveMemoryHistory(): Row[] {
+    return memoryHistoryRows(this.loadActiveBranchRows())
+  }
+
+  private loadActiveBranchRows(): Row[] {
     const snapshot = this.messageGraph.snapshot()
     const activeIds = new Set<string>()
     const byId = new Map(snapshot.nodes.map((node) => [node.id, node]))
@@ -97,8 +105,8 @@ export class ConversationStore {
       (node) => node.status === 'committed' && !activeIds.has(node.id),
     )
     return hasInactiveBranch
-      ? visibleHistoryRows(this.messageGraph.project())
-      : this.loadUnarchivedHistory()
+      ? this.messageGraph.project()
+      : this.historyLog.loadActiveRows()
   }
 
   loadUnarchivedTurnIds(): string[] {
@@ -184,6 +192,23 @@ function visibleHistoryRows(active: Row[]): Row[] {
     out.push(item)
   }
   return out
+}
+
+function memoryHistoryRows(active: Row[]): Row[] {
+  const visible = visibleHistoryRows(active)
+  const sourceBySeq = new Map(
+    active.map((row) => [Number(row.seq) || 0, row] as const),
+  )
+  return visible.map((row) => {
+    const source = sourceBySeq.get(Number(row.seq) || 0)
+    return {
+      ...row,
+      ...(typeof source?.ts === 'string' ? { ts: source.ts } : {}),
+      ...(source?.ui_hidden === true ? { ui_hidden: true } : {}),
+      ...(source?.hidden === true ? { hidden: true } : {}),
+      ...(source?.type === 'model_call' ? { type: 'model_call' } : {}),
+    }
+  })
 }
 
 export class SessionMemoryStore {

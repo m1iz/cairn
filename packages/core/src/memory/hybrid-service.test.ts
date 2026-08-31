@@ -199,6 +199,37 @@ describe('HybridMemoryService', () => {
     expect(second.search?.results[0]?.text).toContain('new preference')
     expect(second.search?.results[0]?.text).not.toContain('old preference')
   })
+
+  it('serializes per-session source replacement so concurrent searches observe their own snapshot', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'cairn-hybrid-session-queue-'))
+    const service = serviceFor(root, 'eval')
+
+    const [alpha, beta] = await Promise.all([
+      service.retrieve({
+        query: 'alpha marker',
+        documents: [
+          document('alpha-session', '## Turn\n\nalpha marker', {
+            source: 'session',
+            sessionId: 'alpha',
+          }),
+        ],
+        scope: { mode: 'chat', sessionId: 'alpha' },
+      }),
+      service.retrieve({
+        query: 'beta marker',
+        documents: [
+          document('beta-session', '## Turn\n\nbeta marker', {
+            source: 'session',
+            sessionId: 'beta',
+          }),
+        ],
+        scope: { mode: 'chat', sessionId: 'beta' },
+      }),
+    ])
+
+    expect(alpha.search?.results[0]?.text).toContain('alpha marker')
+    expect(beta.search?.results[0]?.text).toContain('beta marker')
+  })
 })
 
 function serviceFor(

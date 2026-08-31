@@ -49,7 +49,7 @@ Cairn 区分两个互不重叠的根目录概念：
     patch-ledger.jsonl
     tool-results/         # 截断工具结果的内容寻址完整正文与元数据
     hybrid-index/
-      index.v1.json       # 可从 Markdown 权威记忆重建的派生检索索引
+      index.v1.json       # 可从 Markdown 与当前 session 活动分支重建的派生检索索引
     attachments/<month>/
     media/<month>/
     desktop/window.json
@@ -131,9 +131,9 @@ Cairn 区分两个互不重叠的根目录概念：
 
 ### Hybrid Memory 派生索引
 
-`memory/hybrid-index/index.v1.json` 不是记忆事实源。运行时索引输入限定为全局 `MEMORY.local.md` 和每个已登记项目的 `AGENTS.local.md`；检索时再按 Chat/global 或 Build/精确 project scope 过滤。索引只保存确定性分块、source/path/line provenance、source digest 和检索所需派生数据。文件损坏或被删除时，Core 忽略旧派生物并从 Markdown 重建，不会反向改写原始记忆。
+`memory/hybrid-index/index.v1.json` 不是记忆事实源。运行时索引输入包括全局 `MEMORY.local.md`、每个已登记项目的 `AGENTS.local.md`，以及当前 session 的活动 Conversation/Message Graph 分支投影。session 投影只包含可见 user/assistant 文本；system、tool、隐藏消息、checkpoint 和 `history_archive` 不进入检索。索引只保存确定性分块、source/path/line provenance、source digest 和检索所需派生数据。文件损坏或被删除时，Core 忽略旧派生物并从权威 Store 重建，不会反向改写 Markdown 或会话历史。
 
-索引采用同目录临时文件、file `fsync`、rename 与 directory `fsync`，文件权限为 `0600`。当前 Chat 只检索 global，Build 只检索精确 project，不能读 global 或其他 project。模式 `off` 不创建索引，`eval` 只记录影子结果，只有 provider-bound 评估门禁通过的 `on` 才能注入 prompt。embedding 失败会自动使用 FTS；相关性准入拒绝的结果不会形成 Hybrid prompt 投影。配置 PostgreSQL 时，embedding、provenance 和 `access_count` 保存在外部派生表，命中后按 scope 原子递增；连接失败不会改写 Markdown。可选 TEI reranker 失败时回退融合排序。诊断只暴露稳定原因码与计数，不记录 provider 原始异常、连接串或记忆正文。
+索引采用同目录临时文件、file `fsync`、rename 与 directory `fsync`，文件权限为 `0600`。Chat 只检索 global 和精确 chat session；Build 只检索精确 project 和同一 project 下的精确 session，不能读取其他 session、global 或其他 project。缺失 `session_id` 的旧 session chunk fail closed。模式 `off` 不创建索引，`eval` 只记录影子结果，只有 provider-bound 评估门禁通过的 `on` 才能注入 prompt。embedding 失败会自动使用 FTS；相关性准入拒绝的结果不会形成 Hybrid prompt 投影。配置 PostgreSQL 时，embedding、provenance 和 `access_count` 保存在外部派生表，命中后按相同 scope 原子递增；连接失败不会改写权威 Store。可选 TEI reranker 失败时回退融合排序。诊断只暴露稳定原因码与计数，不记录 provider 原始异常、连接串或记忆正文。
 
 ### Code Intelligence 派生数据
 
