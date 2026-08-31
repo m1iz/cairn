@@ -1,19 +1,11 @@
 import { once } from 'node:events'
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { afterEach, describe, expect, it } from 'vitest'
 import { CoreApi } from '../api/core-api'
-import {
-  StateRootLease,
-  StateRootLeaseError,
-} from './state-root-lease'
+import { StateRootLease, StateRootLeaseError } from './state-root-lease'
 
 const leases: StateRootLease[] = []
 const children: ChildProcess[] = []
@@ -91,8 +83,7 @@ describe('StateRootLease', () => {
     }
     expect(error?.toSafe()).toEqual({
       code: 'state_root_in_use',
-      message:
-        'Cairn 状态目录正由另一个 Cairn 进程使用。请关闭该实例后重试。',
+      message: 'Cairn 状态目录正由另一个 Cairn 进程使用。请关闭该实例后重试。',
       action: 'close_other_cairn_host',
     })
     expect(JSON.stringify(error?.toSafe())).not.toContain(stateRoot)

@@ -47,12 +47,7 @@ interface RecoveryOwner extends Omit<LeaseOwner, 'schemaVersion'> {
 }
 
 type OwnerStatus =
-  | 'active'
-  | 'dead'
-  | 'pid_reused'
-  | 'previous_boot'
-  | 'ambiguous'
-  | 'corrupt'
+  'active' | 'dead' | 'pid_reused' | 'previous_boot' | 'ambiguous' | 'corrupt'
 
 export interface StateRootLeaseSnapshot {
   readonly status: 'active'
@@ -147,8 +142,7 @@ export class StateRootLease {
       const current = diagnoseOwner(path)
       if (!isRecoverable(current.status))
         throw ownerError(current.status, current.owner?.hostKind ?? null)
-      if (!recoverOwner(path, recoveryPath, current.owner!))
-        continue
+      if (!recoverOwner(path, recoveryPath, current.owner!)) continue
     }
 
     const current = diagnoseOwner(path)
@@ -192,7 +186,10 @@ function canonicalStateRoot(stateRoot: string): string {
   return canonical
 }
 
-function publishAtomic(path: string, value: LeaseOwner | RecoveryOwner): boolean {
+function publishAtomic(
+  path: string,
+  value: LeaseOwner | RecoveryOwner,
+): boolean {
   const temporary = `${path}.claim-${process.pid}-${randomUUID()}`
   try {
     writeFileSync(temporary, `${JSON.stringify(value)}\n`, {
@@ -285,13 +282,19 @@ function releaseOwnedFile(path: string, nonce: string): void {
   rmSync(released, { force: false })
 }
 
-function diagnoseOwner(path: string): { status: OwnerStatus; owner: LeaseOwner | null } {
+function diagnoseOwner(path: string): {
+  status: OwnerStatus
+  owner: LeaseOwner | null
+} {
   const owner = readOwner(path)
-  return owner ? { status: diagnose(owner), owner } : { status: 'corrupt', owner: null }
+  return owner
+    ? { status: diagnose(owner), owner }
+    : { status: 'corrupt', owner: null }
 }
 
 function diagnose(owner: LeaseOwner | RecoveryOwner): OwnerStatus {
-  if (owner.hostname.toLowerCase() !== hostname().toLowerCase()) return 'ambiguous'
+  if (owner.hostname.toLowerCase() !== hostname().toLowerCase())
+    return 'ambiguous'
   const currentIdentity = currentStableProcessIdentity()
   if (
     owner.bootMarker &&
@@ -383,14 +386,17 @@ function parseOwner(value: Record<string, unknown>): LeaseOwner | null {
 }
 
 function isRecoverable(status: OwnerStatus): boolean {
-  return status === 'dead' || status === 'pid_reused' || status === 'previous_boot'
+  return (
+    status === 'dead' || status === 'pid_reused' || status === 'previous_boot'
+  )
 }
 
 function ownerError(
   status: OwnerStatus,
   ownerKind: StateRootHostKind | null,
 ): StateRootLeaseError {
-  if (status === 'active' || status === 'ambiguous') return conflictError(ownerKind)
+  if (status === 'active' || status === 'ambiguous')
+    return conflictError(ownerKind)
   if (status === 'corrupt')
     return new StateRootLeaseError(
       'state_root_lease_corrupt',
@@ -400,7 +406,9 @@ function ownerError(
   return conflictError(ownerKind)
 }
 
-function conflictError(ownerKind: StateRootHostKind | null): StateRootLeaseError {
+function conflictError(
+  ownerKind: StateRootHostKind | null,
+): StateRootLeaseError {
   const label =
     ownerKind === 'desktop'
       ? '桌面端'
