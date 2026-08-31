@@ -15,6 +15,11 @@ import {
   type LoopModelRouter,
 } from '../agent/loop'
 import type { RuntimePaths } from '../runtime/paths'
+import { resolveRuntimePaths } from '../runtime/paths'
+import {
+  StateRootLease,
+  type StateRootHostKind,
+} from '../runtime/state-root-lease'
 import type { EventEnvelope } from '../runtime/envelope'
 import {
   assertCoreMutationAllowed,
@@ -61,6 +66,7 @@ import {
 import { missingSkillRequirementsFromStatus } from '../environment/probe'
 import type { SkillRequirements } from '../skills/manager'
 import { NodeEnvironmentProcessRunner } from '../environment/process-runner'
+import { loadBundledToolCatalog } from '../environment/catalog'
 import {
   WorkspaceFilesService,
   type WorkspaceFileListResult,
@@ -109,6 +115,7 @@ export interface CoreApiCreateOptions extends AgentLoopCreateOptions {
   runtimeRevision?: string
   terminalHost?: PtyHost | null
   terminalEventSink?: ((event: TerminalEvent) => void) | null
+  hostKind?: StateRootHostKind
 }
 
 export interface CoreRuntimeEventPayload {
@@ -161,10 +168,13 @@ export class CoreApi {
   readonly commandPlatform: CommandPlatform
   readonly runtimeEventRepositories: RuntimeEventRepositoryFactory
   readonly sessionRepository: SessionRepository
+  readonly stateRootLease: StateRootLease
+  private closePromise: Promise<void> | null = null
 
   private constructor(
     root: string,
     loop: AgentLoop,
+    stateRootLease: StateRootLease,
     opts: Pick<
       CoreApiCreateOptions,
       'appVersion' | 'runtimeRevision' | 'terminalHost' | 'terminalEventSink'
@@ -172,6 +182,7 @@ export class CoreApi {
   ) {
     this.root = resolve(root)
     this.loop = loop
+    this.stateRootLease = stateRootLease
     this.runtimeEventRepositories = new RuntimeEventRepositoryFactory()
     this.sessionRepository = new SessionRepository(this.loop.sessionStore)
     this.planService = new CorePlanService(this.loop.controlManager.planStore)
@@ -539,28 +550,51 @@ export class CoreApi {
       activeTasks: () => this.loop.activeTasks.list(),
       sessionRuntimes: () => this.loop.sessionRuntimes.snapshot(),
       environmentSummary: () => this.environmentService.diagnosticsSummary(),
+      stateRootLease: () => this.stateRootLease.snapshot(),
     })
   }
 
   static async create(opts: CoreApiCreateOptions): Promise<CoreApi> {
+    // Validate signed static execution policy before creating even the lease
+    // file under the private state root.
+    loadBundledToolCatalog()
     const root = resolve(opts.root)
-    const loop = opts.loop ?? (await AgentLoop.create(opts))
+    const stateRoot =
+      opts.loop?.paths.stateRoot ??
+      resolveRuntimePaths(root, { stateRoot: opts.stateRoot ?? null }).stateRoot
+    const stateRootLease = StateRootLease.acquire(
+      stateRoot,
+      opts.hostKind ?? 'core',
+    )
+    let loop: AgentLoop | null = null
     let api: CoreApi | null = null
     try {
-      api = new CoreApi(root, loop, opts)
+      loop = opts.loop ?? (await AgentLoop.create(opts))
+      api = new CoreApi(root, loop, stateRootLease, opts)
       await api.environmentService.initialize()
       await api.sessionTransitionService.recover()
       return api
     } catch (error) {
       if (api) await api.close().catch(() => {})
-      else await loop.close().catch(() => {})
+      else {
+        if (loop) await loop.close().catch(() => {})
+        stateRootLease.release()
+      }
       throw error
     }
   }
 
   async close(): Promise<void> {
-    this.terminalService.closeAll()
-    await this.loop.close()
+    if (!this.closePromise)
+      this.closePromise = (async () => {
+        try {
+          this.terminalService.closeAll()
+          await this.loop.close()
+        } finally {
+          this.stateRootLease.release()
+        }
+      })()
+    await this.closePromise
   }
 
   async bootstrap(opts: { sessionId?: string | null } = {}) {

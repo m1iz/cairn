@@ -2,8 +2,8 @@
 
 > 文档状态：Active<br>
 > 面向读者：用户、维护者、数据与迁移开发者<br>
-> 最后核验：2026-08-29<br>
-> 事实源：`packages/core/src/runtime/paths.ts`、`packages/core/src/runtime/migrate-state-root.ts`、各领域 Store
+> 最后核验：2026-08-31<br>
+> 事实源：`packages/core/src/runtime/paths.ts`、`packages/core/src/runtime/state-root-lease.ts`、`packages/core/src/runtime/migrate-state-root.ts`、各领域 Store
 
 ## 两个根的区分
 
@@ -25,6 +25,7 @@ Cairn 区分两个互不重叠的根目录概念：
 
 ```text
 ~/.cairn/
+  .state-root.lease      # Core host 进程所有权租约；正常关闭时删除
   cairn.local.json
   model_config.json       # schemaVersion 2；多个模型、单 active、可选显式 fallback/cost policy
   mcp_config.json
@@ -128,6 +129,12 @@ Cairn 区分两个互不重叠的根目录概念：
   migrations/
     state-root-migration.json
 ```
+
+### Core host 状态租约
+
+`stateRoot` 是单写者私有状态，不是多个 Core host 共享写入的数据库。桌面端和 Headless ACP 都必须在创建 `AgentLoop`、执行迁移或打开 Store 之前，由 `CoreApi` 获取根级 `.state-root.lease`。同一 Node 进程内的多个 `CoreApi` 引用共享一份进程租约并采用引用计数；不同进程不能同时持有同一个 canonical `stateRoot`，因此桌面端正在运行时，指向同一目录的 ACP 会以稳定的 `state_root_in_use` 错误停止，反向亦然。
+
+租约记录 host kind、PID、主机、系统启动标记和稳定进程启动身份，不包含配置、会话正文或密钥。正常关闭会按 nonce 校验后释放；异常退出留下的租约只有在 PID 已消失、系统已经重启或能够证明 PID 被复用时才会原子回收。身份不可验证、租约损坏、远端主机所有者或回收竞态均 fail closed，不会用超时猜测并删除可能仍然存活的 owner。Diagnostics 的 `stateRootLease` 只公开当前 host kind、获取时间和同进程引用数。
 
 ### Hybrid Memory 派生索引
 

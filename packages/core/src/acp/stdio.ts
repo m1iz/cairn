@@ -32,6 +32,7 @@ export async function serveCairnAcpStdio(
     ...(opts.appVersion ? { appVersion: opts.appVersion } : {}),
     ...(opts.runtimeRevision ? { runtimeRevision: opts.runtimeRevision } : {}),
     enableFirstRunOnboarding: false,
+    hostKind: 'acp',
   })
   const adapter = new CairnAcpAdapter(api, { version: opts.appVersion })
   const connection = adapter.agentApp.connect(

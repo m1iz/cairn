@@ -2,8 +2,8 @@
 
 > 文档状态：Active<br>
 > 面向读者：维护者、开发者、希望理解产品边界的用户<br>
-> 最后核验：2026-08-29<br>
-> 事实源：`packages/core/src/api/core-api.ts`、`desktop/src/main/`、`desktop/src/preload/`、`desktop/src/renderer/src/`
+> 最后核验：2026-08-31<br>
+> 事实源：`packages/core/src/api/core-api.ts`、`packages/core/src/runtime/state-root-lease.ts`、`desktop/src/main/`、`desktop/src/preload/`、`desktop/src/renderer/src/`
 
 Cairn 的桌面主产品是本地单用户 Electron 应用。Electron main 进程内创建一个 TypeScript `CoreApi` host；Vue renderer 只能通过 preload 暴露的 IPC contract 请求 Core，并通过 runtime events 接收过程状态。源码还提供默认不随桌面安装包开放的 ACP V1 stdio operator preview，它为受信本机 client 创建独立的 TypeScript `CoreApi` host。当前产品主线没有 Python runtime、Python CLI、HTTP backend 或 WebSocket backend。
 
@@ -62,6 +62,8 @@ flowchart LR
 右侧区域由宽屏常驻 Environment 与可调整宽度的工作区共享同一位置。Environment 通过 `workspace.snapshot` 读取 Git/worktree/receipt、Plan/Goal、子代理、Team、进程和来源的安全聚合投影；Review、Terminal 和 Files 打开时原位替代 Environment，关闭后自动恢复。Review 使用 Core 分层的 Repository Resolver、Hardened Git Runner、Status/Diff、Mutation、Worktree、PR 与 Receipt Store；Files 使用只读多标签预览与右侧懒加载树。它们都不是 renderer 的本机权限旁路：Git 根、签名可执行文件、revision、路径、owner lease 和确认均由 Core 校验；Files 只允许当前 session workspace binding 内的有界只读访问。Terminal 的 PTY 由 Electron main 注入 Core TerminalService，Renderer 只持有 session-scoped ID 与字节流。Terminal 是用户直接操作系统 Shell，不进入 Agent loop 或 Agent 权限模式，也不写聊天/runtime store；Core 仍拥有 session 归属、并发上限、内存缓冲和进程清理。
 
 Headless ACP 的 `session/prompt` 也进入同一个 `chat.submit` / mainline turn。`session/new` 只能创建 canonical workspace 的 Build 会话，`session/load` 先从持久 runtime ledger 做无副作用回放，再返回响应。ACP client 不能提供 MCP command 或 `additionalDirectories`，只能使用 Cairn 受信配置已经解析出的能力。同一 session 的 prompt 串行、跨 session 可并行；session cancel、协议 request cancel、连接关闭和 Core shutdown 汇入同一 AbortSignal 链。wire 输入、投影内容、并发、request ledger 都有硬上限，终态之后的迟到事件不会再发送。具体协议面见 [Headless ACP operator preview](../development/headless-acp.md)。
+
+桌面端和 ACP 在创建 Agent loop 之前通过 CoreApi 获取同一套 `stateRoot` 进程所有权租约。一个 canonical 私有状态根同一时间只允许一个宿主进程写入；活跃 owner 冲突、身份不明确或租约损坏均在状态迁移前 fail closed，只有可证明已经失效的 owner 才会被原子回收。
 
 Core 启动由 `LifecycleSupervisor` 管理。首批 required service 是 ProcessRuntime、CodeIntelligence、TaskRuntime、SubagentSupervisor、SessionRuntime、MCP 和 Scheduler；每项按依赖顺序执行 reconcile/start/ready，全部 ready 后 Core host 才可接收 operation。CodeIntelligence 默认关闭且启动阶段不扫描 workspace；关闭时先收口 LSP/派生 cache，再由 ProcessRuntime 最后关闭全部 owned process。ProcessRuntime 最先核对上次崩溃留下的稳定 PID identity。partial start 会逆序补偿，关闭也按依赖逆序且每项有 deadline；未 ready 或已经 stopping/stopped 时返回结构化 `core_unavailable`，不能接收随后会丢失的 turn。
 

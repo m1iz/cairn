@@ -2,8 +2,8 @@
 
 > 文档状态：Active<br>
 > 面向读者：源码维护者、ACP 客户端开发者、自动化操作者<br>
-> 最后核验：2026-08-29<br>
-> 事实源：`packages/core/src/acp/`、`packages/core/src/api/core-api.ts`、`scripts/build-acp.mjs`、`scripts/test-acp-bundle.mjs`
+> 最后核验：2026-08-31<br>
+> 事实源：`packages/core/src/acp/`、`packages/core/src/api/core-api.ts`、`packages/core/src/runtime/state-root-lease.ts`、`scripts/build-acp.mjs`、`scripts/test-acp-bundle.mjs`
 
 Cairn 提供一个源码级、默认不随桌面安装包开放的 ACP V1 stdio 入口。它不是旧 Python CLI、HTTP server 或 WebSocket backend 的恢复，而是与 Electron host 并列地创建同一个 TypeScript `CoreApi`，复用同一套 Session、Agent loop、权限、workspace policy、模型配置、记忆和 `stateRoot`。
 
@@ -26,6 +26,8 @@ CAIRN_CONFIG_DIR=/absolute/private/state \
 ```
 
 模型调用读取该 `stateRoot` 中的 Cairn 模型配置。`initialize` 和创建/加载会话不要求立刻发起模型请求，但 `session/prompt` 没有可用模型时会按 Core 的正常失败语义返回错误。
+
+`stateRoot` 由 Core host 进程独占。桌面端已经使用该目录时，ACP 会在任何迁移、会话或配置写入之前以 `state_root_in_use` 停止；ACP 运行期间桌面端也不能并发打开同一目录。需要同时运行时，应关闭另一 host，或为受控测试显式指定不同的 `--state-root`。异常退出后的租约只在 Core 能证明旧进程已经失效时自动回收，损坏或身份不明确时不会冒险抢占。
 
 ## 当前协议面
 

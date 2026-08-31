@@ -23,6 +23,7 @@ import type { ExtensionSnapshot } from '../../extensions/resolver'
 import type { EffectiveConfigSnapshot } from '../../config/resolver'
 import type { HybridMemoryServiceDiagnostics } from '../../memory/hybrid-service'
 import type { CodeIntelligenceServiceDiagnostics } from '../../code-intelligence/service'
+import type { StateRootLeaseSnapshot } from '../../runtime/state-root-lease'
 
 type Dict = Record<string, unknown>
 
@@ -52,6 +53,7 @@ export interface CoreDiagnosticsServiceDeps {
   sessionRuntimes?: () => SessionRuntimeActorSnapshot[]
   environmentSummary?: () => Dict | Promise<Dict>
   goalDiagnostics?: () => Dict | Promise<Dict>
+  stateRootLease?: () => StateRootLeaseSnapshot
 }
 
 export interface CoreDiagnosticsPayload {
@@ -78,6 +80,7 @@ export interface CoreDiagnosticsPayload {
   sessionRuntimes: SessionRuntimeActorSnapshot[]
   environment: Dict
   goals: Dict
+  stateRootLease: StateRootLeaseSnapshot | Dict
   dependencies: Dict
 }
 
@@ -121,6 +124,7 @@ export class CoreDiagnosticsService {
       sessionRuntimes: this.deps.sessionRuntimes?.() ?? [],
       environment: await this.environmentSummaryPayload(),
       goals: await this.goalDiagnosticsPayload(),
+      stateRootLease: this.deps.stateRootLease?.() ?? {},
       dependencies: this.dependencies(),
     }
   }

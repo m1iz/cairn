@@ -38,6 +38,7 @@ export async function createCoreHost(opts: {
     eventSink: bridge.sink(),
     enableFirstRunOnboarding: true,
     ...opts.coreOptions,
+    hostKind: 'desktop',
   })
   registerCoreHostIpc(opts.ipcMain, coreApi, opts.authorizeIpc)
   return coreApi
