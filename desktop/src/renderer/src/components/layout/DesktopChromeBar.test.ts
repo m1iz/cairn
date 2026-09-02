@@ -3,6 +3,10 @@ import { createApp } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import DesktopChromeBar from './DesktopChromeBar.vue'
 
+const { windowAction } = vi.hoisted(() => ({ windowAction: vi.fn() }))
+
+vi.mock('../../api/backend', () => ({ windowAction }))
+
 vi.mock('vue-router', () => ({
   useRouter: () => ({ go: vi.fn() }),
 }))
@@ -21,6 +25,7 @@ beforeEach(() => {
 afterEach(() => {
   container?.remove()
   container = null
+  windowAction.mockReset()
 })
 
 describe('DesktopChromeBar menus', () => {
@@ -72,6 +77,27 @@ describe('DesktopChromeBar menus', () => {
     await Promise.resolve()
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     await Promise.resolve()
+    expect(container!.querySelector('.desktop-chrome-menu-popover')).toBeNull()
+
+    app.unmount()
+  })
+
+  it('exposes an explicit application exit separately from closing the window', async () => {
+    const app = createApp(DesktopChromeBar)
+    app.mount(container!)
+
+    const fileButton = [...container!.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === '文件',
+    )!
+    fileButton.click()
+    await Promise.resolve()
+    const quit = [...container!.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === '退出 Cairn',
+    )!
+    quit.click()
+    await Promise.resolve()
+
+    expect(windowAction).toHaveBeenCalledWith('quit')
     expect(container!.querySelector('.desktop-chrome-menu-popover')).toBeNull()
 
     app.unmount()

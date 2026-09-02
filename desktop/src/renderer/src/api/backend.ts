@@ -19,7 +19,7 @@ interface CairnBridge {
     target: string,
   ) => Promise<{ ok?: boolean; error?: string } | void>
   windowAction?: (
-    action: 'minimize' | 'toggle-maximize' | 'close',
+    action: 'minimize' | 'toggle-maximize' | 'close' | 'quit',
   ) => Promise<{ ok?: boolean; error?: string } | void>
   invokeCore?: <Key extends CoreOperationKey>(
     operationKey: Key,
@@ -66,7 +66,7 @@ export async function openPath(target: string): Promise<void> {
 }
 
 export async function windowAction(
-  action: 'minimize' | 'toggle-maximize' | 'close',
+  action: 'minimize' | 'toggle-maximize' | 'close' | 'quit',
 ): Promise<void> {
   const invoke = bridge()?.windowAction
   if (typeof invoke !== 'function')

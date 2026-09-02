@@ -4,9 +4,11 @@ import {
   dialog,
   ipcMain,
   Menu,
+  nativeImage,
   protocol,
   net,
   shell,
+  Tray,
   type OpenDialogOptions,
 } from 'electron'
 import * as fs from 'node:fs'
@@ -40,6 +42,11 @@ import { mainWindowWebPreferences } from './window-security'
 import { NodePtyHost } from './terminal-host'
 import { TerminalEventBridge } from './terminal-event-bridge'
 import { installSingleInstanceGuard } from './single-instance'
+import {
+  hideWindowForTray,
+  revealMainWindow,
+  shouldKeepRunningInTray,
+} from './window-presence'
 import { TERMINAL_SUBSCRIPTION_CHANNEL } from '../shared/ipc-contract'
 
 const mainDir = moduleDirFromUrl(import.meta.url)
@@ -60,9 +67,19 @@ const coreEventBridge = new CoreEventBridge()
 const terminalEventBridge = new TerminalEventBridge()
 let runtimeReady = false
 let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
+let isQuitting = false
+let allowQuit = false
+let didShowTrayHint = false
+let coreClosing: Promise<void> | null = null
 let didLoadRetry = false
 const isPrimaryInstance =
-  packagedSmoke !== null || installSingleInstanceGuard(app, () => mainWindow)
+  packagedSmoke !== null ||
+  installSingleInstanceGuard(app, () => {
+    if ((!mainWindow || mainWindow.isDestroyed()) && runtimeReady)
+      createWindow()
+    return mainWindow
+  })
 const trustedRendererPolicy = createTrustedRendererPolicy({
   productionUrl: 'app://bundle/index.html',
   developmentUrl: process.env.ELECTRON_RENDERER_URL ?? null,
@@ -86,7 +103,8 @@ ipcMain.handle('cairn:window-action', (event, payload: unknown) => {
   if (
     payload !== 'minimize' &&
     payload !== 'toggle-maximize' &&
-    payload !== 'close'
+    payload !== 'close' &&
+    payload !== 'quit'
   ) {
     return { ok: false, error: 'Unsupported window action' }
   }
@@ -94,7 +112,8 @@ ipcMain.handle('cairn:window-action', (event, payload: unknown) => {
   const window = BrowserWindow.fromWebContents(event.sender)
   if (!window) return { ok: false, error: 'Window is unavailable' }
 
-  if (payload === 'minimize') window.minimize()
+  if (payload === 'quit') requestAppQuit()
+  else if (payload === 'minimize') window.minimize()
   else if (payload === 'toggle-maximize') {
     if (window.isMaximized()) window.unmaximize()
     else window.maximize()
@@ -186,18 +205,77 @@ function prepareMainRuntime(): void {
   legacyRuntimeRoot = config.runtimeRoot
 }
 
-function closeCoreHost(): void {
-  if (!coreApi) return
+function closeCoreHost(): Promise<void> {
+  if (coreClosing) return coreClosing
+  if (!coreApi) return Promise.resolve()
   const current = coreApi
   coreApi = null
-  void current.close().catch((err) => {
+  coreClosing = current.close().catch((err) => {
     console.error(`failed to close CoreApi: ${errMessage(err)}`)
   })
+  return coreClosing
 }
 
 function fail(title: string, message: string): void {
   dialog.showErrorBox(title, message)
+  isQuitting = true
   app.quit()
+}
+
+function requestAppQuit(): void {
+  isQuitting = true
+  app.quit()
+}
+
+function showMainWindow(): void {
+  if (!runtimeReady || isQuitting) return
+  if (!mainWindow || mainWindow.isDestroyed()) createWindow()
+  revealMainWindow(mainWindow)
+}
+
+function createTray(): void {
+  if (process.platform !== 'win32' || tray) return
+  try {
+    const icon = nativeImage.createFromPath(appIconPath).resize({
+      width: 16,
+      height: 16,
+    })
+    if (icon.isEmpty()) throw new Error(`tray icon is empty: ${appIconPath}`)
+    const nextTray = new Tray(icon)
+    nextTray.setToolTip('Cairn · 本地 Agent')
+    nextTray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: '打开 Cairn', click: showMainWindow },
+        { type: 'separator' },
+        { label: '退出 Cairn', click: requestAppQuit },
+      ]),
+    )
+    nextTray.on('click', showMainWindow)
+    tray = nextTray
+  } catch (error) {
+    console.error(`failed to create tray: ${errMessage(error)}`)
+    tray = null
+  }
+}
+
+function showTrayHint(): void {
+  if (!tray || didShowTrayHint) return
+  didShowTrayHint = true
+  try {
+    tray.displayBalloon({
+      title: 'Cairn 仍在后台运行',
+      content: '定时任务会继续执行；点击托盘图标可重新打开。',
+      iconType: 'info',
+      noSound: true,
+    })
+  } catch {
+    // Tooltip and context menu remain available if the shell rejects balloons.
+  }
+}
+
+function destroyTray(): void {
+  tray?.destroy()
+  tray = null
 }
 
 function registerAppProtocol(): void {
@@ -258,7 +336,7 @@ function secureWindowNavigation(
 
 function createWindow(): void {
   const boundsPath = mainBoundsPath()
-  mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     ...readBounds(boundsPath),
     title: '',
     icon: appIconPath,
@@ -276,13 +354,17 @@ function createWindow(): void {
       : {}),
     webPreferences: mainWindowWebPreferences(mainDir),
   })
-  coreEventBridge.attach(mainWindow.webContents)
-  terminalEventBridge.attach(mainWindow.webContents)
-  secureWindowNavigation(mainWindow, trustedRendererPolicy)
+  const windowWebContents = win.webContents
+  mainWindow = win
+  coreEventBridge.attach(windowWebContents)
+  terminalEventBridge.attach(windowWebContents)
+  secureWindowNavigation(win, trustedRendererPolicy)
 
-  mainWindow.once('ready-to-show', () => mainWindow?.show())
+  win.once('ready-to-show', () => {
+    if (mainWindow === win) win.show()
+  })
 
-  mainWindow.webContents.on(
+  windowWebContents.on(
     'did-fail-load',
     (_event, errorCode, errorDescription) => {
       console.error(`did-fail-load: ${errorCode} ${errorDescription}`)
@@ -295,11 +377,10 @@ function createWindow(): void {
     },
   )
 
-  mainWindow.on('close', () => {
-    if (!mainWindow) return
+  win.on('close', (event) => {
     try {
       fs.mkdirSync(path.dirname(boundsPath), { recursive: true })
-      const payload = pickBounds(mainWindow.getBounds())
+      const payload = pickBounds(win.getBounds())
       fs.writeFileSync(
         boundsPath,
         `${JSON.stringify(payload, null, 2)}\n`,
@@ -308,11 +389,21 @@ function createWindow(): void {
     } catch {
       // Best-effort persistence; never block window close on disk errors.
     }
+    if (
+      shouldKeepRunningInTray({
+        platform: process.platform,
+        quitting: isQuitting,
+        trayAvailable: tray !== null,
+      })
+    ) {
+      hideWindowForTray(event, win)
+      showTrayHint()
+    }
   })
-  mainWindow.on('closed', () => {
-    if (mainWindow) coreEventBridge.detach(mainWindow.webContents)
-    if (mainWindow) terminalEventBridge.detach(mainWindow.webContents)
-    mainWindow = null
+  win.on('closed', () => {
+    coreEventBridge.detach(windowWebContents)
+    terminalEventBridge.detach(windowWebContents)
+    if (mainWindow === win) mainWindow = null
   })
 
   loadRenderer()
@@ -402,23 +493,37 @@ async function startup(): Promise<void> {
   runtimeReady = true
 
   createWindow()
+  createTray()
 }
 
 if (isPrimaryInstance) {
   app.whenReady().then(startup)
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0 && runtimeReady)
-      createWindow()
+    showMainWindow()
   })
 
   app.on('window-all-closed', () => {
     if (packagedSmoke) return
-    closeCoreHost()
-    app.quit()
+    if (process.platform === 'win32' && tray && !isQuitting) return
+    if (!isQuitting) requestAppQuit()
   })
 
-  app.on('before-quit', () => {
-    closeCoreHost()
+  app.on('before-quit', (event) => {
+    isQuitting = true
+    if (allowQuit) return
+    if (coreClosing) {
+      event.preventDefault()
+      return
+    }
+    if (!coreApi) return
+    event.preventDefault()
+    void closeCoreHost().finally(() => {
+      allowQuit = true
+      destroyTray()
+      app.quit()
+    })
   })
+
+  app.on('will-quit', destroyTray)
 }

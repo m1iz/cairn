@@ -18,6 +18,7 @@ type MenuAction =
   | 'minimize'
   | 'toggle-maximize'
   | 'close'
+  | 'quit'
 
 const router = useRouter()
 const isWindows =
@@ -36,6 +37,7 @@ const menus: Array<{
     items: [
       { label: '新建对话', action: 'new-chat' },
       { label: '重新加载', action: 'reload' },
+      { label: '退出 Cairn', action: 'quit' },
     ],
   },
   {

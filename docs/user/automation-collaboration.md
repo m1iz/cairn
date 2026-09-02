@@ -26,7 +26,9 @@ Scheduler 不会获得独立权限。任务进入目标 session 的 runtime acto
 
 面板会显示 active/queued 容量、计划时间与实际时间、timer/manual/misfire 来源、missed count、run ID、Task ID，以及 `ok/error/skipped/cancelled/interrupted` 历史。暂停会取消尚未开始的 queued run，但不会暗中终止已经运行的用户任务；仍在运行时删除会被拒绝。
 
-应用退出时 Scheduler 停止接收新 run，取消 queued/running 工作，并在生命周期时限内等待收敛；它不会作为系统后台 daemon 继续运行。重启后，可证明尚未开始的 queued run 可以恢复一次，已经进入 running 的 run 永不自动重放；无法证明终态时记录为 `interrupted`，避免重复未知副作用。这是可审计的 at-most-one 自动恢复边界，不是对任意外部副作用的 exactly-once 承诺。
+Windows 上关闭主窗口只会把 Cairn 隐藏到系统托盘，Core 与 Scheduler 会继续运行；点击托盘图标可重新打开，选择“退出 Cairn”才会完整结束应用。Cairn 不会注册 Windows Service，因此用户显式退出、注销或关机后不再执行任务。
+
+应用真正退出时 Scheduler 停止接收新 run，取消 queued/running 工作，并在生命周期时限内等待收敛。重启后，可证明尚未开始的 queued run 可以恢复一次，已经进入 running 的 run 永不自动重放；无法证明终态时记录为 `interrupted`，避免重复未知副作用。这是可审计的 at-most-one 自动恢复边界，不是对任意外部副作用的 exactly-once 承诺。
 
 ## Team
 

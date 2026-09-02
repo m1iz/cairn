@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld('cairn', {
   selectDirectory: () => ipcRenderer.invoke('cairn:select-directory'),
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   openPath: (target: string) => ipcRenderer.invoke('cairn:open-path', target),
-  windowAction: (action: 'minimize' | 'toggle-maximize' | 'close') =>
+  windowAction: (action: 'minimize' | 'toggle-maximize' | 'close' | 'quit') =>
     ipcRenderer.invoke('cairn:window-action', action),
   ...createCoreBridge(ipcRenderer),
   ...createCoreEventBridge(ipcRenderer),
