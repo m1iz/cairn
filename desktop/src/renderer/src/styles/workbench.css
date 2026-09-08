@@ -2923,18 +2923,11 @@ select:focus-visible {
 .version-card,
 .token-card,
 .tokens-card,
-.team-roster,
-.team-timeline,
-.team-detail,
 .scheduler-roster,
 .scheduler-timeline,
 .scheduler-detail,
-.team-member-row,
 .scheduler-job-row,
-.team-message,
 .scheduler-run,
-.team-stamp,
-.team-tool-cloud,
 .scheduler-summary div,
 .scheduler-meta-grid span,
 .test-row,
@@ -2953,10 +2946,28 @@ select:focus-visible {
   border-radius: var(--radius-md) !important;
 }
 
-.team-section-head,
 .entry-editor-head {
   border-color: rgb(var(--border)) !important;
   background: rgb(var(--bg-inset) / 0.45) !important;
+}
+
+.team-roster,
+.team-timeline,
+.team-detail {
+  border-radius: 0 !important;
+  background: rgb(var(--bg)) !important;
+  box-shadow: none !important;
+}
+
+.team-section-head {
+  background: transparent !important;
+}
+
+.team-member-row,
+.team-message,
+.team-stamp,
+.team-tool-cloud {
+  box-shadow: none !important;
 }
 
 .team-section-head h2,

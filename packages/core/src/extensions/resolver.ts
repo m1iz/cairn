@@ -235,6 +235,21 @@ const agentBundleSchema = z
   })
   .strict()
 
+export function validateAgentDefinition(value: unknown): AgentDefinition {
+  return agentDefinitionSchema.parse(value) as AgentDefinition
+}
+
+export function validateAgentDefinitionBundle(value: unknown): {
+  schemaVersion: 1
+  agents: AgentDefinition[]
+} {
+  const bundle = agentBundleSchema.parse(value)
+  return {
+    schemaVersion: 1,
+    agents: bundle.agents.map(validateAgentDefinition),
+  }
+}
+
 interface AgentCandidate extends ResolvedAgentDefinition {
   order: number
 }

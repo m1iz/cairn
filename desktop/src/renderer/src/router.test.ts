@@ -26,12 +26,21 @@ describe('renderer routes', () => {
     expect(settingsIntegrations?.redirect).toBe('/plugins/mcp')
   })
 
-  it('redirects legacy team route to chat instead of exposing management UI', async () => {
+  it('redirects the legacy project Team route to global Team conversations', async () => {
     const { routeRecords } = await import('./router')
     const team = routeRecords.find((route) => route.path === '/team')
 
-    expect(team?.redirect).toBe('/chat')
-    expect(team?.component).toBeUndefined()
+    expect(team?.redirect).toBe('/teams')
+  })
+
+  it('exposes the global Team conversation route', async () => {
+    const { routeRecords } = await import('./router')
+    const teams = routeRecords.find(
+      (route) => route.path === '/teams/:teamId?/:conversationId?',
+    )
+
+    expect(teams?.name).toBe('teams')
+    expect(teams?.component).toBeTypeOf('function')
   })
 
   it('redirects the legacy model route into the settings model page', async () => {

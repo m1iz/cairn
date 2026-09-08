@@ -35,9 +35,11 @@ export interface MaxTurnsSummaryInput {
 
 const MAX_TURNS_SUMMARY_PENDING_LIMIT = 10
 const MAX_TURNS_SUMMARY_PROGRESS_CHARS = 300
+export const EXECUTION_BUDGET_EXHAUSTED_PREFIX =
+  '本轮执行额度已用尽，执行已安全暂停。'
 
 export function buildMaxTurnsSummary(input: MaxTurnsSummaryInput): string {
-  const lines: string[] = ['本轮执行额度已用尽，执行已安全暂停。']
+  const lines: string[] = [EXECUTION_BUDGET_EXHAUSTED_PREFIX]
   const todos = input.todos ?? []
   const plan = input.plan ?? null
   const independentTodos = plan

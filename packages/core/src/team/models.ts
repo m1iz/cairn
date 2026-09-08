@@ -16,6 +16,8 @@ const RESERVED_NAMES = new Set([
 export enum TeamStatus {
   IDLE = 'idle',
   WORKING = 'working',
+  AWAITING_USER = 'awaiting_user',
+  CANCELLED = 'cancelled',
   OFFLINE = 'offline',
   SHUTDOWN = 'shutdown',
   ERROR = 'error',
@@ -25,6 +27,7 @@ export interface TeamMemberPayload {
   name: string
   role: string
   agent_type: string
+  responsibility?: string
   status: TeamStatus
   created_at: number
   updated_at: number
@@ -67,6 +70,7 @@ export class TeamMember {
   name: string
   role: string
   agent_type: string
+  responsibility: string
   status: TeamStatus
   created_at: number
   updated_at: number
@@ -76,6 +80,7 @@ export class TeamMember {
     name: string
     role: string
     agent_type: string
+    responsibility?: string | null
     status?: TeamStatus | string
     created_at?: number
     updated_at?: number
@@ -84,6 +89,7 @@ export class TeamMember {
     this.name = validateMemberName(opts.name)
     this.role = opts.role
     this.agent_type = opts.agent_type
+    this.responsibility = String(opts.responsibility ?? '').trim()
     this.status = normalizeStatus(opts.status)
     this.created_at = opts.created_at ?? nowTs()
     this.updated_at = opts.updated_at ?? nowTs()
@@ -95,6 +101,7 @@ export class TeamMember {
       name: String(raw.name ?? ''),
       role: String(raw.role ?? ''),
       agent_type: String(raw.agent_type ?? raw.agentType ?? ''),
+      responsibility: String(raw.responsibility ?? '').trim(),
       status: String(raw.status ?? TeamStatus.IDLE),
       created_at: Number(raw.created_at ?? raw.createdAt ?? nowTs()),
       updated_at: Number(raw.updated_at ?? raw.updatedAt ?? nowTs()),
@@ -110,6 +117,7 @@ export class TeamMember {
       name: this.name,
       role: this.role,
       agent_type: this.agent_type,
+      ...(this.responsibility ? { responsibility: this.responsibility } : {}),
       status: this.status,
       created_at: this.created_at,
       updated_at: this.updated_at,
@@ -127,6 +135,7 @@ export class TeamMember {
       name: this.name,
       role: this.role,
       agent_type: this.agent_type,
+      responsibility: this.responsibility,
       status: opts.status ?? this.status,
       created_at: this.created_at,
       updated_at: nowTs(),

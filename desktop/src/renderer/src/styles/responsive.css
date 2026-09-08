@@ -19,6 +19,14 @@
     max-height: 22rem;
   }
 
+  .team-timeline {
+    border-right: 0;
+  }
+
+  .team-detail {
+    border-top: 1px solid rgb(var(--border) / 0.7);
+  }
+
   .mcp-layout,
   .mcp-directory {
     grid-template-columns: 1fr;
@@ -160,6 +168,11 @@
   .scheduler-detail {
     grid-column: auto;
     max-height: none;
+  }
+  .team-roster,
+  .team-timeline {
+    border-right: 0;
+    border-bottom: 1px solid rgb(var(--border) / 0.7);
   }
 
   .team-action-row,

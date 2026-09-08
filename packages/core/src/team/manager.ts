@@ -22,6 +22,9 @@ import type { TeamConfigPayload } from './store'
 import { TeamReadInboxTool, TeamSendMessageTool } from './tools'
 import type { HookAggregateDecision } from '../hooks/models'
 import { CallbackHarnessHost } from '../agent/harness-host'
+import { TeamRunController, type TeamRunLease } from './runtime'
+import { TurnPaused } from '../control/exceptions'
+import { EXECUTION_BUDGET_EXHAUSTED_PREFIX } from '../agent/runner-helpers'
 
 const ROLE_AGENT_TYPES: Record<string, string> = {
   coder: 'implementation_engineer',
@@ -30,6 +33,12 @@ const ROLE_AGENT_TYPES: Record<string, string> = {
   reader: 'code_explorer',
   runner: 'quick_check',
 }
+const RECURSIVE_TEAM_TOOLS = new Set([
+  'dispatch_subagent',
+  'spawn_teammate',
+  'team_spawn',
+  'broadcast',
+])
 
 export function roleToAgentType(role: string): string {
   return (
@@ -43,8 +52,19 @@ export function roleToAgentType(role: string): string {
 
 export interface TeamSubagentSpec {
   name?: string
+  description?: string
+  systemPrompt?: string
   tool_names?: string[]
   toolNames?: string[]
+  maxTurns?: number
+  definition?: {
+    model?: { allowedProfiles?: string[] }
+    sandbox?: {
+      filesystem?: string
+      network?: string
+      process?: string
+    }
+  }
 }
 export interface TeamSubagentRegistry {
   get(name: string): TeamSubagentSpec | null | undefined
@@ -52,10 +72,14 @@ export interface TeamSubagentRegistry {
   names?(includeAliases?: boolean): string[]
 }
 export interface TeamRunner {
-  step(history: Array<Record<string, unknown>>): string | Promise<string>
+  step(
+    history: Array<Record<string, unknown>>,
+    opts?: { signal?: AbortSignal | null },
+  ): string | Promise<string>
   stepStream?(
     history: Array<Record<string, unknown>>,
     emit: (event: Record<string, unknown>) => Promise<void>,
+    opts?: { signal?: AbortSignal | null },
   ): Promise<string>
 }
 export type TeamRunnerFactory = (opts: {
@@ -82,13 +106,58 @@ export interface TeamMemberSummaryPayload extends TeamMemberPayload {
   recent_messages: TeamMessagePayload[]
   thread_count: number
   tools: string[]
+  active_run?: TeamRunSummaryPayload | null
+}
+
+export interface TeamRunSummaryPayload {
+  turn_id: string
+  phase: 'prepared' | 'running' | 'terminal_pending'
+  pending_messages: number
+  recovery: 'automatic' | 'explicit' | 'finalizing'
+  started_at?: number
+  deadline_at?: number
+}
+
+export const TEAM_MAX_TURNS_CAP = 20
+export const TEAM_RESULT_MAX_CHARS = 64_000
+
+export function resolveTeamMaxTurns(
+  spec: TeamSubagentSpec,
+  cap = TEAM_MAX_TURNS_CAP,
+): number {
+  const safeCap = Math.max(1, Math.min(100, Math.trunc(Number(cap) || 1)))
+  const configured = Math.trunc(Number(spec.maxTurns ?? 12))
+  return Math.max(
+    1,
+    Math.min(safeCap, Number.isFinite(configured) ? configured : 12),
+  )
+}
+
+export function boundTeamResult(
+  result: string,
+  maxChars = TEAM_RESULT_MAX_CHARS,
+): string {
+  const limit = Math.max(1, Math.trunc(Number(maxChars) || 1))
+  if (result.length <= limit) return result
+  return `${result.slice(0, limit)}\n\n[Team output truncated at ${limit} characters]`
 }
 
 export interface TeamManagerPayload {
   config: TeamConfigPayload
   members: TeamMemberSummaryPayload[]
+  available_agent_types?: string[]
+  available_agent_profiles?: TeamAgentProfilePayload[]
   leadUnread: number
   leadInbox: TeamMessagePayload[]
+}
+
+export interface TeamAgentProfilePayload {
+  name: string
+  description: string
+  tools: string[]
+  filesystem: string
+  network: string
+  process: string
 }
 
 interface ValidatedTeamCheckpoint {
@@ -104,6 +173,8 @@ interface ValidatedTeamCheckpoint {
 
 export class TeamManager {
   readonly projectId: string | null
+  /** Stable execution namespace. Unlike projectId, this can isolate global conversations. */
+  readonly runtimeScopeId: string
   readonly store: TeamStore
   readonly bus: MessageBus
   readonly parentRegistry: ToolRegistry
@@ -111,19 +182,28 @@ export class TeamManager {
   readonly runnerFactory: TeamRunnerFactory | null
   readonly eventSink: TeamEventSink | null
   readonly hooks: TeamHookHost | null
+  readonly runController: TeamRunController
+  readonly sessionIdProvider: (() => string | null) | null
   private working = new Set<string>()
+  private readonly preferExplicitReport: boolean
 
   constructor(opts: {
     root: string
     teamDir?: string | null
     projectId?: string | null
+    runtimeScopeId?: string | null
     parentRegistry?: ToolRegistry | null
     subagentRegistry: TeamSubagentRegistry
     runnerFactory?: TeamRunnerFactory | null
     eventSink?: TeamEventSink | null
     hooks?: TeamHookHost | null
+    runController?: TeamRunController | null
+    sessionIdProvider?: (() => string | null) | null
+    preferExplicitReport?: boolean
   }) {
     this.projectId = opts.projectId?.trim() || null
+    this.runtimeScopeId =
+      opts.runtimeScopeId?.trim() || this.projectId || 'global'
     this.store = new TeamStore(opts.root, { teamDir: opts.teamDir ?? null })
     this.bus = new MessageBus(this.store)
     this.parentRegistry = opts.parentRegistry ?? new ToolRegistry()
@@ -131,6 +211,9 @@ export class TeamManager {
     this.runnerFactory = opts.runnerFactory ?? null
     this.eventSink = opts.eventSink ?? null
     this.hooks = opts.hooks ?? null
+    this.runController = opts.runController ?? new TeamRunController()
+    this.sessionIdProvider = opts.sessionIdProvider ?? null
+    this.preferExplicitReport = opts.preferExplicitReport === true
   }
 
   payload(): TeamManagerPayload {
@@ -142,10 +225,27 @@ export class TeamManager {
         .map((msg) => msg.toDict()),
       thread_count: this.store.readThread(member.name).length,
       tools: this.toolNamesForMember(member),
+      active_run: this.runSummary(member.name),
     }))
+    const availableAgentTypes = this.subagentRegistry.names?.(false) ?? []
     return {
       config: this.store.loadConfig(),
       members,
+      available_agent_types: availableAgentTypes,
+      available_agent_profiles: availableAgentTypes.flatMap((name) => {
+        const spec = this.subagentRegistry.get(name)
+        if (!spec) return []
+        return [
+          {
+            name: spec.name ?? name,
+            description: spec.description ?? '',
+            tools: [...(spec.tool_names ?? spec.toolNames ?? [])],
+            filesystem: spec.definition?.sandbox?.filesystem ?? 'read-only',
+            network: spec.definition?.sandbox?.network ?? 'deny',
+            process: spec.definition?.sandbox?.process ?? 'deny',
+          },
+        ]
+      }),
       leadUnread: this.bus.unreadCount(LEAD_ACTOR),
       leadInbox: this.bus
         .recent(LEAD_ACTOR, { limit: 50 })
@@ -153,17 +253,44 @@ export class TeamManager {
     }
   }
 
+  runSummary(name: string): TeamRunSummaryPayload | null {
+    const checkpoint = this.store.readCheckpointPayload(name)
+    if (!checkpoint?.turn_id || !checkpoint.phase) return null
+    const active = this.runController
+      .snapshot(this.runtimeScopeId)
+      .find(
+        (run) => run.memberName === name && run.turnId === checkpoint.turn_id,
+      )
+    return {
+      turn_id: checkpoint.turn_id,
+      phase: checkpoint.phase,
+      pending_messages: checkpoint.pending_message_ids?.length ?? 0,
+      recovery:
+        checkpoint.phase === 'prepared'
+          ? 'automatic'
+          : checkpoint.phase === 'terminal_pending'
+            ? 'finalizing'
+            : 'explicit',
+      ...(active
+        ? { started_at: active.startedAt, deadline_at: active.deadlineAt }
+        : {}),
+    }
+  }
+
   async spawnTeammate(opts: {
     name: string
-    role: string
+    role?: string | null
+    responsibility?: string | null
     task?: string | null
     agent_type?: string | null
     sender?: string
     parent_call_id?: string | null
     eventSink?: TeamEventSink | null
+    signal?: AbortSignal | null
+    session_id?: string | null
   }): Promise<string> {
     const safeName = validateMemberName(opts.name)
-    const resolved = opts.agent_type || roleToAgentType(opts.role)
+    const resolved = opts.agent_type || roleToAgentType(opts.role ?? '')
     const spec = this.subagentRegistry.get(resolved)
     if (!spec)
       return `Error: unknown agent_type '${resolved}'. Available: ${this.subagentRegistry.names?.(true) ?? []}`
@@ -172,8 +299,12 @@ export class TeamManager {
       this.subagentRegistry.resolveName?.(resolved) ?? spec.name ?? resolved
     const member = new TeamMember({
       name: safeName,
-      role: opts.role,
+      role: String(opts.role || agentType),
       agent_type: agentType,
+      responsibility:
+        opts.responsibility === undefined
+          ? (existing?.responsibility ?? '')
+          : normalizeResponsibility(opts.responsibility),
       status:
         existing && existing.status !== TeamStatus.SHUTDOWN
           ? existing.status
@@ -198,6 +329,8 @@ export class TeamManager {
       parent_call_id: opts.parent_call_id ?? null,
       purpose: opts.task.slice(0, 120),
       eventSink: opts.eventSink ?? null,
+      signal: opts.signal ?? null,
+      session_id: opts.session_id ?? null,
     })
     return JSON.stringify({
       created: member.toDict(),
@@ -232,6 +365,8 @@ export class TeamManager {
     type?: string
     parent_call_id?: string | null
     eventSink?: TeamEventSink | null
+    signal?: AbortSignal | null
+    session_id?: string | null
   }): Promise<string> {
     if (opts.to !== LEAD_ACTOR) this.requireMember(opts.to)
     if ((opts.sender ?? LEAD_ACTOR) !== LEAD_ACTOR)
@@ -249,6 +384,8 @@ export class TeamManager {
         parent_call_id: opts.parent_call_id ?? null,
         purpose: opts.content.slice(0, 120),
         eventSink: opts.eventSink ?? null,
+        signal: opts.signal ?? null,
+        session_id: opts.session_id ?? null,
       })
     return JSON.stringify({ message: msg.toDict(), result })
   }
@@ -259,6 +396,9 @@ export class TeamManager {
     wake?: boolean
     parent_call_id?: string | null
     eventSink?: TeamEventSink | null
+    signal?: AbortSignal | null
+    session_id?: string | null
+    parallelism?: number | null
   }): Promise<string> {
     let members = this.store
       .listMembers()
@@ -268,7 +408,6 @@ export class TeamManager {
       members = members.filter((member) => wanted.has(member.name))
     }
     const sent: Array<Record<string, unknown>> = []
-    const results: Array<Record<string, unknown>> = []
     for (const member of members) {
       const msg = this.bus.send({
         from_actor: LEAD_ACTOR,
@@ -278,15 +417,36 @@ export class TeamManager {
       })
       sent.push(msg.toDict())
       await this.emit(events.messageEvent(msg), opts.eventSink)
-      if (opts.wake ?? true)
-        results.push({
+    }
+    const results: Array<Record<string, unknown>> = []
+    if (opts.wake ?? true) {
+      const parallelism = Math.max(
+        1,
+        Math.min(2, Math.trunc(Number(opts.parallelism ?? 1)) || 1),
+      )
+      const settled = await mapConcurrent(
+        members,
+        parallelism,
+        async (member) => {
+          try {
+            return await this.wakeTeammate(member.name, {
+              parent_call_id: opts.parent_call_id ?? null,
+              purpose: opts.content.slice(0, 120),
+              eventSink: opts.eventSink ?? null,
+              signal: opts.signal ?? null,
+              session_id: opts.session_id ?? null,
+            })
+          } catch (error) {
+            return `Error: ${error instanceof Error ? error.message : String(error)}`
+          }
+        },
+      )
+      results.push(
+        ...members.map((member, index) => ({
           name: member.name,
-          result: await this.wakeTeammate(member.name, {
-            parent_call_id: opts.parent_call_id ?? null,
-            purpose: opts.content.slice(0, 120),
-            eventSink: opts.eventSink ?? null,
-          }),
-        })
+          result: settled[index],
+        })),
+      )
     }
     return JSON.stringify({ sent, results }, null, 2)
   }
@@ -295,12 +455,18 @@ export class TeamManager {
     name: string
     eventSink?: TeamEventSink | null
   }): Promise<string> {
+    this.cancelTeammateRun(opts.name, 'Teammate shutdown')
     const member = this.store.updateMember(opts.name, {
       status: TeamStatus.SHUTDOWN,
       last_error: null,
     })
     await this.emit(events.memberUpdate(member), opts.eventSink)
     return JSON.stringify({ shutdown: member.toDict() })
+  }
+
+  cancelTeammateRun(name: string, reason = 'Team run cancelled'): boolean {
+    const member = this.requireMember(name)
+    return this.runController.cancel(this.runtimeScopeId, member.name, reason)
   }
 
   async wakeTeammate(
@@ -310,6 +476,8 @@ export class TeamManager {
       purpose?: string
       eventSink?: TeamEventSink | null
       recovery?: TeamCheckpointRecovery
+      signal?: AbortSignal | null
+      session_id?: string | null
     } = {},
   ): Promise<string> {
     const member = this.requireMember(name)
@@ -332,6 +500,8 @@ export class TeamManager {
       purpose?: string
       eventSink?: TeamEventSink | null
       recovery?: TeamCheckpointRecovery
+      signal?: AbortSignal | null
+      session_id?: string | null
     },
   ): Promise<string> {
     const working = this.store.updateMember(member.name, {
@@ -456,6 +626,7 @@ export class TeamManager {
     const agentId = newTeamId('agent')
     let hookScopeStarted = false
     let executionStarted = false
+    let lease: TeamRunLease | null = null
 
     try {
       // An explicit retry acknowledges that a previous `running` attempt may
@@ -493,38 +664,64 @@ export class TeamManager {
         subRegistry: this.registryForMember(working, spec),
         agentId,
       })
+      lease = this.runController.acquire({
+        projectId: this.runtimeScopeId,
+        memberName: working.name,
+        turnId: run.turnId,
+        sessionId:
+          opts.session_id?.trim() || this.sessionIdProvider?.() || null,
+        signal: opts.signal ?? null,
+      })
       const host = new CallbackHarnessHost<
         {
           history: Array<Record<string, unknown>>
           emit: (event: Record<string, unknown>) => Promise<void>
+          signal: AbortSignal
         },
         string
-      >(async ({ history, emit }) =>
+      >(async ({ history, emit, signal }) =>
         runner.stepStream
-          ? runner.stepStream(history, emit)
-          : runner.step(history),
+          ? runner.stepStream(history, emit, { signal })
+          : runner.step(history, { signal }),
       )
       this.writeRunCheckpoint(working.name, run, 'running')
       executionStarted = true
-      const final = await host.submitTurn({
-        history: run.history,
-        emit: async (evt) => {
-          await this.emit(
-            this.mapRunnerEvent(evt, working, opts.parent_call_id ?? null) ??
-              evt,
-            opts.eventSink,
-          )
-        },
-      })
-      const explicitReply = this.bus
+      const final = boundTeamResult(
+        await host.submitTurn({
+          history: run.history,
+          emit: async (evt) => {
+            await this.emit(
+              this.mapRunnerEvent(evt, working, opts.parent_call_id ?? null) ??
+                evt,
+              opts.eventSink,
+            )
+          },
+          signal: lease.signal,
+        }),
+      )
+      const explicitMessages = this.bus
         .allMessages(LEAD_ACTOR)
-        .some(
+        .filter(
           (msg) =>
             !run.leadBefore.has(msg.id) && msg.from_actor === working.name,
         )
+      const explicitReply = explicitMessages.length > 0
+      if (final.startsWith(EXECUTION_BUDGET_EXHAUSTED_PREFIX))
+        return this.pauseForExecutionBudget(
+          working,
+          run,
+          final,
+          explicitReply,
+          opts,
+        )
       const receipt: TeamEffectReceipt = {
         kind: 'runner_result',
-        result: final,
+        result:
+          this.preferExplicitReport && explicitReply
+            ? boundTeamResult(
+                explicitMessages.map((msg) => msg.content).join('\n\n'),
+              )
+            : final,
         reply_required: !explicitReply,
         reply_message_id: null,
       }
@@ -537,8 +734,13 @@ export class TeamManager {
         run,
         executionStarted ? 'running' : 'prepared',
       )
+      if (error instanceof TurnPaused)
+        return this.pauseForUser(working, error, opts)
+      if (lease?.signal.aborted)
+        return this.finishCancelledRun(working, text, opts)
       return this.failCheckpointRecovery(working, text, opts, true)
     } finally {
+      lease?.release()
       if (hookScopeStarted) this.hooks?.end(agentId)
     }
   }
@@ -738,12 +940,137 @@ export class TeamManager {
     return `Error: teammate '${member.name}' ${reason}: ${message}`
   }
 
+  private async pauseForUser(
+    member: TeamMember,
+    pause: TurnPaused,
+    opts: {
+      parent_call_id?: string | null
+      eventSink?: TeamEventSink | null
+    },
+  ): Promise<string> {
+    const current = this.requireMember(member.name)
+    const paused =
+      current.status === TeamStatus.SHUTDOWN
+        ? current
+        : this.store.updateMember(member.name, {
+            status: TeamStatus.AWAITING_USER,
+            last_error: pause.message,
+          })
+    if (paused.status !== TeamStatus.SHUTDOWN) {
+      await this.emit(events.memberUpdate(paused), opts.eventSink)
+      await this.emit(
+        events.runPaused({
+          parent_id: opts.parent_call_id ?? null,
+          member: paused,
+          interaction: pause.interaction,
+        }),
+        opts.eventSink,
+      )
+    }
+    return `Paused: teammate '${member.name}' is waiting for user confirmation`
+  }
+
+  private async finishCancelledRun(
+    member: TeamMember,
+    reason: string,
+    opts: {
+      parent_call_id?: string | null
+      eventSink?: TeamEventSink | null
+    },
+  ): Promise<string> {
+    const current = this.requireMember(member.name)
+    const cancelled =
+      current.status === TeamStatus.SHUTDOWN
+        ? current
+        : this.store.updateMember(member.name, {
+            status: TeamStatus.CANCELLED,
+            last_error: reason,
+          })
+    if (cancelled.status !== TeamStatus.SHUTDOWN) {
+      await this.emit(events.memberUpdate(cancelled), opts.eventSink)
+      await this.emit(
+        events.runCancelled({
+          parent_id: opts.parent_call_id ?? null,
+          member: cancelled,
+          reason,
+        }),
+        opts.eventSink,
+      )
+    }
+    return `Cancelled: teammate '${member.name}': ${reason}`
+  }
+
+  async reportBackgroundWakeFailure(
+    name: string,
+    reason: unknown,
+  ): Promise<void> {
+    const current = this.store.getMember(name)
+    if (!current || current.status === TeamStatus.SHUTDOWN) return
+    const message = reason instanceof Error ? reason.message : String(reason)
+    const failed = this.store.updateMember(name, {
+      status: TeamStatus.ERROR,
+      last_error: `Background wake failed: ${message}`,
+    })
+    await this.emit(events.memberUpdate(failed))
+    await this.emit(
+      events.runError({ parent_id: null, member: failed, message }),
+    )
+  }
+
+  private async pauseForExecutionBudget(
+    member: TeamMember,
+    run: ValidatedTeamCheckpoint,
+    summary: string,
+    explicitReply: boolean,
+    opts: {
+      parent_call_id?: string | null
+      eventSink?: TeamEventSink | null
+    },
+  ): Promise<string> {
+    this.writeRunCheckpoint(member.name, run, 'running')
+    if (!explicitReply) {
+      let reply = this.bus
+        .allMessages(LEAD_ACTOR)
+        .find((message) => message.meta.team_turn_id === run.turnId)
+      if (!reply) {
+        reply = this.bus.send({
+          from_actor: member.name,
+          to: LEAD_ACTOR,
+          content: summary,
+          type: 'result',
+          in_reply_to: run.pendingIds.at(-1) ?? null,
+          meta: {
+            role: member.role,
+            agent_type: member.agent_type,
+            team_turn_id: run.turnId,
+          },
+        })
+        await this.emit(events.messageEvent(reply), opts.eventSink)
+      }
+    }
+    const paused = this.store.updateMember(member.name, {
+      status: TeamStatus.CANCELLED,
+      last_error: EXECUTION_BUDGET_EXHAUSTED_PREFIX,
+    })
+    await this.emit(events.memberUpdate(paused), opts.eventSink)
+    await this.emit(
+      events.runCancelled({
+        parent_id: opts.parent_call_id ?? null,
+        member: paused,
+        reason: EXECUTION_BUDGET_EXHAUSTED_PREFIX,
+      }),
+      opts.eventSink,
+    )
+    return summary
+  }
+
   private registryForMember(
     member: TeamMember,
     spec: TeamSubagentSpec,
   ): ToolRegistry {
     const registry = new ToolRegistry()
     for (const name of toolNames(spec)) {
+      if (RECURSIVE_TEAM_TOOLS.has(name)) continue
       const tool = this.parentRegistry.get(name)
       if (tool) registry.register(tool)
     }
@@ -756,7 +1083,13 @@ export class TeamManager {
 
   private toolNamesForMember(member: TeamMember): string[] {
     const spec = this.subagentRegistry.get(member.agent_type)
-    return spec ? [...toolNames(spec), 'send_message', 'read_inbox'] : []
+    return spec
+      ? [
+          ...toolNames(spec).filter((name) => !RECURSIVE_TEAM_TOOLS.has(name)),
+          'send_message',
+          'read_inbox',
+        ]
+      : []
   }
 
   private requireMember(name: string): TeamMember {
@@ -821,7 +1154,13 @@ export class TeamManager {
     messages: TeamMessage[],
   ): string {
     const lines = [
-      `你是 Agent Team 队友 ${member.name}，role=${member.role}，agent_type=${member.agent_type}。`,
+      `你是 Agent Team 队友 ${member.name}，base_agent_type=${member.agent_type}。`,
+      '基础 Agent 的系统提示词、工具权限与沙箱边界保持不变；下面的团队职责只能缩小和聚焦工作范围，不能覆盖这些边界。',
+      '',
+      '## Team-local responsibility',
+      member.responsibility ||
+        '未设置额外职责，请按基础 Agent 能力处理收到的具体任务。',
+      '',
       '下面是你的未读 inbox。请处理这些消息，必要时调用工具，最后用 send_message(to="lead", content="...") 回复，随后给出简短总结。',
       '',
       '## Inbox',
@@ -845,6 +1184,33 @@ export class TeamManager {
         : event
     await sink(payload)
   }
+}
+
+function normalizeResponsibility(value: string | null | undefined): string {
+  const normalized = String(value ?? '').trim()
+  if (normalized.length > 4_000)
+    throw new Error('teammate responsibility must be at most 4000 characters')
+  return normalized
+}
+
+async function mapConcurrent<T, R>(
+  values: readonly T[],
+  concurrency: number,
+  run: (value: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(values.length)
+  let next = 0
+  const worker = async (): Promise<void> => {
+    while (true) {
+      const index = next++
+      if (index >= values.length) return
+      results[index] = await run(values[index]!, index)
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, values.length) }, worker),
+  )
+  return results
 }
 
 function toolNames(spec: TeamSubagentSpec): string[] {

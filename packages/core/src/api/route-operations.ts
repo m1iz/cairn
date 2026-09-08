@@ -15,6 +15,9 @@ function op<const Key extends CoreOperationKey>(
 }
 
 const CORE_API_ROUTE_OPERATION_LIST = [
+  op('agentDefinitions.get', 'IPC', 'agentDefinitions.get'),
+  op('agentDefinitions.save', 'IPC', 'agentDefinitions.save'),
+  op('agentDefinitions.delete', 'IPC', 'agentDefinitions.delete'),
   op('chat.submit', 'IPC', 'chat.submit'),
   op('chat.listQueuedPrompts', 'IPC', 'chat.listQueuedPrompts'),
   op('chat.manageQueuedPrompt', 'IPC', 'chat.manageQueuedPrompt'),
@@ -89,7 +92,18 @@ const CORE_API_ROUTE_OPERATION_LIST = [
   op('team.getMember', 'GET', '/api/team/members/{name}'),
   op('team.sendMessage', 'POST', '/api/team/messages'),
   op('team.wakeMember', 'POST', '/api/team/members/{name}/wake'),
+  op('team.cancelRun', 'POST', '/api/team/members/{name}/cancel'),
   op('team.shutdownMember', 'POST', '/api/team/members/{name}/shutdown'),
+  op('teams.list', 'IPC', 'teams.list'),
+  op('teams.get', 'IPC', 'teams.get'),
+  op('teams.create', 'IPC', 'teams.create'),
+  op('teams.listConversations', 'IPC', 'teams.listConversations'),
+  op('teams.createConversation', 'IPC', 'teams.createConversation'),
+  op('teams.listRuns', 'IPC', 'teams.listRuns'),
+  op('teams.submit', 'IPC', 'teams.submit'),
+  op('teams.cancel', 'IPC', 'teams.cancel'),
+  op('teams.resume', 'IPC', 'teams.resume'),
+  op('teams.retry', 'IPC', 'teams.retry'),
   op('workspace.snapshot', 'IPC', 'workspace.snapshot'),
   op('git.status', 'IPC', 'git.status'),
   op('git.repository', 'IPC', 'git.repository'),

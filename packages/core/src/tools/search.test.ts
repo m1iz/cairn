@@ -113,6 +113,16 @@ describe('GlobTool node-native traversal', () => {
     ])
   })
 
+  it('skips Electron asar packages during workspace traversal', async () => {
+    const root = await workspace()
+    await put(root, 'src/index.ts')
+    await put(root, 'desktop/dist/resources/app.asar', 'archive bytes')
+
+    const result = await glob(root, '**/*')
+    expect(result).toContain('src/index.ts')
+    expect(result).not.toContain('app.asar')
+  })
+
   it('keeps the existing no-match response', async () => {
     const root = await workspace()
 

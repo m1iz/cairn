@@ -229,22 +229,38 @@ export function createAgentEventHandlers(deps: AgentEventHandlerDeps) {
         )
       return
     }
-    if (data.event === 'team_run_done' || data.event === 'team_run_error') {
+    if (
+      data.event === 'team_run_done' ||
+      data.event === 'team_run_error' ||
+      data.event === 'team_run_paused' ||
+      data.event === 'team_run_cancelled'
+    ) {
       const teammate = findSubagent(assistant, data.parent_id, data.teammate)
       if (teammate) {
         timedFinish(teammate, eventTimeMs(data))
-        teammate.status = data.event === 'team_run_done' ? 'done' : 'error'
+        teammate.status =
+          data.event === 'team_run_done'
+            ? 'done'
+            : data.event === 'team_run_error'
+              ? 'error'
+              : 'error_aborted'
         if (data.event === 'team_run_done') teammate.summary = data.summary
-        else teammate.error = data.message
+        else if (data.event === 'team_run_error') teammate.error = data.message
+        else if (data.event === 'team_run_paused')
+          teammate.error = '等待用户确认后继续'
+        else teammate.error = data.reason || '队友任务已停止'
       }
       if (data.event === 'team_run_done')
         deps.updatePending('AI 正在整理队友回复...', '')
-      else
+      else if (data.event === 'team_run_error')
         deps.updatePending(
           `队友 ${data.teammate || ''} 出错`,
           data.message || '',
           'error',
         )
+      else if (data.event === 'team_run_paused')
+        deps.updatePending(`队友 ${data.teammate || ''} 等待确认`, '', 'error')
+      else deps.updatePending(`队友 ${data.teammate || ''} 已停止`, '', 'error')
     }
   }
 

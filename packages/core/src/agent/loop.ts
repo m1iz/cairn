@@ -222,7 +222,10 @@ import {
   type SessionControlPending,
   type SessionEntry,
 } from '../sessions/store'
-import { buildDispatchRunnerFactory } from '../subagents/dispatch-runner'
+import {
+  assertAllowedModelProfiles,
+  buildDispatchRunnerFactory,
+} from '../subagents/dispatch-runner'
 import { CallbackHarnessHost } from './harness-host'
 import { SubagentRegistry } from '../subagents/registry'
 import {
@@ -234,14 +237,16 @@ import { isTerminalTaskStatus, TaskStatus } from '../tasks/models'
 import { TaskRuntimeRegistry } from '../tasks/runtime'
 import {
   TeamBroadcastTool,
+  TeamCancelRunTool,
   TeamListTool,
   TeamReadInboxTool,
   TeamSendMessageTool,
   TeamShutdownTool,
   TeamSpawnTool,
 } from '../team/tools'
-import { TeamManager } from '../team/manager'
+import { resolveTeamMaxTurns, TeamManager } from '../team/manager'
 import type { TeamSubagentRegistry } from '../team/manager'
+import { TeamRunController } from '../team/runtime'
 import {
   DeleteLongTermMemoryTool,
   LoadSkill,
@@ -516,7 +521,9 @@ export class AgentLoop {
   readonly skillManager: SkillManager
   readonly contextBuilder: ContextBuilder
   readonly subagentRegistry: SubagentRegistry
+  readonly teamBaseSubagentRegistry: SubagentRegistry
   readonly teamManager: TeamManager
+  readonly teamRunController: TeamRunController
   readonly mcpClient: MCPClient
   readonly promptPrefetch = new PromptPrefetchCoordinator()
   readonly fileCheckpoints: FileCheckpointService
@@ -942,6 +949,12 @@ export class AgentLoop {
       this.skillsLoader,
       { userSourceRoot: join(this.paths.stateRoot, 'agents') },
     )
+    // Persistent Team members intentionally use only trusted built-in bases.
+    // User/global Agent definitions must not silently change an existing Team.
+    this.teamBaseSubagentRegistry = new SubagentRegistry(
+      join(this.templatesDir, 'subagents'),
+      this.skillsLoader,
+    )
     this.contextBuilder.setSubagentRegistry(this.subagentRegistry)
     this.goalReviewerExecutor = new GoalReviewerExecutor({
       ledger: this.goalReviewerLedger,
@@ -1082,6 +1095,7 @@ export class AgentLoop {
         }
       },
     })
+    this.teamRunController = new TeamRunController()
     this.teamManager = this.createTeamManager(null)
     this.mcpClient = new MCPClient(this.paths.stateRoot, {
       processRuntime: this.processRuntime,
@@ -3046,6 +3060,7 @@ export class AgentLoop {
 
   async close(): Promise<void> {
     await this.goalCoordinator.shutdown()
+    this.teamRunController.shutdown('Cairn shutting down')
     await this.lifecycleSupervisor.stop('shutdown')
     const session =
       this.activeSession ??
@@ -3080,6 +3095,7 @@ export class AgentLoop {
       })
       .catch(() => {})
     await this.subagentSupervisor.closeSession(sessionId, reason)
+    this.teamRunController.cancelSession(sessionId, reason)
     await this.codeIntelligence.closeSession(sessionId)
     await this.processRuntime.cancelSession(sessionId, reason)
     await this.sessionRuntimes.closeSession(sessionId)
@@ -4120,6 +4136,7 @@ export class AgentLoop {
     this.registry.register(new TeamSendMessageTool(activeTeamManager))
     this.registry.register(new TeamReadInboxTool(activeTeamManager))
     this.registry.register(new TeamBroadcastTool(activeTeamManager))
+    this.registry.register(new TeamCancelRunTool(activeTeamManager))
     this.registry.register(new TeamShutdownTool(activeTeamManager))
   }
 
@@ -4166,6 +4183,61 @@ export class AgentLoop {
     const manager = this.createTeamManager(cleanProjectId)
     this.teamManagersByProject.set(cleanProjectId, manager)
     return manager
+  }
+
+  /** Creates an isolated manager for one global Team conversation. */
+  globalTeamConversationManager(opts: {
+    modelRoute?: ModelRoute
+    runtimeRoot: string
+    workspaceRoot: string
+    runtimeScopeId: string
+    sessionId: string
+    eventSink?:
+      ((event: Record<string, unknown>) => Promise<void> | void) | null
+  }): TeamManager {
+    const workspaceRoot = resolve(opts.workspaceRoot)
+    const runtimeRoot = resolve(opts.runtimeRoot)
+    return this.createTeamManager(null, {
+      root: runtimeRoot,
+      teamDir: join(runtimeRoot, 'team'),
+      workspaceRoot,
+      runtimeScopeId: opts.runtimeScopeId,
+      sessionId: opts.sessionId,
+      eventSink: opts.eventSink ?? null,
+      modelRoute: opts.modelRoute,
+    })
+  }
+
+  async runGlobalTeamCoordinator(opts: {
+    modelRoute?: ModelRoute
+    prompt: string
+    workspaceRoot: string
+    signal?: AbortSignal | null
+  }): Promise<string> {
+    const route = opts.modelRoute ?? this.modelRouter.route('team')
+    const runner = buildRoutedRunner({
+      route,
+      registry: new ToolRegistry(),
+      systemPrompt:
+        '你是 Cairn 的团队协调器。你只负责整合队友的可验证结果，不得声称执行了队友未报告的操作。输出清晰、直接的最终答复。',
+      tokenTracker: this.tokenTracker,
+      usageType: 'team:coordinator',
+      maxTokensCap: this.subagentSupervisor.tokenBudget,
+      tokenBudget: this.subagentSupervisor.tokenBudget,
+      memoryStore: null,
+      compactor: null,
+      todoStore: null,
+      controlManager: permissionOnlyControlHost(this.controlManager),
+      maxContext: route.snapshot.contextWindowTokens,
+      maxTurns: 2,
+      workspaceRoot: resolve(opts.workspaceRoot),
+      sessionId: null,
+      fileCheckpoints: this.fileCheckpoints,
+      workspaceMutations: this.workspaceMutations,
+    })
+    return runner.stepAsync([{ role: 'user', content: opts.prompt }], {
+      signal: opts.signal ?? null,
+    })
   }
 
   private ensureActiveSession(): SessionEntry {
@@ -4677,33 +4749,65 @@ export class AgentLoop {
     })
   }
 
-  private createTeamManager(projectId: string | null): TeamManager {
+  private createTeamManager(
+    projectId: string | null,
+    overrides: {
+      modelRoute?: ModelRoute
+      root?: string
+      teamDir?: string
+      workspaceRoot?: string
+      runtimeScopeId?: string
+      sessionId?: string | null
+      eventSink?:
+        ((event: Record<string, unknown>) => Promise<void> | void) | null
+    } = {},
+  ): TeamManager {
     const cleanProjectId = String(projectId || '').trim() || null
-    const projectStateRoot = cleanProjectId
-      ? join(this.paths.projectsRoot, cleanProjectId)
-      : this.paths.stateRoot
-    const teamDir = cleanProjectId
-      ? join(projectStateRoot, 'team')
-      : this.paths.teamRoot
+    const projectStateRoot =
+      overrides.root ??
+      (cleanProjectId
+        ? join(this.paths.projectsRoot, cleanProjectId)
+        : this.paths.stateRoot)
+    const teamDir =
+      overrides.teamDir ??
+      (cleanProjectId ? join(projectStateRoot, 'team') : this.paths.teamRoot)
+    const workspaceRoot =
+      overrides.workspaceRoot ??
+      (cleanProjectId
+        ? this.workspaceRootForProject(cleanProjectId)
+        : this.workspaceRootForActiveSession())
+    const scopedSessionId =
+      overrides.sessionId === undefined
+        ? this.activeSessionId
+        : overrides.sessionId
     return new TeamManager({
       root: projectStateRoot,
       teamDir,
       projectId: cleanProjectId,
+      runtimeScopeId: overrides.runtimeScopeId,
       parentRegistry: this.registry,
       subagentRegistry: this.teamSubagentRegistry(),
-      eventSink: async (event) => {
-        await this.emit(event)
-      },
+      runController: this.teamRunController,
+      sessionIdProvider: () => scopedSessionId,
+      preferExplicitReport: Boolean(
+        overrides.runtimeScopeId?.startsWith('team-conversation:'),
+      ),
+      eventSink:
+        overrides.eventSink !== undefined
+          ? overrides.eventSink
+          : async (event) => {
+              await this.emit(event)
+            },
       hooks: {
         begin: async ({ agentId, agentType }) => {
-          const session = this.activeSession
+          const session = scopedSessionId
+            ? this.sessionStore.get(scopedSessionId)
+            : null
           await this.hookService.beginAgentScope({
             agentId,
             agentType,
             sessionId: session?.id ?? '',
-            cwd: cleanProjectId
-              ? this.workspaceRootForProject(cleanProjectId)
-              : this.workspaceRootForActiveSession(),
+            cwd: workspaceRoot,
             projectRoot:
               session?.mode === 'build' ? (session.project_path ?? null) : null,
           })
@@ -4714,10 +4818,12 @@ export class AgentLoop {
         },
       },
       runnerFactory: ({ member, spec, subRegistry, agentId }) => {
-        const route = this.modelRouter.route(
-          'team',
-          member.agent_type,
-          spec.name ?? '',
+        const route =
+          overrides.modelRoute ??
+          this.modelRouter.route('team', member.agent_type, spec.name ?? '')
+        assertAllowedModelProfiles(
+          spec.definition?.model?.allowedProfiles ?? [],
+          route.snapshot,
         )
         const runner = buildRoutedRunner({
           route,
@@ -4725,16 +4831,16 @@ export class AgentLoop {
           systemPrompt: this.teamPrompt(spec as { systemPrompt?: string }),
           tokenTracker: this.tokenTracker,
           usageType: `team:${cleanProjectId ?? 'global'}:${member.name}:${member.agent_type}`,
+          maxTokensCap: this.subagentSupervisor.tokenBudget,
+          tokenBudget: this.subagentSupervisor.tokenBudget,
           memoryStore: null,
           compactor: null,
           todoStore: null,
           controlManager: permissionOnlyControlHost(this.controlManager),
           maxContext: route.snapshot.contextWindowTokens,
-          maxTurns: 12,
-          workspaceRoot: cleanProjectId
-            ? this.workspaceRootForProject(cleanProjectId)
-            : this.workspaceRootForActiveSession(),
-          sessionId: this.activeSessionId,
+          maxTurns: resolveTeamMaxTurns(spec),
+          workspaceRoot,
+          sessionId: scopedSessionId,
           fileCheckpoints: this.fileCheckpoints,
           workspaceMutations: this.workspaceMutations,
           hooks: this.scopedAgentRunnerHooks(
@@ -4746,10 +4852,16 @@ export class AgentLoop {
         const executionEnvironment =
           this.hookService.agentScope(agentId)?.executionEnvironment ?? null
         return {
-          step: (history) =>
-            runner.stepAsync(history, { executionEnvironment }),
-          stepStream: (history, emit) =>
-            runner.stepStream(history, emit, { executionEnvironment }),
+          step: (history, stepOpts) =>
+            runner.stepAsync(history, {
+              executionEnvironment,
+              signal: stepOpts?.signal ?? null,
+            }),
+          stepStream: (history, emit, stepOpts) =>
+            runner.stepStream(history, emit, {
+              executionEnvironment,
+              signal: stepOpts?.signal ?? null,
+            }),
         }
       },
     })
@@ -4795,10 +4907,11 @@ export class AgentLoop {
 
   private teamSubagentRegistry(): TeamSubagentRegistry {
     return {
-      get: (name: string) => this.subagentRegistry.get(name),
-      resolveName: (name: string) => this.subagentRegistry.resolveName(name),
+      get: (name: string) => this.teamBaseSubagentRegistry.get(name),
+      resolveName: (name: string) =>
+        this.teamBaseSubagentRegistry.resolveName(name),
       names: (includeAliases?: boolean) =>
-        this.subagentRegistry.names({ includeAliases }),
+        this.teamBaseSubagentRegistry.names({ includeAliases }),
     }
   }
 

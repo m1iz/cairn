@@ -51,7 +51,10 @@ export function buildDispatchRunner(
   const goalObservationRecorder =
     args.goalObservationRecorder ?? opts.goalObservationRecorder ?? null
   const route = opts.modelRouter.route('subagent', args.spec.name, args.task)
-  assertAgentModelPolicy(args, route.snapshot)
+  assertAllowedModelProfiles(
+    args.spec.definition.model.allowedProfiles,
+    route.snapshot,
+  )
   const systemPrompt =
     args.contextMode === 'fork' && args.parentSystemPrompt?.trim()
       ? [
@@ -110,18 +113,17 @@ export function buildDispatchRunner(
   }
 }
 
-function assertAgentModelPolicy(
-  args: DispatchRunnerFactoryArgs,
+export function assertAllowedModelProfiles(
+  allowedProfiles: readonly string[],
   snapshot: { modelEntryId: string },
 ): void {
-  const allowed = args.spec.definition.model.allowedProfiles
-  if (allowed.length === 0) return
+  if (allowedProfiles.length === 0) return
   const active = new Set(
     [snapshot.modelEntryId]
       .map((value) => String(value ?? '').trim())
       .filter(Boolean),
   )
-  if (allowed.some((profile) => active.has(profile))) return
+  if (allowedProfiles.some((profile) => active.has(profile))) return
   throw new Error(
     'AgentDefinition model policy denied active profile; select an allowed model profile or tighten the definition source.',
   )

@@ -7,8 +7,8 @@ import type { RuntimeEvent } from '../runtime/types'
  * accidental rename, addition, or removal fail loudly at the public boundary.
  */
 export const CORE_OPERATION_COMPATIBILITY = Object.freeze({
-  count: 155,
-  sha256: 'ee7566d5aca231cc7e1b4648548bdde2be45ab66805a00541287a4b96ad0b6fd',
+  count: 169,
+  sha256: 'd502e6777ece842047e28c742cd08522bbef8a7d77d82aa43971a7b0b2f605b1',
 })
 
 /** External runtime event names consumed by the desktop projection. */
@@ -99,6 +99,8 @@ export const RUNTIME_EVENT_NAMES = [
   'team_run_delta',
   'team_run_done',
   'team_run_error',
+  'team_run_cancelled',
+  'team_run_paused',
   'team_run_start',
   'team_run_tool_call',
   'team_run_tool_error',
@@ -119,6 +121,6 @@ export const RUNTIME_EVENT_NAMES = [
 ] as const satisfies readonly RuntimeEvent['event'][]
 
 export const RUNTIME_EVENT_COMPATIBILITY = Object.freeze({
-  count: 103,
-  sha256: '63255b7e871d5b2a04ace055efa467c880e0aee253e2552fdc14135951f53b48',
+  count: 105,
+  sha256: 'd8e1711060ebe57a0a20d378ed2b95083c5bdf48e65b63e4706a9cf832c954cf',
 })

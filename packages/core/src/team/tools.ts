@@ -10,12 +10,15 @@ import { LEAD_ACTOR } from './models'
 interface TeamToolManager {
   spawnTeammate(opts: {
     name: string
-    role: string
+    role?: string | null
+    responsibility?: string | null
     task?: string | null
     agent_type?: string | null
     sender?: string
     parent_call_id?: string | null
     eventSink?: ToolExecutionContext['emit'] | null
+    signal?: AbortSignal | null
+    session_id?: string | null
   }): Promise<string>
   listTeammates(): string
   sendMessage(opts: {
@@ -25,6 +28,8 @@ interface TeamToolManager {
     wake?: boolean
     parent_call_id?: string | null
     eventSink?: ToolExecutionContext['emit'] | null
+    signal?: AbortSignal | null
+    session_id?: string | null
   }): Promise<string>
   readInbox(opts?: {
     actor?: string
@@ -37,11 +42,15 @@ interface TeamToolManager {
     wake?: boolean
     parent_call_id?: string | null
     eventSink?: ToolExecutionContext['emit'] | null
+    signal?: AbortSignal | null
+    session_id?: string | null
+    parallelism?: number | null
   }): Promise<string>
   shutdownTeammate(opts: {
     name: string
     eventSink?: ToolExecutionContext['emit'] | null
   }): Promise<string>
+  cancelTeammateRun(name: string, reason?: string): boolean
 }
 
 type TeamManagerProvider = TeamToolManager | (() => TeamToolManager | null)
@@ -98,6 +107,11 @@ export class TeamSpawnTool extends TeamTool {
       role: S('队友角色，例如 coder/reviewer/researcher'),
       task: { type: 'string', description: '初始任务；为空则只创建队友' },
       agent_type: { type: 'string', description: '可选子代理身份覆盖' },
+      responsibility: {
+        type: 'string',
+        description:
+          '可选的 Team 内职责说明；不会修改基础 Agent 的权限与系统提示词',
+      },
     },
     ['name', 'role'],
   )
@@ -111,9 +125,12 @@ export class TeamSpawnTool extends TeamTool {
       role: String(args.role ?? ''),
       task: nullableString(args.task),
       agent_type: nullableString(args.agent_type),
+      responsibility: nullableString(args.responsibility),
       sender: this.sender,
       parent_call_id: ctx?.parentCallId ?? null,
       eventSink: ctx?.emit ?? null,
+      signal: ctx?.signal ?? null,
+      session_id: ctx?.sessionId ?? null,
     })
   }
 }
@@ -145,6 +162,15 @@ export class TeamSendMessageTool extends TeamTool {
     ['to', 'content'],
   )
 
+  override isReadOnly(_args: Record<string, unknown>): boolean {
+    // A teammate reporting back only appends to Cairn-owned coordination
+    // metadata and cannot wake another worker. Treat that narrow path as an
+    // internal result channel so a completed teammate run is not paused for a
+    // workspace-mutation approval. Lead-originated messages remain mutating
+    // because they may wake and execute another teammate.
+    return this.sender !== LEAD_ACTOR && !this.allowWake
+  }
+
   override execute(
     args: Record<string, unknown>,
     ctx?: ToolExecutionContext,
@@ -156,6 +182,8 @@ export class TeamSendMessageTool extends TeamTool {
       wake: Boolean((args.wake ?? true) && this.allowWake),
       parent_call_id: ctx?.parentCallId ?? null,
       eventSink: ctx?.emit ?? null,
+      signal: ctx?.signal ?? null,
+      session_id: ctx?.sessionId ?? null,
     })
   }
 }
@@ -164,6 +192,10 @@ export class TeamReadInboxTool extends TeamTool {
   override name = 'read_inbox'
   override description =
     '读取当前角色的队友收件箱。主控读取主控收件箱，队友读取自己的收件箱；只读查看消息，不应代替 send_message 发送回复。'
+  // Marking an inbox item as read only updates Cairn-owned coordination
+  // metadata. It does not mutate the workspace or an external system, so it
+  // must not interrupt a teammate run with a user approval request.
+  override readOnly = true
   override exclusive = true
   override requiresRuntimeContext = false
   override parameters = toolParamsSchema({
@@ -194,6 +226,7 @@ export class TeamBroadcastTool extends TeamTool {
         description: '队友名称列表；为空则发给所有可用队友',
       },
       wake: B('是否立即唤醒目标队友执行'),
+      parallelism: I('唤醒时的并行数；默认 1，运行时会限制为最多 2'),
     },
     ['content'],
   )
@@ -210,6 +243,9 @@ export class TeamBroadcastTool extends TeamTool {
       wake: Boolean(args.wake ?? true),
       parent_call_id: ctx?.parentCallId ?? null,
       eventSink: ctx?.emit ?? null,
+      signal: ctx?.signal ?? null,
+      session_id: ctx?.sessionId ?? null,
+      parallelism: Number(args.parallelism ?? 1),
     })
   }
 }
@@ -229,6 +265,29 @@ export class TeamShutdownTool extends TeamTool {
       name: String(args.name ?? ''),
       eventSink: ctx?.emit ?? null,
     })
+  }
+}
+
+export class TeamCancelRunTool extends TeamTool {
+  override name = 'cancel_teammate_run'
+  override description =
+    '取消队友当前正在执行的这一轮任务，但保留成员和未确认的 Inbox；仅在用户明确要求停止或当前 Team 任务已不再需要时使用。'
+  override exclusive = true
+  override parameters = toolParamsSchema(
+    {
+      name: S('队友名称'),
+      reason: S('取消原因'),
+    },
+    ['name'],
+  )
+
+  override execute(args: Record<string, unknown>): string {
+    const name = String(args.name ?? '')
+    const cancelled = this.manager().cancelTeammateRun(
+      name,
+      nullableString(args.reason) ?? 'Cancelled by lead',
+    )
+    return JSON.stringify({ name, cancelled })
   }
 }
 

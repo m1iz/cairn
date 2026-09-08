@@ -642,6 +642,18 @@ export type RuntimeEvent = RuntimeEventEnvelope &
         message?: string
       }
     | {
+        event: 'team_run_paused'
+        parent_id?: string
+        teammate?: string
+        interaction?: RuntimeEventPayload | null
+      }
+    | {
+        event: 'team_run_cancelled'
+        parent_id?: string
+        teammate?: string
+        reason?: string
+      }
+    | {
         event: 'scheduler_job_update'
         job?: RuntimeEventPayload
         action?: string

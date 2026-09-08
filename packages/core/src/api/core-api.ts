@@ -52,6 +52,13 @@ import {
   type SkillInfoPayload,
 } from './services/skill-service'
 import { CoreTeamService } from './services/team-service'
+import { CoreGlobalTeamService } from './services/global-team-service'
+import { GlobalTeamCatalog } from '../team/catalog'
+import type {
+  CreateGlobalTeamInput,
+  TeamWorkspaceBinding,
+} from '../team/domain'
+import { CoreAgentDefinitionService } from './services/agent-definition-service'
 import { GoalService } from './services/goal-service'
 import { goalSummary, type GoalRecord } from '../goals/models'
 import { SidechainTranscript } from '../tasks/sidechain'
@@ -158,6 +165,8 @@ export class CoreApi {
   readonly interactionService: CoreInteractionService
   readonly skillService: CoreSkillService
   readonly teamService: CoreTeamService
+  readonly globalTeamService: CoreGlobalTeamService
+  readonly agentDefinitionService: CoreAgentDefinitionService
   readonly goalService: GoalService
   readonly workspaceFilesService: WorkspaceFilesService
   readonly workspaceGitService: WorkspaceGitService
@@ -289,6 +298,34 @@ export class CoreApi {
       activeSession: () => this.loop.activeSession,
       assertMutation: (area, action) => this.assertMutation(area, action),
     })
+    this.globalTeamService = new CoreGlobalTeamService({
+      captureExecution: () => {
+        const modelRoute = this.loop.modelRouter.route('team')
+        const snapshot = modelRoute.snapshot
+        return {
+          modelLabel: `${snapshot.providerName} · ${snapshot.model} · ${snapshot.modelEntryId}`,
+          createManager: (input) =>
+            this.loop.globalTeamConversationManager({ ...input, modelRoute }),
+          synthesize: (input) =>
+            this.loop.runGlobalTeamCoordinator({ ...input, modelRoute }),
+        }
+      },
+      catalog: new GlobalTeamCatalog(this.paths.teamRoot),
+      availableAgentTypes: () =>
+        this.loop.teamManager.payload().available_agent_types ?? [],
+      assertMutation: (area, action) => this.assertMutation(area, action),
+      createManager: (input) => this.loop.globalTeamConversationManager(input),
+      synthesize: (input) => this.loop.runGlobalTeamCoordinator(input),
+      resolveProjectPath: (projectId) =>
+        this.loop.projectStore.get(projectId)?.project_path ?? null,
+    })
+    this.agentDefinitionService = new CoreAgentDefinitionService(
+      this.paths.stateRoot,
+      {
+        snapshot: () => this.loop.subagentRegistry.snapshot(),
+        assertMutation: (area, action) => this.assertMutation(area, action),
+      },
+    )
     this.fileCheckpointService = new CoreFileCheckpointService({
       checkpoints: this.loop.fileCheckpoints,
       softGitRewind: this.loop.softGitRewind,
@@ -1241,17 +1278,58 @@ export class CoreApi {
     getMember: (name: string) => this.teamService.getMember(name),
     spawnMember: (opts: {
       name: string
-      role: string
+      role?: string | null
+      responsibility?: string | null
       task?: string | null
       agent_type?: string | null
     }) => this.teamService.spawnMember(opts),
-    sendMessage: (opts: { to: string; content: string; wake?: boolean }) =>
-      this.teamService.sendMessage(opts),
+    sendMessage: (opts: {
+      to: string
+      content: string
+      wake?: boolean
+      background?: boolean
+    }) => this.teamService.sendMessage(opts),
     wakeMember: (
       name: string,
       opts: { purpose?: string; recovery?: 'auto' | 'retry' } = {},
     ) => this.teamService.wakeMember(name, opts),
+    cancelRun: (name: string, reason?: string) =>
+      this.teamService.cancelRun(name, reason),
     shutdownMember: (name: string) => this.teamService.shutdownMember(name),
+  }
+
+  readonly teams = {
+    retry: (teamId: string, conversationId: string, runId: string) =>
+      this.globalTeamService.retry(teamId, conversationId, runId),
+    list: () => this.globalTeamService.list(),
+    get: (teamId: string) => this.globalTeamService.get(teamId),
+    create: (input: CreateGlobalTeamInput) =>
+      this.globalTeamService.create(input),
+    listConversations: (teamId: string) =>
+      this.globalTeamService.listConversations(teamId),
+    createConversation: (
+      teamId: string,
+      input: { title: string; workspace?: TeamWorkspaceBinding | null },
+    ) => this.globalTeamService.createConversation(teamId, input),
+    listRuns: (teamId: string, conversationId: string) =>
+      this.globalTeamService.listRuns(teamId, conversationId),
+    submit: (teamId: string, conversationId: string, message: string) =>
+      this.globalTeamService.submit(teamId, conversationId, message),
+    cancel: (teamId: string, conversationId: string, runId: string) =>
+      this.globalTeamService.cancel(teamId, conversationId, runId),
+    resume: (teamId: string, conversationId: string, runId: string) =>
+      this.globalTeamService.resume(teamId, conversationId, runId),
+  }
+
+  readonly agentDefinitions = {
+    get: () => this.agentDefinitionService.get(),
+    save: (input: {
+      name: string
+      description: string
+      systemPrompt: string
+      baseAgent: string
+    }) => this.agentDefinitionService.save(input),
+    delete: (name: string) => this.agentDefinitionService.delete(name),
   }
 
   readonly processes = {

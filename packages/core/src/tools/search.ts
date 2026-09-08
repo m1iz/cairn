@@ -308,7 +308,14 @@ async function* walkDirectory(
   const directory = await opendir(physicalDirectory)
   const names: string[] = []
   for await (const directoryEntry of directory) {
-    if (!IGNORED_DIRECTORIES.has(directoryEntry.name)) {
+    // Electron exposes an .asar package as a virtual directory to parts of
+    // fs, while opendir cannot traverse that virtual root. Archives are also
+    // generated artifacts rather than workspace source, so never descend into
+    // them during source discovery.
+    if (
+      !IGNORED_DIRECTORIES.has(directoryEntry.name) &&
+      !directoryEntry.name.toLowerCase().endsWith('.asar')
+    ) {
       names.push(directoryEntry.name)
     }
   }

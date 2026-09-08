@@ -570,6 +570,54 @@ const sessionPatchSchema = z.union([
     .strict(),
 ])
 
+const teamWorkspaceSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('none') }).strict(),
+  z
+    .object({
+      kind: z.literal('folder'),
+      path: z.string().trim().min(1).max(4_096),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('project'),
+      project_id: idSchema,
+      path: z.string().trim().min(1).max(4_096).optional(),
+    })
+    .strict(),
+])
+
+const globalTeamMemberSchema = z
+  .object({
+    display_name: z.string().trim().min(1).max(80),
+    agent_type: idSchema,
+    responsibility: z.string().trim().max(4_000).nullable().optional(),
+  })
+  .strict()
+
+const globalTeamCreateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    description: z.string().trim().max(1_000).nullable().optional(),
+    default_workspace: teamWorkspaceSchema.nullable().optional(),
+    members: z.array(globalTeamMemberSchema).min(1).max(6),
+    first_conversation_title: z
+      .string()
+      .trim()
+      .min(1)
+      .max(160)
+      .nullable()
+      .optional(),
+  })
+  .strict()
+
+const globalTeamConversationCreateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(160),
+    workspace: teamWorkspaceSchema.nullable().optional(),
+  })
+  .strict()
+
 type AnyArgsSchema = z.ZodType<unknown[]>
 
 export interface CoreOperationSpec<Schema extends AnyArgsSchema, Result> {
@@ -590,6 +638,28 @@ function operation<Schema extends AnyArgsSchema, Result>(
 }
 
 export const CORE_OPERATION_REGISTRY = {
+  'agentDefinitions.delete': operation(z.tuple([idSchema]), (api, [name]) =>
+    api.agentDefinitions.delete(name),
+  ),
+  'agentDefinitions.get': operation(z.tuple([]), (api) =>
+    api.agentDefinitions.get(),
+  ),
+  'agentDefinitions.save': operation(
+    z.tuple([
+      z
+        .object({
+          name: z
+            .string()
+            .trim()
+            .regex(/^[a-z][a-z0-9_]{0,63}$/),
+          description: z.string().trim().min(1).max(2_048),
+          systemPrompt: z.string().trim().min(1).max(262_144),
+          baseAgent: idSchema,
+        })
+        .strict(),
+    ]),
+    (api, [input]) => api.agentDefinitions.save(input),
+  ),
   'attachments.rawPath': operation(z.tuple([idSchema]), (api, [id]) =>
     api.attachments.rawPath(id),
   ),
@@ -1208,6 +1278,7 @@ export const CORE_OPERATION_REGISTRY = {
           to: idSchema,
           content: z.string(),
           wake: z.boolean().optional(),
+          background: z.boolean().optional(),
         })
         .strict(),
     ]),
@@ -1216,12 +1287,17 @@ export const CORE_OPERATION_REGISTRY = {
   'team.shutdownMember': operation(z.tuple([idSchema]), (api, [name]) =>
     api.team.shutdownMember(name),
   ),
+  'team.cancelRun': operation(
+    z.tuple([idSchema, z.string().trim().min(1).max(500).optional()]),
+    (api, [name, reason]) => api.team.cancelRun(name, reason),
+  ),
   'team.spawnMember': operation(
     z.tuple([
       z
         .object({
           name: idSchema,
-          role: z.string(),
+          role: nullableStringSchema.optional(),
+          responsibility: nullableStringSchema.optional(),
           task: nullableStringSchema,
           agent_type: nullableStringSchema,
         })
@@ -1241,6 +1317,45 @@ export const CORE_OPERATION_REGISTRY = {
         .optional(),
     ]),
     (api, [name, options]) => api.team.wakeMember(name, options),
+  ),
+  'teams.list': operation(z.tuple([]), (api) => api.teams.list()),
+  'teams.get': operation(z.tuple([idSchema]), (api, [teamId]) =>
+    api.teams.get(teamId),
+  ),
+  'teams.create': operation(z.tuple([globalTeamCreateSchema]), (api, [input]) =>
+    api.teams.create(input),
+  ),
+  'teams.listConversations': operation(z.tuple([idSchema]), (api, [teamId]) =>
+    api.teams.listConversations(teamId),
+  ),
+  'teams.createConversation': operation(
+    z.tuple([idSchema, globalTeamConversationCreateSchema]),
+    (api, [teamId, input]) => api.teams.createConversation(teamId, input),
+  ),
+  'teams.listRuns': operation(
+    z.tuple([idSchema, idSchema]),
+    (api, [teamId, conversationId]) =>
+      api.teams.listRuns(teamId, conversationId),
+  ),
+  'teams.submit': operation(
+    z.tuple([idSchema, idSchema, z.string().trim().min(1).max(100_000)]),
+    (api, [teamId, conversationId, message]) =>
+      api.teams.submit(teamId, conversationId, message),
+  ),
+  'teams.cancel': operation(
+    z.tuple([idSchema, idSchema, idSchema]),
+    (api, [teamId, conversationId, runId]) =>
+      api.teams.cancel(teamId, conversationId, runId),
+  ),
+  'teams.resume': operation(
+    z.tuple([idSchema, idSchema, idSchema]),
+    (api, [teamId, conversationId, runId]) =>
+      api.teams.resume(teamId, conversationId, runId),
+  ),
+  'teams.retry': operation(
+    z.tuple([idSchema, idSchema, idSchema]),
+    (api, [teamId, conversationId, runId]) =>
+      api.teams.retry(teamId, conversationId, runId),
   ),
   'terminals.close': operation(
     z.tuple([terminalIdentitySchema]),

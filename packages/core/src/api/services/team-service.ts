@@ -2,6 +2,7 @@ import type {
   TeamCheckpointRecovery,
   TeamManager,
   TeamManagerPayload,
+  TeamRunSummaryPayload,
 } from '../../team/manager'
 import type { TeamMemberPayload, TeamMessagePayload } from '../../team/models'
 
@@ -28,6 +29,7 @@ export interface CoreTeamMemberPayload {
   inbox: TeamMessagePayload[]
   leadInbox: TeamMessagePayload[]
   thread: Array<{ role?: string; content: string }>
+  activeRun: TeamRunSummaryPayload | null
 }
 
 export interface CoreTeamMutationPayload {
@@ -70,12 +72,14 @@ export class CoreTeamService {
         .recent('lead', { limit: 100 })
         .map((msg) => msg.toDict()),
       thread: this.threadSummary(member.name),
+      activeRun: manager.runSummary(member.name),
     }
   }
 
   spawnMember(opts: {
     name: string
-    role: string
+    role?: string | null
+    responsibility?: string | null
     task?: string | null
     agent_type?: string | null
   }): Promise<CoreTeamMutationPayload> {
@@ -89,9 +93,20 @@ export class CoreTeamService {
     to: string
     content: string
     wake?: boolean
+    background?: boolean
   }): Promise<CoreTeamMutationPayload> {
     this.assertMutation('team', 'send message')
-    return this.requireManager()
+    const manager = this.requireManager()
+    if ((opts.wake ?? true) && opts.background) {
+      return manager.sendMessage({ ...opts, wake: false }).then((result) => {
+        void manager
+          .wakeTeammate(opts.to, { purpose: opts.content.slice(0, 120) })
+          .catch((error) => manager.reportBackgroundWakeFailure(opts.to, error))
+          .catch(() => undefined)
+        return { result, team: this.get() }
+      })
+    }
+    return manager
       .sendMessage(opts)
       .then((result) => ({ result, team: this.get() }))
   }
@@ -104,6 +119,18 @@ export class CoreTeamService {
     return this.requireManager()
       .wakeTeammate(name, opts)
       .then((result) => ({ result, team: this.get() }))
+  }
+
+  cancelRun(
+    name: string,
+    reason = 'Cancelled by user',
+  ): CoreTeamMutationPayload {
+    this.assertMutation('team', 'cancel teammate run')
+    const cancelled = this.requireManager().cancelTeammateRun(name, reason)
+    return {
+      result: JSON.stringify({ name, cancelled }),
+      team: this.get(),
+    }
   }
 
   shutdownMember(name: string): Promise<CoreTeamMutationPayload> {
@@ -168,6 +195,8 @@ function fallbackPayload(): CoreTeamPayload {
     project_id: null,
     config: { team_name: 'none', members: [] },
     members: [],
+    available_agent_types: [],
+    available_agent_profiles: [],
     leadUnread: 0,
     leadInbox: [],
   }

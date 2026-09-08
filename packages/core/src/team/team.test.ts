@@ -11,9 +11,15 @@ import { describe, expect, it } from 'vitest'
 import { Tool } from '../tools/base'
 import { ToolRegistry } from '../tools/registry'
 import { toolParamsSchema } from '../tools/schema'
+import { TurnPaused } from '../control/exceptions'
 import { MessageBus } from './bus'
 import * as teamEvents from './events'
-import { TeamManager, roleToAgentType } from './manager'
+import {
+  boundTeamResult,
+  resolveTeamMaxTurns,
+  TeamManager,
+  roleToAgentType,
+} from './manager'
 import {
   LEAD_ACTOR,
   TeamMember,
@@ -35,6 +41,14 @@ import {
 
 function tmp(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
+  throw new Error('timed out waiting for test condition')
 }
 
 class EchoTool extends Tool {
@@ -63,6 +77,48 @@ function fakeSubagents() {
 }
 
 describe('team models/events', () => {
+  it.each([false, true])(
+    'uses full lead reports only when global-Team mode is enabled: %s',
+    async (preferExplicitReport) => {
+      const manager = new TeamManager({
+        root: tmp('cairn-team-full-report-'),
+        subagentRegistry: fakeSubagents(),
+        preferExplicitReport,
+        runnerFactory: () => ({
+          step: async () => {
+            await manager.sendMessage({
+              sender: 'alice',
+              to: 'lead',
+              content: '完整证据：A、B、C',
+              wake: false,
+            })
+            return '已完成简短总结'
+          },
+        }),
+      })
+      await manager.spawnTeammate({ name: 'alice', role: 'reader' })
+      const result = JSON.parse(
+        await manager.sendMessage({ to: 'alice', content: '报告', wake: true }),
+      )
+      expect(result.result).toBe(
+        preferExplicitReport ? '完整证据：A、B、C' : '已完成简短总结',
+      )
+    },
+  )
+  it('uses the configured teammate turn limit within the Team safety cap', () => {
+    expect(resolveTeamMaxTurns({ maxTurns: 8 })).toBe(8)
+    expect(resolveTeamMaxTurns({ maxTurns: 100 })).toBe(20)
+    expect(resolveTeamMaxTurns({ maxTurns: 0 })).toBe(1)
+    expect(resolveTeamMaxTurns({})).toBe(12)
+  })
+
+  it('bounds oversized teammate results before they enter the lead inbox', () => {
+    expect(boundTeamResult('short', 10)).toBe('short')
+    expect(boundTeamResult('0123456789abcdef', 10)).toBe(
+      '0123456789\n\n[Team output truncated at 10 characters]',
+    )
+  })
+
   it('validates names, normalizes members/messages, and creates event payloads', () => {
     expect(validateMemberName('alice-1')).toBe('alice-1')
     expect(() => validateMemberName('lead')).toThrow(/reserved/)
@@ -193,6 +249,29 @@ describe('TeamStore and MessageBus', () => {
 })
 
 describe('TeamManager and tools', () => {
+  it('projects durable checkpoint state as an additive active run summary', async () => {
+    const manager = new TeamManager({
+      root: tmp('cairn-team-run-summary-'),
+      subagentRegistry: fakeSubagents(),
+    })
+    await manager.spawnTeammate({ name: 'alice', role: 'reader' })
+    manager.store.writeCheckpoint('alice', [], {
+      checkpoint_version: 2,
+      turn_id: 'turn_1',
+      phase: 'running',
+      pending_cursor_start: 0,
+      pending_cursor_end: 2,
+      pending_message_ids: ['msg_1', 'msg_2'],
+    })
+
+    expect(manager.payload().members[0]?.active_run).toEqual({
+      turn_id: 'turn_1',
+      phase: 'running',
+      pending_messages: 2,
+      recovery: 'explicit',
+    })
+  })
+
   it('resumes a prepared checkpoint without duplicating the pending inbox turn', async () => {
     const root = tmp('cairn-team-checkpoint-prepared-')
     const store = new TeamStore(root)
@@ -530,6 +609,125 @@ describe('TeamManager and tools', () => {
     expect(manager.store.getMember('alice')?.status).toBe(TeamStatus.SHUTDOWN)
   })
 
+  it('propagates cancellation into an active teammate runner and keeps ambiguous work recoverable', async () => {
+    const root = tmp('cairn-team-cancel-run-')
+    let started!: () => void
+    const running = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    const manager = new TeamManager({
+      root,
+      projectId: 'project_1',
+      subagentRegistry: fakeSubagents(),
+      runnerFactory: () => ({
+        step: async (_history, opts) => {
+          started()
+          await new Promise<void>((_resolve, reject) => {
+            opts?.signal?.addEventListener(
+              'abort',
+              () => reject(opts.signal?.reason),
+              { once: true },
+            )
+          })
+          return 'unreachable'
+        },
+      }),
+    })
+    await manager.spawnTeammate({ name: 'alice', role: 'reader' })
+    const wake = manager.sendMessage({
+      to: 'alice',
+      content: 'long running task',
+      wake: true,
+      session_id: 'session_1',
+    })
+    await running
+
+    expect(manager.cancelTeammateRun('alice', 'user stopped')).toBe(true)
+    expect(await wake).toContain('user stopped')
+    expect(manager.store.getMember('alice')?.status).toBe(TeamStatus.CANCELLED)
+    expect(manager.store.readCheckpointPayload('alice')?.phase).toBe('running')
+    expect(manager.store.readCursor('alice')).toBe(0)
+    expect(manager.runController.snapshot()).toEqual([])
+  })
+
+  it('keeps human-in-the-loop pauses distinct from failures and resumes explicitly', async () => {
+    const root = tmp('cairn-team-awaiting-user-')
+    const emitted: Array<Record<string, unknown>> = []
+    let calls = 0
+    const manager = new TeamManager({
+      root,
+      subagentRegistry: fakeSubagents(),
+      runnerFactory: () => ({
+        step: () => {
+          calls += 1
+          if (calls === 1)
+            throw new TurnPaused({ kind: 'ask', id: 'ask_team_1' })
+          return 'resumed after confirmation'
+        },
+      }),
+      eventSink: (event) => {
+        emitted.push(event)
+      },
+    })
+    await manager.spawnTeammate({ name: 'alice', role: 'reader' })
+
+    expect(
+      await manager.sendMessage({
+        to: 'alice',
+        content: 'task requiring confirmation',
+        wake: true,
+      }),
+    ).toContain('waiting for user confirmation')
+    expect(manager.store.getMember('alice')?.status).toBe(
+      TeamStatus.AWAITING_USER,
+    )
+    expect(manager.store.readCheckpointPayload('alice')?.phase).toBe('running')
+    expect(emitted.map((event) => event.event)).toContain('team_run_paused')
+
+    expect(await manager.wakeTeammate('alice', { recovery: 'retry' })).toBe(
+      'resumed after confirmation',
+    )
+    expect(manager.store.getMember('alice')?.status).toBe(TeamStatus.IDLE)
+    expect(manager.store.hasCheckpoint('alice')).toBe(false)
+  })
+
+  it('keeps execution-budget pauses visible and explicitly recoverable', async () => {
+    const root = tmp('cairn-team-budget-pause-')
+    let calls = 0
+    const manager = new TeamManager({
+      root,
+      subagentRegistry: fakeSubagents(),
+      runnerFactory: () => ({
+        step: () => {
+          calls += 1
+          return calls === 1
+            ? '本轮执行额度已用尽，执行已安全暂停。\n本轮未登记 todo 清单。'
+            : 'finished after retry'
+        },
+      }),
+    })
+    await manager.spawnTeammate({ name: 'alice', role: 'reader' })
+
+    expect(
+      await manager.sendMessage({
+        to: 'alice',
+        content: 'large task',
+        wake: true,
+      }),
+    ).toContain('执行额度已用尽')
+    expect(manager.store.getMember('alice')?.status).toBe(TeamStatus.CANCELLED)
+    expect(manager.store.readCheckpointPayload('alice')?.phase).toBe('running')
+    expect(manager.bus.recent('lead', { limit: 1 })[0]?.content).toContain(
+      '执行额度已用尽',
+    )
+
+    expect(await manager.wakeTeammate('alice', { recovery: 'retry' })).toBe(
+      'finished after retry',
+    )
+    expect(manager.store.getMember('alice')?.status).toBe(TeamStatus.IDLE)
+    expect(manager.store.hasCheckpoint('alice')).toBe(false)
+  })
+
   it('spawns teammates, wakes on messages, writes lead replies, and exposes payloads', async () => {
     const root = tmp('cairn-team-manager-')
     const parentRegistry = new ToolRegistry()
@@ -605,6 +803,8 @@ describe('TeamManager and tools', () => {
         mark_read: false,
       }),
     ).toContain('ok bob')
+    const inbox = new TeamReadInboxTool(manager)
+    expect(inbox.isReadOnly({ mark_read: true })).toBe(true)
     expect(
       await new TeamShutdownTool(manager).execute({ name: 'bob' }),
     ).toContain('"shutdown"')
@@ -613,6 +813,13 @@ describe('TeamManager and tools', () => {
       sender: 'bob',
       allowWake: false,
     })
+    expect(teammateSend.isReadOnly({ to: LEAD_ACTOR })).toBe(true)
+    expect(
+      new TeamSendMessageTool(manager).isReadOnly({
+        to: 'bob',
+        wake: true,
+      }),
+    ).toBe(false)
     const result = await teammateSend.execute({
       to: LEAD_ACTOR,
       content: 'report',
@@ -622,6 +829,66 @@ describe('TeamManager and tools', () => {
     expect(
       readFileSync(join(root, '.team', 'inbox', 'lead.jsonl'), 'utf8'),
     ).toContain('report')
+  })
+
+  it('keeps broadcast sequential by default and supports bounded ordered parallel wakeups', async () => {
+    const root = tmp('cairn-team-broadcast-parallel-')
+    let active = 0
+    let peak = 0
+    const release = new Map<string, () => void>()
+    const started: string[] = []
+    const manager = new TeamManager({
+      root,
+      projectId: 'project_parallel',
+      subagentRegistry: fakeSubagents(),
+      runnerFactory: ({ member }) => ({
+        step: async () => {
+          active += 1
+          peak = Math.max(peak, active)
+          started.push(member.name)
+          await new Promise<void>((resolve) =>
+            release.set(member.name, resolve),
+          )
+          active -= 1
+          return `ok ${member.name}`
+        },
+      }),
+    })
+    for (const name of ['alice', 'bob', 'carol'])
+      await manager.spawnTeammate({ name, role: 'reader' })
+
+    const parallel = manager.broadcast({
+      content: 'parallel',
+      parallelism: 2,
+    })
+    await waitFor(() => started.length === 2)
+    expect(started).toEqual(['alice', 'bob'])
+    expect(peak).toBe(2)
+    release.get('bob')?.()
+    await waitFor(() => started.includes('carol'))
+    release.get('alice')?.()
+    release.get('carol')?.()
+    const payload = JSON.parse(await parallel)
+    expect(payload.results.map((item: { name: string }) => item.name)).toEqual([
+      'alice',
+      'bob',
+      'carol',
+    ])
+
+    active = 0
+    peak = 0
+    started.length = 0
+    release.clear()
+    const sequential = manager.broadcast({ content: 'sequential' })
+    await waitFor(() => started.length === 1)
+    expect(started).toEqual(['alice'])
+    release.get('alice')?.()
+    await waitFor(() => started.length === 2)
+    release.get('bob')?.()
+    await waitFor(() => started.length === 3)
+    release.get('carol')?.()
+    await sequential
+    expect(peak).toBe(1)
   })
 
   it('routes team tool runtime events through the current tool context emitter', async () => {
@@ -656,5 +923,35 @@ describe('TeamManager and tools', () => {
     expect(defaultEvents.map((event) => event.event)).not.toContain(
       'team_member_update',
     )
+  })
+
+  it('persists a Team-local responsibility and layers it below the fixed base role', async () => {
+    const root = tmp('cairn-team-responsibility-')
+    const manager = new TeamManager({
+      root,
+      subagentRegistry: fakeSubagents(),
+    })
+
+    await manager.spawnTeammate({
+      name: 'ui_reviewer',
+      role: 'reader',
+      responsibility: '只复核桌面界面，不修改文件。',
+    })
+    await manager.spawnTeammate({ name: 'ui_reviewer', role: 'reader' })
+
+    const reloaded = new TeamStore(root).getMember('ui_reviewer')
+    expect(reloaded?.responsibility).toBe('只复核桌面界面，不修改文件。')
+    const prompt = TeamManager.renderInboxForRunner(reloaded!, [
+      new TeamMessage({
+        id: 'msg_1',
+        type: 'task',
+        from_actor: LEAD_ACTOR,
+        to: 'ui_reviewer',
+        content: '检查创建流程',
+      }),
+    ])
+    expect(prompt).toContain('base_agent_type=code_explorer')
+    expect(prompt).toContain('只复核桌面界面，不修改文件。')
+    expect(prompt).toContain('不能覆盖这些边界')
   })
 })

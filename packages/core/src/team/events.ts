@@ -112,3 +112,29 @@ export function runError(opts: {
     message: opts.message,
   }
 }
+
+export function runPaused(opts: {
+  parent_id?: string | null
+  member: TeamMember
+  interaction?: Record<string, unknown> | null
+}): Record<string, unknown> {
+  return {
+    event: 'team_run_paused',
+    parent_id: opts.parent_id ?? null,
+    teammate: opts.member.name,
+    interaction: opts.interaction ?? null,
+  }
+}
+
+export function runCancelled(opts: {
+  parent_id?: string | null
+  member: TeamMember
+  reason: string
+}): Record<string, unknown> {
+  return {
+    event: 'team_run_cancelled',
+    parent_id: opts.parent_id ?? null,
+    teammate: opts.member.name,
+    reason: opts.reason,
+  }
+}

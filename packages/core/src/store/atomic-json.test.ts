@@ -80,6 +80,25 @@ describe('atomic-json store', () => {
     expect(JSON.parse(await readFile(p, 'utf8'))).toEqual({ v: 2 })
   })
 
+  it('keeps replacement readable while Windows readers overlap repeated writes', async () => {
+    const p = join(dir, 'contended.json')
+    await writeJsonAtomic(p, { version: 0 })
+    const readers = Array.from({ length: 4 }, async () => {
+      for (let index = 0; index < 40; index += 1) {
+        const value = await readJson(p, { version: -1 })
+        expect(Number(value.version)).toBeGreaterThanOrEqual(0)
+      }
+    })
+    const writer = (async () => {
+      for (let version = 1; version <= 40; version += 1)
+        await writeJsonAtomic(p, { version })
+    })()
+
+    await Promise.all([...readers, writer])
+    expect(await readJson(p, null)).toEqual({ version: 40 })
+    expect((await readdir(dir)).filter((f) => f.includes('.tmp-'))).toEqual([])
+  })
+
   it('writes secret-bearing JSON with an explicit private file mode', async () => {
     const p = join(dir, 'secret.json')
     await writeJsonAtomic(p, { apiKey: 'secret' }, { mode: 0o600 })

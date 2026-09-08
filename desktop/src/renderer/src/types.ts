@@ -1524,7 +1524,14 @@ export interface PendingState {
 export type RuntimeStatus = 'connecting' | 'ready' | 'error'
 
 export type TeamStatus =
-  'idle' | 'working' | 'offline' | 'shutdown' | 'error' | string
+  | 'idle'
+  | 'working'
+  | 'awaiting_user'
+  | 'cancelled'
+  | 'offline'
+  | 'shutdown'
+  | 'error'
+  | string
 
 export interface TeamMessage {
   id: string
@@ -1542,6 +1549,7 @@ export interface TeamMember {
   name: string
   role: string
   agent_type: string
+  responsibility?: string
   status: TeamStatus
   created_at?: number
   updated_at?: number
@@ -1550,17 +1558,41 @@ export interface TeamMember {
   recent_messages?: TeamMessage[]
   thread_count?: number
   tools?: string[]
+  active_run?: TeamRunSummary | null
+}
+
+export interface TeamRunSummary {
+  turn_id: string
+  phase: 'prepared' | 'running' | 'terminal_pending'
+  pending_messages: number
+  recovery: 'automatic' | 'explicit' | 'finalizing'
+  started_at?: number
+  deadline_at?: number
 }
 
 export interface TeamPayload {
+  managed?: boolean
+  scope?: string
+  project_id?: string | null
   config?: {
     version?: number
     team_name?: string
     members?: TeamMember[]
   }
   members: TeamMember[]
+  available_agent_types?: string[]
+  available_agent_profiles?: TeamAgentProfile[]
   leadUnread?: number
   leadInbox?: TeamMessage[]
+}
+
+export interface TeamAgentProfile {
+  name: string
+  description: string
+  tools: string[]
+  filesystem: string
+  network: string
+  process: string
 }
 
 export interface TeamMemberPayload {
@@ -1568,6 +1600,7 @@ export interface TeamMemberPayload {
   inbox: TeamMessage[]
   leadInbox: TeamMessage[]
   thread: Array<{ role?: string; content?: string }>
+  activeRun?: TeamRunSummary | null
 }
 
 export type SchedulerScheduleKind = 'at' | 'every' | 'cron'
@@ -2315,6 +2348,18 @@ type WsEventVariants =
       parent_id?: string
       teammate?: string
       message?: string
+    }
+  | {
+      event: 'team_run_paused'
+      parent_id?: string
+      teammate?: string
+      interaction?: Record<string, unknown> | null
+    }
+  | {
+      event: 'team_run_cancelled'
+      parent_id?: string
+      teammate?: string
+      reason?: string
     }
   | { event: 'scheduler_job_update'; job?: SchedulerJob; action?: string }
   | {

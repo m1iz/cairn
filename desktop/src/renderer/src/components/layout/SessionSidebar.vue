@@ -19,6 +19,7 @@ import {
   Settings,
   Sparkles,
   Trash2,
+  Users,
 } from 'lucide-vue-next'
 import { core } from '../../api/http'
 import { selectDirectory } from '../../api/backend'
@@ -415,6 +416,10 @@ onBeforeUnmount(() => {
         <CalendarClock :size="16" />
         <span>定时任务</span>
         <em v-if="schedulerCount">{{ schedulerCount }}</em>
+      </button>
+      <button type="button" @click="go('/teams')">
+        <Users :size="16" />
+        <span>Agent Team</span>
       </button>
     </nav>
 

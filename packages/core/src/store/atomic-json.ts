@@ -29,6 +29,8 @@ export interface AtomicWriteOptions {
   mode?: number
 }
 
+const WINDOWS_RENAME_RETRIES = 8
+
 function corruptName(path: string): string {
   const ts = new Date().toISOString().replace(/[:.]/g, '-')
   const nonce = randomBytes(4).toString('hex')
@@ -87,10 +89,31 @@ export async function writeJsonAtomic(
     await syncFileBestEffort(handle)
     await handle.close()
     handle = null
-    await rename(tmp, path)
+    await renameAtomic(tmp, path)
   } catch (error) {
     await handle?.close().catch(() => {})
     await unlink(tmp).catch(() => {})
     throw error
+  }
+}
+
+async function renameAtomic(
+  source: string,
+  destination: string,
+): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rename(source, destination)
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      const retryable =
+        process.platform === 'win32' &&
+        (code === 'EPERM' || code === 'EACCES' || code === 'EBUSY')
+      if (!retryable || attempt >= WINDOWS_RENAME_RETRIES) throw error
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(160, 10 * 2 ** attempt)),
+      )
+    }
   }
 }

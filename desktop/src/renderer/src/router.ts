@@ -47,7 +47,13 @@ export const routeRecords: RouteRecordRaw[] = [
   },
   {
     path: '/team',
-    redirect: '/chat',
+    redirect: '/teams',
+  },
+  {
+    path: '/teams/:teamId?/:conversationId?',
+    name: 'teams',
+    component: () => import('./views/TeamsView.vue'),
+    meta: { label: 'Agent Team', hint: '团队对话' },
   },
   {
     path: '/scheduler',
