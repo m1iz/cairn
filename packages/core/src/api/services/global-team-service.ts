@@ -595,13 +595,24 @@ export class CoreGlobalTeamService {
         teamId,
         conversationId,
         run.id,
-        (current) => ({
-          ...current,
-          state: 'failed',
-          error:
-            '应用在任务执行期间退出。为避免重复执行有副作用的操作，本次任务未自动重放。',
-          finished_at: Date.now() / 1000,
-        }),
+        (current) => {
+          // The list above is only a snapshot. Execution can persist a pause or
+          // terminal state while this reconciliation is waiting for the store
+          // lock, so re-check the current record before declaring it orphaned.
+          if (
+            isTerminal(current.state) ||
+            current.state === 'awaiting_user' ||
+            this.active.has(current.id)
+          )
+            return current
+          return {
+            ...current,
+            state: 'failed',
+            error:
+              '应用在任务执行期间退出。为避免重复执行有副作用的操作，本次任务未自动重放。',
+            finished_at: Date.now() / 1000,
+          }
+        },
       )
     }
   }

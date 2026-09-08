@@ -505,4 +505,59 @@ describe('CoreGlobalTeamService', () => {
       }),
     )
   })
+
+  it('does not overwrite a pause persisted after reconciliation read a stale run', async () => {
+    const catalog = new GlobalTeamCatalog(
+      mkdtempSync(join(tmpdir(), 'cairn-global-team-reconcile-race-')),
+    )
+    const service = new CoreGlobalTeamService({
+      catalog,
+      availableAgentTypes: () => ['reader'],
+    })
+    const created = await service.create({
+      name: '竞态团队',
+      members: [{ display_name: '阅读', agent_type: 'reader' }],
+    })
+    const conversation = created.conversations[0]!
+    const run = await catalog.createRun(
+      created.team.id,
+      conversation.id,
+      '长任务',
+    )
+    await catalog.updateRun(
+      created.team.id,
+      conversation.id,
+      run.id,
+      (current) => ({ ...current, state: 'planning' }),
+    )
+    await catalog.updateRun(
+      created.team.id,
+      conversation.id,
+      run.id,
+      (current) => ({ ...current, state: 'running' }),
+    )
+    const stale = await catalog.getRun(created.team.id, conversation.id, run.id)
+    await catalog.updateRun(
+      created.team.id,
+      conversation.id,
+      run.id,
+      (current) => ({ ...current, state: 'awaiting_user' }),
+    )
+
+    const listRuns = catalog.listRuns.bind(catalog)
+    catalog.listRuns = vi.fn(async () => [stale!])
+    try {
+      await service.listRuns(created.team.id, conversation.id)
+    } finally {
+      catalog.listRuns = listRuns
+    }
+
+    const current = await catalog.getRun(
+      created.team.id,
+      conversation.id,
+      run.id,
+    )
+    expect(current?.state).toBe('awaiting_user')
+    expect(current?.error).toBe('')
+  })
 })
