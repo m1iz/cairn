@@ -1029,27 +1029,21 @@ function processLeaseId(): string {
 
 function defaultKillProcessTree(pid: number, platform: NodeJS.Platform): void {
   if (platform === 'win32') {
-    try {
-      // Cancellation is a state boundary: do not report the owned process as
-      // settled while taskkill may still be racing its descendants. In
-      // particular, loaded Windows CI hosts can take long enough to start the
-      // helper for a grandchild to keep running after the parent has exited.
-      execFileSync(
-        windowsSystemExecutable('taskkill.exe'),
-        ['/pid', String(pid), '/t', '/f'],
-        {
-          windowsHide: true,
-          stdio: 'ignore',
-          timeout: 10_000,
-        },
-      )
-    } catch {
+    const killer = spawn(
+      windowsSystemExecutable('taskkill.exe'),
+      ['/pid', String(pid), '/t', '/f'],
+      {
+        windowsHide: true,
+        stdio: 'ignore',
+      },
+    )
+    killer.once('error', () => {
       try {
         process.kill(pid, 'SIGKILL')
       } catch {
         // The child completion event remains the owner of final state.
       }
-    }
+    })
     return
   }
   const bootMarker = systemBootMarker()

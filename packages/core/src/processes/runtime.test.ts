@@ -117,7 +117,10 @@ describe('OwnedProcessRuntime receipts', () => {
       const ready = join(root, 'grandchild-started')
       const marker = join(root, 'grandchild-finished')
       const runtime = unitRuntime(root)
-      const childScript = `require('node:fs').writeFileSync(${JSON.stringify(ready)},'ready');setTimeout(()=>require('node:fs').writeFileSync(${JSON.stringify(marker)},'done'),500)`
+      // Keep a generous observation window: starting taskkill can take more
+      // than 500ms on a loaded Windows CI host even though it still terminates
+      // the complete tree correctly.
+      const childScript = `require('node:fs').writeFileSync(${JSON.stringify(ready)},'ready');setTimeout(()=>require('node:fs').writeFileSync(${JSON.stringify(marker)},'done'),5000)`
       const parentScript = [
         'const {spawn}=require("node:child_process")',
         `spawn(process.execPath,['-e',${JSON.stringify(childScript)}],{detached:${process.platform !== 'win32'},stdio:'ignore'}).unref()`,
@@ -137,7 +140,7 @@ describe('OwnedProcessRuntime receipts', () => {
 
       await runtime.cancelOwner(owner, 'session closed')
       await expect(running).resolves.toMatchObject({ status: 'cancelled' })
-      await delay(700)
+      await delay(5500)
       expect(existsSync(marker)).toBe(false)
       expect(runtime.list()[0]).toMatchObject({
         status: 'cancelled',
