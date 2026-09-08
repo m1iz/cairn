@@ -33,7 +33,9 @@ describe('CairnSelect', () => {
     })
     app.mount(container!)
 
-    ;(container!.querySelector('.cairn-select-trigger') as HTMLButtonElement).click()
+    ;(
+      container!.querySelector('.cairn-select-trigger') as HTMLButtonElement
+    ).click()
     await Promise.resolve()
     expect(container!.querySelector('.cairn-select-menu')).not.toBeNull()
 
@@ -49,7 +51,9 @@ describe('CairnSelect', () => {
     expect(value.value).toBe('coder')
     expect(container!.querySelector('.cairn-select-menu')).toBeNull()
 
-    ;(container!.querySelector('.cairn-select-trigger') as HTMLButtonElement).click()
+    ;(
+      container!.querySelector('.cairn-select-trigger') as HTMLButtonElement
+    ).click()
     await Promise.resolve()
     document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
     await Promise.resolve()
