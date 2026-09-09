@@ -16,6 +16,32 @@ afterEach(() => {
 })
 
 describe('CairnSelect', () => {
+  it('exposes a borderless, readable menu variant without changing selector behavior', async () => {
+    const app = createApp({
+      setup: () => () =>
+        h(CairnSelect, {
+          modelValue: 'team-a',
+          options: [{ value: 'team-a', label: 'Team A' }],
+          variant: 'plain',
+        }),
+    })
+    app.mount(container!)
+
+    expect(container!.querySelector('.cairn-select.is-plain')).not.toBeNull()
+    expect(container!.textContent).toContain('Team A')
+
+    ;(
+      container!.querySelector('.cairn-select-trigger') as HTMLButtonElement
+    ).click()
+    await Promise.resolve()
+    const menu = container!.querySelector('.cairn-select-menu') as HTMLElement
+    expect(menu.classList.contains('is-plain-menu')).toBe(true)
+    expect(menu.querySelector('[role="option"]')?.textContent).toContain(
+      'Team A',
+    )
+    app.unmount()
+  })
+
   it('stays open during pointer movement, selects an option, and closes outside', async () => {
     const value = ref('reader')
     const app = createApp({

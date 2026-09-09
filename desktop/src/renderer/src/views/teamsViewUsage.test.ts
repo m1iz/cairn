@@ -22,4 +22,19 @@ describe('TeamsView product boundary', () => {
     expect(source).toContain('2 团队成员')
     expect(source).toContain('form.members.length < 6')
   })
+
+  it('keeps Team history and member evidence understandable without deleting audit data', () => {
+    expect(source).toContain(
+      '显示 ${historicalIssueRuns.length} 条历史异常记录',
+    )
+    expect(source).toContain('Cairn · 自动汇总')
+    expect(source).toContain('查看成员原始报告')
+    expect(source).toContain('member-detail-toolbar')
+    expect(source).toContain('position: sticky')
+  })
+
+  it('uses borderless Cairn selectors only in the lightweight conversation header', () => {
+    expect(source.match(/variant="plain"/g)).toHaveLength(2)
+    expect(source).toContain('class="tool-button team-head-action"')
+  })
 })

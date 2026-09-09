@@ -445,7 +445,17 @@ export class CoreGlobalTeamService {
         final = await (execution?.synthesize ?? this.deps.synthesize!)({
           workspaceRoot,
           signal: controller.signal,
-          prompt: `用户任务：\n${initial.user_message}\n\n队友结果：\n${evidence}\n\n请综合为最终答复；有分歧或失败要明确说明。`,
+          prompt: [
+            `用户任务：\n${initial.user_message}`,
+            `队友结果：\n${evidence}`,
+            [
+              '请综合为最终答复，并遵守以下要求：',
+              '1. 逐份阅读并覆盖所有已完成的成员报告，不得只采用其中一份。',
+              '2. 区分已验证事实、成员建议和未验证推断。',
+              '3. 有分歧、失败或缺少证据时必须明确说明，不得自行补齐。',
+              '4. 优先直接回答用户任务，不要声称多 Agent 协作本身等于结果正确。',
+            ].join('\n'),
+          ].join('\n\n'),
         })
       } catch (error) {
         if (controller.signal.aborted) return

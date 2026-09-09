@@ -44,6 +44,7 @@ const runs = ref<TeamRunPayload[]>([])
 const message = ref('')
 const sending = ref(false)
 const selectedMember = ref<GlobalTeamMemberPayload | null>(null)
+const showHistoricalIssues = ref(false)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let memberKey = 1
 let selectionVersion = 0
@@ -113,6 +114,22 @@ const activeRun = computed(
         (run) =>
           !['completed', 'partial', 'cancelled', 'failed'].includes(run.state),
       ) ?? null,
+)
+const latestRun = computed(() => runs.value.at(-1) ?? null)
+const historicalIssueRuns = computed(() =>
+  runs.value.filter(
+    (run) =>
+      run.error.includes('应用在任务执行期间退出') ||
+      (run.id !== latestRun.value?.id &&
+        (run.state === 'failed' || run.state === 'cancelled')),
+  ),
+)
+const visibleRuns = computed(() =>
+  showHistoricalIssues.value
+    ? runs.value
+    : runs.value.filter(
+        (run) => !historicalIssueRuns.value.some((item) => item.id === run.id),
+      ),
 )
 
 function runLabel(state: TeamRunPayload['state']): string {
@@ -380,6 +397,7 @@ async function loadSelection() {
       return
     detail.value = loaded
     runs.value = []
+    showHistoricalIssues.value = false
     selectedMember.value = null
     await refreshRuns()
   } catch (reason) {
@@ -449,6 +467,7 @@ onBeforeUnmount(() => {
           <CairnSelect
             :model-value="detail.team.id"
             :options="teamOptions"
+            variant="plain"
             aria-label="切换 Team"
             @update:model-value="selectTeam"
           />
@@ -457,6 +476,7 @@ onBeforeUnmount(() => {
               v-if="activeConversation"
               :model-value="activeConversation.id"
               :options="conversationOptions"
+              variant="plain"
               aria-label="切换团队对话"
               @update:model-value="selectConversation"
             />
@@ -473,10 +493,13 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div class="teams-head-actions">
-          <button class="tool-button" @click="createConversation">
+          <button
+            class="tool-button team-head-action"
+            @click="createConversation"
+          >
             <Plus :size="14" />新对话
           </button>
-          <button class="tool-button" @click="openCreate">
+          <button class="tool-button team-head-action" @click="openCreate">
             <Users :size="14" />新 Team
           </button>
           <div class="teams-head-members" aria-label="Team 成员">
@@ -516,7 +539,19 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div v-else class="team-transcript" aria-live="polite">
-          <article v-for="run in runs" :key="run.id" class="team-run">
+          <button
+            v-if="historicalIssueRuns.length"
+            class="team-history-toggle"
+            :aria-expanded="showHistoricalIssues"
+            @click="showHistoricalIssues = !showHistoricalIssues"
+          >
+            {{
+              showHistoricalIssues
+                ? '隐藏历史异常记录'
+                : `显示 ${historicalIssueRuns.length} 条历史异常记录`
+            }}
+          </button>
+          <article v-for="run in visibleRuns" :key="run.id" class="team-run">
             <div class="team-user-message">{{ run.user_message }}</div>
             <section class="team-coordinator-card" :class="`is-${run.state}`">
               <header>
@@ -560,7 +595,10 @@ onBeforeUnmount(() => {
               </div>
               <p v-if="run.error" class="team-run-error">{{ run.error }}</p>
               <button
-                v-if="['partial', 'failed'].includes(run.state)"
+                v-if="
+                  run.id === latestRun?.id &&
+                  ['partial', 'failed'].includes(run.state)
+                "
                 class="tool-button"
                 :disabled="actionPending || Boolean(activeRun)"
                 @click="retryRun(run)"
@@ -585,8 +623,40 @@ onBeforeUnmount(() => {
               </button>
             </section>
             <section v-if="run.final_response" class="team-final-response">
-              <header>Cairn · 最终答复</header>
+              <header>
+                <span>Cairn · 自动汇总</span>
+                <small
+                  >{{
+                    run.assignments.filter(
+                      (item) => item.status === 'completed',
+                    ).length
+                  }}/{{ run.assignments.length }} 份成员报告</small
+                >
+              </header>
               <MarkdownBlock :content="run.final_response" />
+              <details
+                v-if="run.assignments.some((item) => item.result || item.error)"
+                class="team-source-reports"
+              >
+                <summary>查看成员原始报告</summary>
+                <section
+                  v-for="assignment in run.assignments"
+                  :key="assignment.member_id"
+                >
+                  <strong>{{
+                    run.members.find((item) => item.id === assignment.member_id)
+                      ?.display_name || assignment.member_id
+                  }}</strong>
+                  <p v-if="assignment.error" class="team-run-error">
+                    {{ assignment.error }}
+                  </p>
+                  <MarkdownBlock
+                    v-if="assignment.result"
+                    :content="assignment.result"
+                  />
+                  <p v-else-if="!assignment.error">未返回内容</p>
+                </section>
+              </details>
             </section>
           </article>
         </div>
@@ -625,48 +695,53 @@ onBeforeUnmount(() => {
       </form>
 
       <aside v-if="selectedMember" class="team-member-detail">
-        <button aria-label="关闭成员详情" @click="selectedMember = null">
-          <X :size="16" />
-        </button>
-        <div class="member-detail-avatar">
-          {{ selectedMember.display_name.slice(0, 1) }}
-        </div>
-        <h2>{{ selectedMember.display_name }}</h2>
-        <small>{{ selectedMember.agent_type }}</small>
-        <section v-if="selectedAssignment">
+        <header class="member-detail-toolbar">
+          <span>成员详情</span>
+          <button aria-label="关闭成员详情" @click="selectedMember = null">
+            <X :size="16" />
+          </button>
+        </header>
+        <div class="member-detail-content">
+          <div class="member-detail-avatar">
+            {{ selectedMember.display_name.slice(0, 1) }}
+          </div>
+          <h2>{{ selectedMember.display_name }}</h2>
+          <small>{{ selectedMember.agent_type }}</small>
+          <section v-if="selectedAssignment">
+            <p>
+              最近任务：{{
+                (
+                  {
+                    pending: '等待中',
+                    running: '执行中',
+                    completed: '已完成',
+                    failed: '失败',
+                    cancelled: '已取消',
+                  } as const
+                )[selectedAssignment.status]
+              }}
+            </p>
+            <p v-if="selectedAssignment.error" class="team-run-error">
+              {{ selectedAssignment.error }}
+            </p>
+            <MarkdownBlock
+              v-if="selectedAssignment.result"
+              :content="selectedAssignment.result"
+            />
+          </section>
           <p>
-            最近任务：{{
-              (
-                {
-                  pending: '等待中',
-                  running: '执行中',
-                  completed: '已完成',
-                  failed: '失败',
-                  cancelled: '已取消',
-                } as const
-              )[selectedAssignment.status]
+            {{
+              selectedMember.responsibility ||
+              '使用基础角色职责，由协调器按任务分配工作。'
             }}
           </p>
-          <p v-if="selectedAssignment.error" class="team-run-error">
-            {{ selectedAssignment.error }}
-          </p>
-          <MarkdownBlock
-            v-if="selectedAssignment.result"
-            :content="selectedAssignment.result"
-          />
-        </section>
-        <p>
-          {{
-            selectedMember.responsibility ||
-            '使用基础角色职责，由协调器按任务分配工作。'
-          }}
-        </p>
-        <dl>
-          <dt>作用范围</dt>
-          <dd>仅当前 Team</dd>
-          <dt>任务分配</dt>
-          <dd>由团队协调器自动完成</dd>
-        </dl>
+          <dl>
+            <dt>作用范围</dt>
+            <dd>仅当前 Team</dd>
+            <dt>任务分配</dt>
+            <dd>由团队协调器自动完成</dd>
+          </dl>
+        </div>
       </aside>
     </template>
 
@@ -896,6 +971,14 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.teams-head-actions .team-head-action {
+  border-color: transparent;
+  background: transparent;
+}
+.teams-head-actions .team-head-action:hover {
+  border-color: transparent;
+  background: rgb(var(--bg-inset));
 }
 .teams-head-members button {
   width: 28px;
@@ -1165,6 +1248,18 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 38px;
 }
+.team-history-toggle {
+  justify-self: center;
+  margin-bottom: -18px;
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: rgb(var(--fg-muted));
+  font-size: var(--font-size-sm);
+}
+.team-history-toggle:hover {
+  background: rgb(var(--bg-inset));
+  color: rgb(var(--fg));
+}
 .team-run {
   display: grid;
   gap: 14px;
@@ -1233,12 +1328,43 @@ onBeforeUnmount(() => {
   color: rgb(var(--danger));
 }
 .team-final-response header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   color: rgb(var(--fg-muted));
   font-size: var(--font-size-sm);
+}
+.team-final-response header small {
+  color: rgb(var(--fg-subtle));
 }
 .team-final-response :deep(.markdown-body) {
   margin: 12px 0 0;
   line-height: 1.65;
+}
+.team-source-reports {
+  margin-top: 14px;
+  border-top: 1px solid rgb(var(--border));
+  padding-top: 12px;
+}
+.team-source-reports > summary {
+  cursor: pointer;
+  color: rgb(var(--fg-muted));
+  font-size: var(--font-size-sm);
+}
+.team-source-reports > section {
+  margin-top: 14px;
+  border-left: 2px solid rgb(var(--border));
+  padding-left: 12px;
+}
+.team-source-reports > section > strong {
+  font-size: var(--font-size-sm);
+}
+.team-source-reports > section > p {
+  margin: 8px 0 0;
+}
+.team-source-reports :deep(.markdown-body) {
+  margin-top: 8px;
 }
 .team-member-detail {
   max-height: calc(100% - 100px);
@@ -1248,18 +1374,39 @@ onBeforeUnmount(() => {
   top: 76px;
   right: 18px;
   width: min(300px, calc(100% - 36px));
-  padding: 20px;
+  padding: 0;
   border: 1px solid rgb(var(--border));
   border-radius: var(--radius-lg);
   background: rgb(var(--bg-elevated));
   box-shadow: var(--shadow-lg);
 }
-.team-member-detail > button {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  padding: 7px;
+.member-detail-toolbar {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  border-bottom: 1px solid rgb(var(--border));
+  padding: 8px 10px 8px 20px;
+  background: rgb(var(--bg-elevated));
+  color: rgb(var(--fg-muted));
+  font-size: var(--font-size-sm);
+}
+.member-detail-toolbar > button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
   border-radius: var(--radius);
+}
+.member-detail-toolbar > button:hover {
+  background: rgb(var(--bg-inset));
+  color: rgb(var(--fg));
+}
+.member-detail-content {
+  padding: 20px;
 }
 .member-detail-avatar {
   width: 42px;

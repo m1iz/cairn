@@ -15,6 +15,7 @@ const props = defineProps<{
   options: CairnSelectOption[]
   placeholder?: string
   ariaLabel?: string
+  variant?: 'default' | 'plain'
 }>()
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
@@ -94,7 +95,12 @@ onBeforeUnmount(() =>
 </script>
 
 <template>
-  <div ref="root" class="cairn-select" @keydown="onKeydown">
+  <div
+    ref="root"
+    class="cairn-select"
+    :class="`is-${variant || 'default'}`"
+    @keydown="onKeydown"
+  >
     <button
       ref="trigger"
       type="button"
@@ -110,7 +116,12 @@ onBeforeUnmount(() =>
       </span>
       <ChevronDown :size="16" :class="{ 'rotate-180': open }" />
     </button>
-    <div v-if="open" class="cairn-select-menu" role="listbox">
+    <div
+      v-if="open"
+      class="cairn-select-menu"
+      :class="{ 'is-plain-menu': variant === 'plain' }"
+      role="listbox"
+    >
       <button
         v-for="(option, index) in options"
         :key="option.value"
@@ -162,6 +173,30 @@ onBeforeUnmount(() =>
 .cairn-select-trigger:focus-visible {
   outline: 2px solid rgb(var(--accent) / 0.5);
   outline-offset: 2px;
+}
+.cairn-select.is-plain .cairn-select-trigger {
+  min-height: 0;
+  border-color: transparent;
+  border-radius: var(--radius-md);
+  padding: 0.25rem 0.4rem;
+  background: transparent;
+}
+.cairn-select.is-plain .cairn-select-trigger:hover,
+.cairn-select.is-plain .cairn-select-trigger[aria-expanded='true'] {
+  border-color: transparent;
+  background: rgb(var(--bg-inset));
+}
+.cairn-select.is-plain .cairn-select-copy strong {
+  font-size: var(--font-size-md);
+}
+.cairn-select-menu.is-plain-menu {
+  right: auto;
+  width: max-content;
+  min-width: max(100%, 10.5rem);
+  max-width: min(22rem, calc(100vw - 2rem));
+}
+.cairn-select-menu.is-plain-menu > button {
+  white-space: nowrap;
 }
 .cairn-select-trigger > svg {
   flex: none;

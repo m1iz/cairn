@@ -297,11 +297,12 @@ describe('CoreGlobalTeamService', () => {
       JSON.stringify({ result: `result:${to}` }),
     )
     const spawnTeammate = vi.fn(async () => '{}')
+    const synthesize = vi.fn(async () => '最终答案')
     const service = new CoreGlobalTeamService({
       catalog,
       availableAgentTypes: () => ['reader', 'reviewer'],
       createManager: () => ({ sendMessage, spawnTeammate }) as never,
-      synthesize: async () => '最终答案',
+      synthesize,
     })
     const created = await service.create({
       name: '执行团队',
@@ -325,6 +326,13 @@ describe('CoreGlobalTeamService', () => {
     ])
     expect(spawnTeammate).toHaveBeenCalledTimes(2)
     expect(sendMessage).toHaveBeenCalledTimes(2)
+    expect(synthesize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringMatching(
+          /逐份阅读并覆盖所有已完成的成员报告[\s\S]*区分已验证事实[\s\S]*有分歧、失败或缺少证据/,
+        ),
+      }),
+    )
   })
 
   it('keeps successful member evidence when coordinator synthesis fails', async () => {
